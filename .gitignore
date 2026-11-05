@@ -15,3 +15,5 @@ xcuserdata/
 *.wav
 *.mp3
 *.djaw
+src/vendor/stretch-core.mjs
+build/

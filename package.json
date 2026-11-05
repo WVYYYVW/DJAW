@@ -1,0 +1,58 @@
+{
+  "name": "djaw",
+  "productName": "DJAW",
+  "version": "0.1.0",
+  "description": "DAW-style DJ mix editor",
+  "main": "build/main.js",
+  "private": true,
+  "author": "WVYYYVW",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "node scripts/build.mjs && electron .",
+    "watch": "node scripts/build.mjs --watch",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "node scripts/build.mjs --tests && node --test build/tests/*.test.js",
+    "dist": "node scripts/build.mjs && electron-builder --win"
+  },
+  "build": {
+    "appId": "com.djaw.mix",
+    "productName": "DJAW",
+    "files": [
+      "build/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "fileAssociations": [
+      {
+        "ext": "djaw",
+        "name": "DJAW Mix",
+        "role": "Editor"
+      }
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "electron": "^38.8.6",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.2",
+    "typescript": "5.6"
+  },
+  "dependencies": {
+    "music-metadata": "^10.9.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "signalsmith-stretch": "^1.3.2"
+  }
+}
