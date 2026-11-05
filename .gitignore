@@ -1,0 +1,17 @@
+node_modules/
+dist/
+out/
+release/
+*.log
+.DS_Store
+xcuserdata/
+*.xcuserstate
+# ML weights are not stored in git (size / licences) — see docs/PORTING.md §6
+*.mlpackage/
+*.onnx
+*.ckpt
+*.safetensors
+# large audio used for checks
+*.wav
+*.mp3
+*.djaw
