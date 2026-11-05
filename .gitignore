@@ -17,3 +17,4 @@ xcuserdata/
 *.djaw
 src/vendor/stretch-core.mjs
 build/
+!models/*.onnx
