@@ -139,7 +139,8 @@ export interface ClipFX {
   auto?: boolean | null;
 }
 
-export type MixGenre = string;
+export type { MixGenre } from './genre';
+import type { MixGenre } from './genre';
 
 /** Why the auto-mix chose a transition (AutoMixer.swift). Kept as data. */
 export interface AutoMixNote {
@@ -832,6 +833,15 @@ export const Mathx = {
 // MARK: - Track use
 
 export type TrackUse = 'auto' | 'full' | 'energetic';
+export const trackUses: TrackUse[] = ['auto', 'full', 'energetic'];
+export const TrackUses = {
+  title: (u: TrackUse) => ({ auto: L('ジャンルに合わせる', 'By Genre'), full: L('曲を最後まで使う', 'Play Tracks Out'), energetic: L('盛り上がったまま次へ', 'Keep the Energy Up') })[u],
+  detail: (u: TrackUse) => ({
+    auto: L('ハードコア／ブレイクコアは盛り上がったまま次の曲へ、それ以外は曲を最後まで使います。', 'Hardcore / breakcore keep the energy up; other genres play each track out.'),
+    full: L('前の曲は最後のドロップやアウトロまで使ってから次へ。', 'Each track plays through its last drop or outro before the next one.'),
+    energetic: L('前の曲がドロップの途中（1曲あたり約2分半）で、次の曲のドロップへつなぎます。', 'Leaves each track mid-drop (about 2½ minutes per track) straight into the next drop.'),
+  })[u],
+};
 
 // MARK: - Takes
 

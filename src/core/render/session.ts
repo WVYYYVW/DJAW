@@ -134,6 +134,12 @@ class Voice {
   readonly echo: Echo;
   readonly reverb: Reverb | null;
   private readonly stream: ClipStream;
+  /** With stems: the vocals (the main stream then plays the instrumental). */
+  private readonly vocals: ClipStream | null;
+  private vocalGain = 1;
+  private instrumentalGain = 1;
+  private vL = new Float32Array(0);
+  private vR = new Float32Array(0);
   private pos: number;
   private acc = 0;
   private volume: number | null = null;
@@ -152,8 +158,12 @@ class Voice {
     src: AudioSource,
     readonly stretcher: Stretcher,
     usesReverb: boolean,
+    stems: { vocals: AudioSource; instrumental: AudioSource } | null = null,
   ) {
-    this.stream = new ClipStream(src, clip, outro(clip, next), e0, next?.transition === 'cut', clip.url);
+    const out = outro(clip, next), cutOut = next?.transition === 'cut';
+    this.stream = stems ? new ClipStream(stems.instrumental, clip, out, e0, cutOut, clip.url + '|inst')
+      : new ClipStream(src, clip, out, e0, cutOut, clip.url);
+    this.vocals = stems ? new ClipStream(stems.vocals, clip, out, e0, cutOut, clip.url + '|vocals') : null;
     this.eq = new DJEQ(sr);
     this.fx = new FXKernel(sr, MAX_BLOCK);
     this.echo = new Echo(sr);
@@ -164,7 +174,7 @@ class Voice {
     const st = this.stretcher;
     st.setPitch(Math.min(24, Math.max(-24, pitchCents(clip, tempoNow) / 100)));
     const lat = st.outputLatency;
-    st.seek(r0, (l, r) => this.stream.read(-lat, st.seekLength, l, r));
+    st.seek(r0, (l, r) => this.read(-lat, st.seekLength, l, r));
     this.pos = -lat + st.seekLength;
     let drop = lat;
     while (drop > 0) {
@@ -174,7 +184,18 @@ class Voice {
     }
   }
 
-  get isEmpty() { return this.stream.isEmpty; }
+  get isEmpty() { return this.stream.isEmpty && (!this.vocals || this.vocals.isEmpty); }
+
+  /** Stream frames [i0, i0 + n): the track, or its instrumental and vocals at their lane levels. */
+  private read(i0: number, n: number, L: Float32Array, R: Float32Array) {
+    this.stream.read(i0, n, L, R);
+    const v = this.vocals;
+    if (!v) return;
+    if (this.vL.length < n) { this.vL = new Float32Array(n * 2); this.vR = new Float32Array(n * 2); }
+    v.read(i0, n, this.vL, this.vR);
+    const gi = this.instrumentalGain, gv = this.vocalGain;
+    for (let i = 0; i < n; i++) { L[i] = L[i] * gi + this.vL[i] * gv; R[i] = R[i] * gi + this.vR[i] * gv; }
+  }
 
   /** Stretched audio for n output frames into this.L / this.R. */
   private pull(n: number, r: number) {
@@ -182,7 +203,7 @@ class Voice {
     const inN = Math.floor(this.acc);
     this.acc -= inN;
     const st = this.stretcher;
-    this.stream.read(this.pos, inN, st.input(0, inN), st.input(1, inN));
+    this.read(this.pos, inN, st.input(0, inN), st.input(1, inN));
     this.pos += inN;
     st.process(inN, n, this.L, this.R);
   }
@@ -192,6 +213,7 @@ class Voice {
     const c = this.clip;
     const r = stretchRate(rate(c, tempo));
     this.stretcher.setPitch(Math.min(24, Math.max(-24, pitchCents(c, tempo) / 100)));
+    if (this.vocals) { this.instrumentalGain = Math.max(0, s.instrumental); this.vocalGain = Math.max(0, s.vocal); }
     this.pull(n, r);
     const L = this.L, R = this.R;
 
@@ -253,6 +275,8 @@ export interface SessionOptions {
   fixed?: Map<number, AutoState>;
   /** Opens a track's audio (null when it cannot be read). */
   open: (clip: Clip) => AudioSource | null;
+  /** Opens a track's separated stems (null when there are none). */
+  openStems?: (clip: Clip) => { vocals: AudioSource; instrumental: AudioSource } | null;
   pool: StretchPool;
 }
 
@@ -265,7 +289,9 @@ export class RenderSession {
   private readonly gridOffset: number;
   private readonly fixed: Map<number, AutoState>;
   private readonly open: (clip: Clip) => AudioSource | null;
+  private readonly openStems: SessionOptions['openStems'];
   private readonly pool: StretchPool;
+  private stemSources = new Map<number, { vocals: AudioSource; instrumental: AudioSource } | null>();
   private voices: Voice[] = [];
   private sources = new Map<number, AudioSource>();
   private waiting: { index: number; frame: number }[] = [];
@@ -283,6 +309,7 @@ export class RenderSession {
     this.gridOffset = o.gridOffset;
     this.fixed = o.fixed ?? new Map();
     this.open = o.open;
+    this.openStems = o.openStems;
     this.pool = o.pool;
     this.ends = o.clips.map(c => clipEnd(c, o.master));
     this.ownKey = RenderSession.structureKey(o.clips, o.master);
@@ -338,7 +365,12 @@ export class RenderSession {
     const laneReverb = (c.transition === 'custom' && !!c.lanes && Lanes.usesReverb(c.lanes))
       || (!!next && next.transition === 'custom' && !!next.lanes && Lanes.usesReverb(next.lanes));
     const usesReverb = laneReverb || (c.fx ?? []).some(f => f.kind === 'reverb');
-    const v = new Voice(i, end, c, next, this.tempo.bpm(Math.max(t, c.start)), this.sampleRate, e0, src, st, usesReverb);
+    let stems: { vocals: AudioSource; instrumental: AudioSource } | null = null;
+    if (this.openStems && RenderSession.usesStems(c, next)) {
+      if (!this.stemSources.has(i)) this.stemSources.set(i, this.openStems(c));
+      stems = this.stemSources.get(i) ?? null;
+    }
+    const v = new Voice(i, end, c, next, this.tempo.bpm(Math.max(t, c.start)), this.sampleRate, e0, src, st, usesReverb, stems);
     if (v.isEmpty) { this.pool.give(st); return; }
     this.voices.push(v);
   }
@@ -348,6 +380,8 @@ export class RenderSession {
     this.voices = [];
     for (const s of this.sources.values()) s.close();
     this.sources.clear();
+    for (const s of this.stemSources.values()) { s?.vocals.close(); s?.instrumental.close(); }
+    this.stemSources.clear();
   }
 
   /** Timeline (reference) time of the next frame. */
@@ -407,7 +441,8 @@ export class RenderSession {
     const parts: unknown[] = [master];
     clips.forEach((c, i) => {
       parts.push(c.transition === 'custom' && !!c.lanes && Lanes.usesReverb(c.lanes));
-      void i;
+      // Stems in use change the voices.
+      parts.push(RenderSession.usesStems(c, clips[i + 1]));
     });
     for (const c of clips) {
       parts.push(c.id, c.url, c.start, c.trimStart, c.trimEnd, c.playLength ?? null, c.edits ?? null, c.bpm, c.firstBeat,

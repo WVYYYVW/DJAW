@@ -1,0 +1,55 @@
+DJAW uses the following machine-learning models (converted to ONNX for the Windows / Electron version):
+
+1) Beat This! — beat and downbeat tracking
+   F. Foscarin, J. Schlüter, G. Widmer, "Beat this! Accurate beat tracking without DBN postprocessing", ISMIR 2024.
+   https://github.com/CPJKU/beat_this — model "final0"
+   MIT License, Copyright (c) 2024 Institute of Computational Perception, JKU Linz, Austria
+
+2) CUE-DETR — DJ cue point estimation
+   G. Argüello, L. Lanzendörfer, R. Wattenhofer, "Cue Point Estimation using Object Detection", ISMIR 2024.
+   https://github.com/ETH-DISCO/cue-detr — weights https://huggingface.co/disco-eth/cue-detr (license: MIT, per the model card)
+
+3) Discogs-EffNet — music style (genre) classification, 400 Discogs styles
+   P. Alonso-Jiménez, X. Serra, D. Bogdanov, "Music Representation Learning Based on Editorial Metadata from Discogs", ISMIR 2022.
+   https://essentia.upf.edu/models.html — model "discogs-effnet-bsdynamic-1" (Music Technology Group, Universitat Pompeu Fabra)
+   Classifier heads on the same embeddings (voice_instrumental, mood_party, mood_aggressive, danceability — discogs-effnet-1),
+   bundled into the same Core ML model.
+   License: Creative Commons Attribution-NonCommercial-ShareAlike 4.0 (CC BY-NC-SA 4.0) — non-commercial use only.
+   https://creativecommons.org/licenses/by-nc-sa/4.0/
+
+Auto-mix tendencies were calibrated with statistics from the Raveform dataset (CC BY 4.0):
+   T. Kim, J. Kim, H. Kim, J. Nam, "Raveform: A Dataset of Metrical and Functional Structure Annotations for EDM Tracks in DJ Mixes", TISMIR 2026.
+
+MIT License text:
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+------------------------------------------------------------------------
+VocalSplit.mlpackage — Spleeter 2-stems model (vocals / accompaniment)
+------------------------------------------------------------------------
+Source:  Deezer Research, Spleeter (https://github.com/deezer/spleeter), pretrained "2stems" model v1.4.0
+License: MIT License — Copyright (c) 2019-present Deezer SA.
+Paper:   Hennequin, Khlif, Voituret, Moussallam, "Spleeter: a fast and efficient music source separation tool
+         with pre-trained models", Journal of Open Source Software 5(50), 2154 (2020).
+Converted for DJAW: the two U-Nets re-implemented in PyTorch with the published weights (checked against the
+original TensorFlow graph), exported to Core ML. The model outputs the vocal ratio mask; DJAW keeps the
+instrumental as the track minus the vocals.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and
+to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of
+the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+
+Also in the Windows / Electron version:
+
+4) Spleeter 2stems — vocal / accompaniment separation (models/vocalsplit.onnx)
+   R. Hennequin, A. Khlif, F. Voituret, M. Moussallam, "Spleeter: a fast and efficient music source separation tool
+   with pre-trained models", Journal of Open Source Software 5(50), 2020. https://github.com/deezer/spleeter
+   MIT License, Copyright (c) 2019 Deezer
+
+Libraries: onnxruntime-node (MIT, Microsoft), signalsmith-stretch (MIT, Geraint Luff / Signalsmith Audio),
+mp4-muxer (MIT, Vanilagy), music-metadata (MIT), React (MIT), Electron (MIT).

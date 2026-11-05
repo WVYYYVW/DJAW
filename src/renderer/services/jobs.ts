@@ -2,6 +2,7 @@
 import { pathToFileURL } from 'node:url';
 import { buildDir } from './env';
 import type { MixMessage } from '../../workers/render.worker';
+import type { TrackVisualMessage, VideoExportOptions } from '../../core/render/video';
 
 let worker: Worker | null = null;
 let next = 1;
@@ -32,10 +33,14 @@ function run<T>(msg: Record<string, unknown>, onMessage?: (m: any) => void): Job
 }
 
 export const Jobs = {
-  export: (mix: MixMessage, dest: string, options: { sampleRate: number; normalize: boolean; bits: 16 | 24 | 32 }, knownPeak: number | null, progress: (p: number) => void) =>
+  export: (mix: MixMessage, dest: string, options: { sampleRate: number; normalize: boolean; bits: 16 | 24 | 32; format?: 'wav24' | 'aac256' }, knownPeak: number | null, progress: (p: number) => void) =>
     run<{ type: 'done' }>({ type: 'export', ...mix, dest, options, knownPeak }, m => m.type === 'progress' && progress(m.progress)),
+  video: (mix: MixMessage, dest: string, options: VideoExportOptions, tracks: TrackVisualMessage[], knownPeak: number | null, progress: (p: number) => void) =>
+    run<{ type: 'done' }>({ type: 'video', ...mix, dest, options, tracks, knownPeak }, m => m.type === 'progress' && progress(m.progress)),
   peaks: (mix: MixMessage, partial: (p: any) => void) =>
     run<{ peaks: any }>({ type: 'peaks', ...mix }, m => m.type === 'partial' && partial(m.peaks)),
   peakRange: (mix: MixMessage, binsPerSecond: number, a: number, b: number) =>
     run<{ range: any }>({ type: 'peakRange', ...mix, binsPerSecond, a, b }),
+  /** Renders the transition into clip `index` and lists what sounds wrong (null = could not render). */
+  check: (mix: MixMessage, index: number) => run<{ result: { problems: string[] } | null }>({ type: 'check', ...mix, index }),
 };

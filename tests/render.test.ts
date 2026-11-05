@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Clip, newClip, resetToWholeTrack } from '../src/core/models';
+import { Clip, Lanes, Shape, newClip, pt, resetToWholeTrack } from '../src/core/models';
 import { layout } from '../src/core/layout';
 import { TempoMap } from '../src/core/tempo';
 import { MemorySource } from '../src/core/render/source';
 import { StretchPool } from '../src/core/render/stretch';
 import { RenderSession } from '../src/core/render/session';
+import { CancelFlag, renderPeakRange, renderPeaks } from '../src/core/render/offline';
+import { mixWaveformChange, provisionalPeaks, splicePeaks } from '../src/core/render/mixWaveform';
 
 const sr = 44100;
 
@@ -114,4 +116,82 @@ test('a cut-in switches on the bar with neither gap nor overlap', async () => {
   // Only one track is heard after the cut (no doubled clicks).
   const after = got.filter(t => t > cut + 0.1 && t < cut + 6);
   assert.ok(after.length >= 10 && after.length <= 12, `clicks after the cut: ${after.length}`);
+});
+
+/** Level of one frequency in x[a, b) (Goertzel, normalised). */
+function tone(x: Float32Array, hz: number, a: number, b: number) {
+  const k = 2 * Math.cos(2 * Math.PI * hz / sr);
+  let s1 = 0, s2 = 0;
+  for (let i = a; i < b; i++) { const s0 = x[i] + k * s1 - s2; s2 = s1; s1 = s0; }
+  return Math.sqrt(Math.max(0, s1 * s1 + s2 * s2 - k * s1 * s2)) / (b - a);
+}
+
+test('vocal lanes turn the separated vocals down (stems)', async () => {
+  const sine = (hz: number, n: number, amp = 0.3) => Float32Array.from({ length: n }, (_, i) => amp * Math.sin(2 * Math.PI * hz * i / sr));
+  const n = 30 * sr;
+  const vocals = sine(440, n), inst = sine(1000, n), mixed = vocals.map((v, i) => v + inst[i]);
+  const ca = clip('a', 120, 30), cb = clip('b', 120, 30);
+  ca.mixOutBar = 8;
+  cb.mixInBar = 0;
+  cb.transition = 'custom';
+  cb.transitionBars = 8;
+  const lanes = Lanes.sampled('bassSwap', Shape.defaults('bassSwap'));
+  lanes.inVocal = [pt(0, 0), pt(1, 0)];
+  cb.lanes = lanes;
+  const run = async (withStems: boolean) => {
+    const { clips: laid, gridOffset } = layout([ca, cb], 120, 0);
+    const tempo = TempoMap.build(laid, 120);
+    const session = await RenderSession.create({
+      clips: laid, master: 120, tempo, gridOffset, sampleRate: sr,
+      open: c => new MemorySource(sr, c.url === 'a' ? new Float32Array(n) : mixed), pool: new StretchPool(sr),
+      openStems: withStems ? c => (c.url === 'b' ? { vocals: new MemorySource(sr, vocals), instrumental: new MemorySource(sr, inst) } : null) : undefined,
+    });
+    const out = new Float32Array(Math.round(42 * sr));
+    let p = 0;
+    while (p < out.length) { const k = session.renderNext(); out.set(session.L.subarray(0, Math.min(k, out.length - p)), p); p += k; }
+    session.stop();
+    // The middle of the transition (bars 2…6 of 8 after b comes in) and well after it.
+    const s = tempo.real(laid[1].start);
+    return { mid: [tone(out, 440, Math.round((s + 6) * sr), Math.round((s + 10) * sr)), tone(out, 1000, Math.round((s + 6) * sr), Math.round((s + 10) * sr))], after: tone(out, 440, Math.round((s + 18) * sr), Math.round((s + 21) * sr)) };
+  };
+  const plain = await run(false), stems = await run(true);
+  assert.ok(plain.mid[0] > 0.02, `without stems the vocals are heard: ${plain.mid[0]}`);
+  assert.ok(stems.mid[0] < plain.mid[0] * 0.05, `vocals turned down: ${stems.mid[0]} vs ${plain.mid[0]}`);
+  assert.ok(stems.mid[1] > plain.mid[1] * 0.8, `instrumental kept: ${stems.mid[1]} vs ${plain.mid[1]}`);
+  assert.ok(stems.after > plain.mid[0] * 0.5, `vocals back after the transition: ${stems.after}`);
+});
+
+test('mix waveform: re-rendering only the changed stretch matches a full render', async () => {
+  const srcs = { a: clickTrack(120, 40), b: clickTrack(120, 40, 0.25), c: clickTrack(128, 40, 0.3) };
+  const make = () => {
+    const ca = clip('a', 120, 40), cb = clip('b', 120, 40, 0.25), cc = clip('c', 128, 40, 0.3);
+    ca.mixOutBar = 14; cb.mixInBar = 0; cb.mixOutBar = 14; cb.transitionBars = 4; cc.mixInBar = 0; cc.transitionBars = 4;
+    return [ca, cb, cc];
+  };
+  const before = make();
+  const after = structuredClone(before);
+  after[1].mixOutBar = 12;          // the second track ends 2 bars earlier: the third moves with it
+  const inputsOf = (cl: Clip[]) => {
+    const { clips, gridOffset } = layout(cl, 124, 0);
+    return { clips, master: 124, tempo: TempoMap.build(clips, 124), gridOffset, sampleRate: sr, stems: '' };
+  };
+  const ia = inputsOf(before), ib = inputsOf(after);
+  const mi = (i: typeof ia) => ({ ...i, open: (c: Clip) => new MemorySource(sr, srcs[c.url as 'a']), pool: new StretchPool(sr) });
+  const full = async (i: typeof ia) => renderPeaks(mi(i), new CancelFlag(), () => {});
+  const old = await full(ia);
+  const ch = mixWaveformChange(ia, ib);
+  assert.ok(ch, 'a change is found');
+  assert.ok(ch!.toReal < ib.tempo.real(ib.clips[2].start) + 30, `only part is rendered again: ${ch!.fromReal.toFixed(2)}…${ch!.toReal.toFixed(2)}`);
+  const prov = provisionalPeaks(ch!, old, ib)!;
+  const part = await renderPeakRange(mi(ib), old.binsPerSecond, ch!.fromReal, ch!.toReal, new CancelFlag());
+  const spliced = splicePeaks(prov, part);
+  const exact = await full(ib);
+  let worst = 0, n = Math.min(exact.maxs.length, spliced.maxs.length);
+  for (let k = 0; k < n; k++) worst = Math.max(worst, Math.abs(exact.maxs[k] - spliced.maxs[k]), Math.abs(exact.mins[k] - spliced.mins[k]));
+  assert.ok(Math.abs(exact.maxs.length - spliced.maxs.length) <= 1, `length ${exact.maxs.length} vs ${spliced.maxs.length}`);
+  assert.ok(worst < (ch!.exact ? 1e-4 : 2), `worst bin difference ${worst} (exact: ${ch!.exact})`);
+  // Moved by whole bins or not, nearly every bin matches.
+  let off = 0;
+  for (let k = 0; k < n; k++) if (Math.abs(exact.maxs[k] - spliced.maxs[k]) > 0.05) off++;
+  assert.ok(off < n * 0.01, `bins that differ: ${off} of ${n}`);
 });

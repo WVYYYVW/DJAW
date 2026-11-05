@@ -346,7 +346,7 @@ export function TransitionEditor() {
           </div>
           <div className="te-lanes">
             <div className="te-lane-row"><div className="te-lane-head" /><BarRuler totalBeats={totalBeats} range={range} /></div>
-            {page === 2 && <div className="caption stem-note">{L('ボーカル／伴奏のレーンは、ボーカル分離（第3段階で移植予定）が入るまで音には効きません。描いた線は保存されます。', 'Vocal / instrumental lanes have no effect on the sound until vocal separation is ported (stage 3). What you draw is kept.')}</div>}
+            {page === 2 && <StemStatus id={id} />}
             {kinds.map(kind => (
               <div key={kind} className="te-lane-row">
                 <div className="te-lane-head">
@@ -380,6 +380,24 @@ function SaveCustom({ clip }: { clip: Clip }) {
       <span className="dim">{L('マイつなぎとして保存（ほかの曲間でも使えます）', 'Save as My Transition (use it between other tracks too)')}</span>
       <input className="text" value={name} placeholder={L('名前', 'Name')} onChange={e => setName(e.target.value)} onKeyDown={e => e.stopPropagation()} />
       <button className="btn" onClick={() => { s.saveCustomTransition(clip.id, name); setName(''); }}>{L('保存', 'Save')}</button>
+    </div>
+  );
+}
+
+/** Whether the two tracks' vocals / instrumental are separated yet (needed for the vocal lanes). */
+function StemStatus({ id }: { id: string }) {
+  const s = useStore();
+  const i = s.index(id);
+  return (
+    <div className="caption stem-note stem-status" title={L('ボーカルと伴奏の分離は1曲につき1回（数十秒）だけ行い、保存して使い回します。線を描くと自動で始まります。', 'Vocals and instrumental are separated once per track (tens of seconds) and kept. Drawing a line starts it automatically.')}>
+      <span>🎤</span>
+      {!s.stemsAvailable() ? <span>{L('ボーカル分離のモデルが入っていないため、この版では使えません。', 'The vocal separation model is not installed in this build.')}</span>
+        : i != null && i > 0 ? [s.clips[i - 1], s.clips[i]].map(c => {
+          const p = s.stemProgress.get(c.url);
+          if (p != null) return <span key={c.id} className="stem-item"><progress value={p} max={1} />{L(`「${c.title}」を分離中…`, `Separating “${c.title}”…`)}</span>;
+          if (s.stemsFor(c.url)) return <span key={c.id} className="stem-item ok">✓ {c.title}</span>;
+          return <button key={c.id} className="btn small" onClick={() => s.prepareStems([c.url])}>{L(`「${c.title}」を分離`, `Separate “${c.title}”`)}</button>;
+        }) : null}
     </div>
   );
 }

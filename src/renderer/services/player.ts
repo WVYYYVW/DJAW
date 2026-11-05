@@ -18,6 +18,15 @@ export class Player {
   running = false;
   /** Called when a change moved audio in time and the stream has to start again. */
   onRestartNeeded?: () => void;
+  /** Mono audio about to be heard, with its mix frame (for the visuals preview; set with `setTap`). */
+  onTap?: (mono: Float32Array, start: number) => void;
+  private tapping = false;
+
+  async setTap(on: boolean) {
+    this.tapping = on;
+    if (on) await this.setup();
+    this.worker?.postMessage({ type: 'tap', on });
+  }
 
   private async setup() {
     if (this.ctx) return;
@@ -35,6 +44,7 @@ export class Player {
     };
     worker.onmessage = e => {
       if (e.data.type === 'restart') this.onRestartNeeded?.();
+      if (e.data.type === 'tap' && e.data.gen === this.gen && this.tapping) this.onTap?.(e.data.mono, e.data.start);
       if (e.data.type === 'error') console.error('[DJAW] preview:', e.data.message);
     };
     this.ctx = ctx; this.node = node; this.worker = worker;

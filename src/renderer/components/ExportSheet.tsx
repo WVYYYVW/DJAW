@@ -1,14 +1,34 @@
-// Export the mix as a WAV file (mac/DJAW/Views/ExportSheet.swift; audio only for now).
+// Export the mix as audio (WAV / M4A) or as an MP4 with visuals (mac/DJAW/Views/ExportSheet.swift).
 import React, { useEffect, useState } from 'react';
 import { L } from '../../core/i18n';
 import { useStore } from '../hooks';
 import { Fmt } from '../format';
+import { VisualStyles, visualStyles, VisualStyle } from '../../core/visuals';
+import type { VideoSize } from '../store/video';
 
 function durationText(t: number) {
   const s = Math.round(t);
   if (s < 60) return L(`${s}秒`, `${s} s`);
   if (s < 3600) return L(`${Math.floor(s / 60)}分${s % 60}秒`, `${Math.floor(s / 60)} min ${s % 60} s`);
   return L(`${Math.floor(s / 3600)}時間${Math.floor((s % 3600) / 60)}分`, `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min`);
+}
+
+function VideoOptions() {
+  const s = useStore();
+  const sizes: [VideoSize, string][] = [['1920x1080', '1920×1080（HD）'], ['1280x720', '1280×720'], ['1080x1920', L('1080×1920（縦・SNS）', '1080×1920 (vertical)')]];
+  return <>
+    <div className="form-row"><span className="form-label">{L('映像', 'Visuals')}</span>
+      <select value={s.visualStyle} onChange={e => { s.visualStyle = e.target.value as VisualStyle; s.changed(); }}>
+        {visualStyles.map(v => <option key={v} value={v}>{VisualStyles.title(v)}</option>)}
+      </select></div>
+    <div className="form-row"><span className="form-label">{L('サイズ', 'Size')}</span>
+      <select value={s.videoSize} onChange={e => { s.videoSize = e.target.value as VideoSize; s.changed(); }}>
+        {sizes.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+      </select></div>
+    <label className="check"><input type="checkbox" checked={s.visualShowInfo} onChange={() => { s.visualShowInfo = !s.visualShowInfo; s.changed(); }} />{L('曲が変わるたびにジャケット・曲名・アーティストを表示', 'Show artwork, title and artist when each track starts')}</label>
+    <label className="check"><input type="checkbox" checked={s.visualShowTitle} onChange={() => { s.visualShowTitle = !s.visualShowTitle; s.changed(); }} />{L('最初にミックス名を表示', 'Show the mix name at the start')}</label>
+    <div className="caption">{L('映像は曲の音（スペクトラム・低音のキック）とビートのグリッドに合わせて動き、色は各曲の色、中央やカードには「曲の情報」で設定したジャケットを使います。音声は AAC 320kbps で入ります。', 'The visuals follow the mix’s spectrum, kicks and beat grid, use each track’s colour, and show the artwork set in Track Info. Audio is AAC 320 kbps.')}</div>
+  </>;
 }
 
 export function ExportSheet() {
@@ -29,7 +49,7 @@ export function ExportSheet() {
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { close(); e.stopPropagation(); }
-      if (e.key === 'Enter' && phase.kind === 'idle' && s.clips.length) { s.startExport(s.exportNormalize); e.stopPropagation(); }
+      if (e.key === 'Enter' && phase.kind === 'idle' && s.clips.length) { (s.exportVideo ? s.startVideoExport() : s.startExport(s.exportNormalize)); e.stopPropagation(); }
     };
     window.addEventListener('keydown', key, true);
     return () => window.removeEventListener('keydown', key, true);
@@ -56,11 +76,21 @@ export function ExportSheet() {
         </div>
         {phase.kind === 'idle' && (
           <div className="form">
-            <div className="form-row"><span className="form-label">{L('形式', 'Format')}</span><span className="segmented"><button className="on">{L('WAV（24bit）', 'WAV (24-bit)')}</button></span></div>
-            <div className="form-row"><span className="form-label">{L('サンプルレート', 'Sample Rate')}</span><span className="segmented"><button className="on">44.1 kHz</button></span></div>
+            <div className="form-row"><span className="form-label">{L('書き出すもの', 'Export')}</span><span className="segmented">
+              <button className={!s.exportVideo ? 'on' : ''} onClick={() => { s.exportVideo = false; s.changed(); }}>{L('音声のみ', 'Audio only')}</button>
+              <button className={s.exportVideo ? 'on' : ''} onClick={() => { s.exportVideo = true; s.changed(); }}>{L('映像付き（MP4）', 'With visuals (MP4)')}</button>
+            </span></div>
+            {s.exportVideo ? <VideoOptions /> : (
+              <div className="form-row"><span className="form-label">{L('形式', 'Format')}</span><span className="segmented">
+                <button className={s.exportFormat === 'wav24' ? 'on' : ''} onClick={() => { s.exportFormat = 'wav24'; s.changed(); }}>{L('WAV（24bit）', 'WAV (24-bit)')}</button>
+                <button className={s.exportFormat === 'aac256' ? 'on' : ''} onClick={() => { s.exportFormat = 'aac256'; s.changed(); }}>{L('M4A（AAC 256kbps）', 'M4A (AAC 256 kbps)')}</button>
+              </span></div>
+            )}
+            <div className="form-row"><span className="form-label">{L('サンプルレート', 'Sample Rate')}</span><span className="segmented">
+              {[44100, 48000].map(r => <button key={r} className={s.exportSampleRate === r ? 'on' : ''} onClick={() => { s.exportSampleRate = r; s.changed(); }}>{r === 44100 ? '44.1 kHz' : '48 kHz'}</button>)}
+            </span></div>
             <label className="check"><input type="checkbox" checked={s.exportNormalize} onChange={() => s.toggle('exportNormalize')} />{L('音割れ防止（ピークを −1 dB に正規化）', 'Prevent clipping (normalize peaks to −1 dB)')}</label>
             <div className="caption">{L('正規化をオンにすると、音量の確認のため2回処理するので少し時間がかかります（ミックス波形ができていれば1回で済みます）。', 'With normalization on, the mix is rendered twice to measure the level, so it takes a little longer (once, if the mix waveform is ready).')}</div>
-            <div className="caption dim">{L('M4A・48 kHz・映像付き書き出しは、この後の段階で追加します。', 'M4A, 48 kHz and video export come in a later stage.')}</div>
           </div>
         )}
         {phase.kind === 'rendering' && (
@@ -74,7 +104,7 @@ export function ExportSheet() {
         <div className="button-row end">
           {phase.kind === 'idle' && <>
             <button className="btn" onClick={close}>{L('キャンセル', 'Cancel')}</button>
-            <button className="btn primary" disabled={!s.clips.length} onClick={() => s.startExport(s.exportNormalize)}>{L('書き出す…', 'Export…')}</button>
+            <button className="btn primary" disabled={!s.clips.length} onClick={() => (s.exportVideo ? s.startVideoExport() : s.startExport(s.exportNormalize))}>{L('書き出す…', 'Export…')}</button>
           </>}
           {phase.kind === 'rendering' && <button className="btn" onClick={() => s.cancelExport()}>{L('中止', 'Cancel')}</button>}
           {phase.kind === 'done' && <>

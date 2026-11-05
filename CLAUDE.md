@@ -111,6 +111,17 @@ Windows では WebCodecs（H.264）＋ mp4 マルチプレクサ、または ffm
 
 ---
 
+## 6.5 Windows 版の進み具合（2026-11-06）
+
+第1〜3段階をすべて移植済み（Mac 版と同じ機能）。主なファイル：
+- 描画：`src/core/render/`（session.ts＝MixRenderSession、ステムは `openStems`、offline.ts、mixWaveform.ts＝差分描画、video.ts＝映像書き出し、mp4.ts、resampler.ts、check.ts＝つなぎチェック）
+- 映像：`src/core/visuals.ts`（VisualPainter・特徴量・オート VJ。Canvas 2D を y 反転して CoreGraphics と同じ座標で描く）
+- 解析：`src/core/analysis/`（neural.ts＝Beat This!/CUE-DETR、genreModel.ts、stems.ts＝Spleeter）。ONNX は子プロセス（解析用とステム用の 2 本）
+- 自動ミックス：`src/core/automixer.ts`、`src/renderer/store/automix.ts`、演奏手順 `src/core/performance.ts`
+- ストア拡張：`src/renderer/store/{automix,simplify,profiles,video,stems}.ts`（`declare module './store'` で MixStore に足す方式。store.ts からこれらを import しないこと＝循環 import で起動時に落ちる）
+- AAC エンコーダが無い環境（Linux の Electron など）では、映像の音声は Opus 48kHz に自動で切り替え。M4A 書き出しはエラー表示
+- まだ Windows 実機で確認していないもの：AAC（Media Foundation）での M4A／映像書き出し、映像プレビューの別ウィンドウ、iTunes XML の実データ
+
 ## 7. 参考：Mac 版の状態（2026-11-05）
 
 Mac 版で最近入れた機能（すべて仕様として移植対象）：

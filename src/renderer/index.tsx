@@ -3,6 +3,11 @@ import { createRoot } from 'react-dom/client';
 import './styles/app.css';
 import { App } from './App';
 import { store } from './store/store';
+import './store/automix';
+import './store/simplify';
+import './store/profiles';
+import './store/video';
+import './store/stems';
 
 // For debugging from the developer tools.
 (window as unknown as { djaw: unknown }).djaw = store;

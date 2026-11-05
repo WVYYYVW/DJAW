@@ -124,7 +124,7 @@ JSON                  ProjectFile（キーはソート、日付は ISO8601）
 | Audio/StretchCalibration.swift | 118 | AVAudioUnitTimePitch の速度ずれ補正 | — | **不要**（signalsmith は入力数を直接指定できる） |
 | Audio/TransitionCheck.swift | 187 | 自動つなぎの試聴チェック | 2 | |
 | Audio/StemSeparator.swift | 231 | Spleeter ボーカル分離 | 3 | ONNX 化が必要 |
-| Audio/MusicLibrary.swift | 97 | ミュージック.app ライブラリ | — | Windows では不要（代わりにフォルダ参照） |
+| Audio/MusicLibrary.swift | 97 | ミュージック.app ライブラリ | 2 | iTunes／ミュージックのライブラリ XML を読む（`src/core/musicLibrary.ts`） |
 | Store/MixStore.swift | 3352 | 状態・編集操作・レイアウト・再生・保存・書き出し | 1(+2) | 自動ミックス部分は第2段階 |
 | Store/MixStore+Locks.swift | 83 | つなぎのロック | 1 | |
 | Store/MixStore+Loudness.swift | 55 | ラウドネス合わせ | 1 | |
@@ -150,7 +150,7 @@ JSON                  ProjectFile（キーはソート、日付は ISO8601）
 | Views/AutoArrangeSheet.swift | 340 | 自動で並べる | 2 | |
 | Views/PerformanceGuideView.swift | 162 | 演奏手順・曲リスト | 2 | |
 | Views/TrackProfileSheet.swift | 164 | 曲の情報編集 | 2 | |
-| Views/MusicLibrarySheet.swift | 313 | ミュージック.app | — | |
+| Views/MusicLibrarySheet.swift | 313 | ミュージック.app | 2 | XML が無いときはファイルを選ぶ |
 | Views/VisualPreviewView.swift | 84 | 映像プレビュー | 3 | |
 | Media/TrackProfiles.swift | 123 | 曲プロファイル保存 | 2 | |
 | Media/VideoExporter.swift | 445 | 映像書き出し | 3 | |

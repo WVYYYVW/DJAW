@@ -1,29 +1,53 @@
 // Analysis process: a child Node process (Electron run as Node), because onnxruntime-node cannot run inside a
 // renderer Web Worker. One message at a time: track analysis (waveform, tempo, Beat This! grid, structure),
-// loudness, and resampling WAV / AIFF files that are not at 44.1 kHz.
+// loudness, vocal separation (in a second process of its own) and resampling WAV / AIFF files that are not at 44.1 kHz.
 import fs from 'node:fs';
 import path from 'node:path';
 import { openPcmFile } from '../core/render/source';
 import { analyzeAudio } from '../core/analysis/analyzer';
-import { loadBeatModel } from '../core/analysis/beatmodel';
+import { VocalModel, loadBeatModel, loadCueModel, loadGenreModel, loadVocalModel } from '../core/analysis/beatmodel';
+import { separateStems } from '../core/analysis/stems';
+import { CueAssets } from '../core/analysis/neural';
+import { GenreAssets } from '../core/analysis/genreModel';
 import { BeatModel, resample } from '../core/analysis/neural';
 import { loudnessSegments } from '../core/analysis/loudness';
 import { WavWriter } from '../core/render/wav';
 
 let model: Promise<BeatModel | null> | null = null;
+let cueModel: Promise<CueAssets | null> | null = null;
+let genreModel: Promise<GenreAssets | null> | null = null;
+let vocalModel: Promise<VocalModel | null> | null = null;
 const send = (m: unknown) => { if (process.connected) process.send!(m); };
 
 async function handle(m: any) {
   if (m.type === 'analyze') {
     if (!model) model = loadBeatModel(m.modelPath).catch(e => { send({ type: 'log', message: `beat model: ${e?.message ?? e}` }); return null; });
+    const dir = path.dirname(m.modelPath);
+    if (!cueModel) cueModel = loadCueModel(dir);
+    if (!genreModel) genreModel = loadGenreModel(dir);
     const src = openPcmFile(m.pcm);
     if (!src) throw new Error('unreadable');
     try {
       const a = await analyzeAudio(src, {
         beatModel: m.neural === false ? null : await model,
+        cues: m.neural === false ? null : await cueModel,
+        genre: m.neural === false ? null : await genreModel,
         progress: (stage, f) => send({ type: 'progress', id: m.id, stage, fraction: f }),
       });
       send({ type: 'done', id: m.id, analysis: a });
+    } finally {
+      src.close();
+    }
+  } else if (m.type === 'stems') {
+    if (!vocalModel) vocalModel = loadVocalModel(m.modelDir);
+    const vm = await vocalModel;
+    if (!vm) throw new Error('vocal model unavailable');
+    const src = openPcmFile(m.pcm);
+    if (!src) throw new Error('unreadable');
+    try {
+      const stats = await separateStems(src, vm, { vocals: m.vocals, instrumental: m.instrumental },
+        p => send({ type: 'progress', id: m.id, stage: 'stems', fraction: p }));
+      send({ type: 'done', id: m.id, stats });
     } finally {
       src.close();
     }

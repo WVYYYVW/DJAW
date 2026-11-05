@@ -18,6 +18,11 @@ import { CueEditor } from './components/CueEditor';
 import { ExportSheet } from './components/ExportSheet';
 import { Shortcuts } from './components/Shortcuts';
 import { ContextMenuHost } from './components/ContextMenu';
+import { AutoArrangeSheet } from './components/AutoArrangeSheet';
+import { PerformanceGuideSheet } from './components/PerformanceGuideSheet';
+import { VisualPreviewWindow } from './components/VisualPreview';
+import { MusicLibrarySheet } from './components/MusicLibrarySheet';
+import { TrackProfileSheet } from './components/TrackProfileSheet';
 
 function readLanguage(): AppLanguage {
   try { return (JSON.parse(fs.readFileSync(dataDir('settings.json'), 'utf8')).language as AppLanguage) ?? 'system'; } catch { return 'system'; }
@@ -76,11 +81,16 @@ export function App() {
         case 'openRecent': await s.openRecent(arg as string); break;
         case 'openFile': if (await s.confirmDiscard()) await s.load(arg as string); break;
         case 'addTracks': await s.presentAddFiles(); break;
+        case 'musicLibrary': s.showMusicLibrary = true; s.changed(); break;
         case 'save': await s.save(false); break;
         case 'saveAs': await s.save(true); break;
         case 'toggleEmbed': s.toggle('embedMedia'); break;
         case 'export': if (s.clips.length) { s.showExport = true; s.changed(); } break;
         case 'copyTrackList': s.copyTrackList(); break;
+        case 'visualPreview': s.showVisualPreview = true; s.changed(); break;
+        case 'performanceGuide': if (s.clips.length) { s.showPerformanceGuide = true; s.changed(); } break;
+        case 'autoMix': s.autoMixAll(); break;
+        case 'autoArrange': if (s.clips.length + s.library.length >= 2) { s.showAutoArrange = true; s.changed(); } break;
         case 'undo': if (!isTextField(document.activeElement)) s.undo(); else document.execCommand('undo'); break;
         case 'redo': if (!isTextField(document.activeElement)) s.redo(); else document.execCommand('redo'); break;
         case 'delete': s.deleteSelected(); break;
@@ -129,7 +139,7 @@ export function App() {
       if (e.defaultPrevented || isTextField(e.target)) return;
       if (s.showExport || s.alertMessage) return;
       // Inside an editor the keys belong to it; only Space in the transition editor is shared.
-      if (s.cueEditorTarget || s.transitionEditorTarget || s.showShortcuts) {
+      if (s.cueEditorTarget || s.transitionEditorTarget || s.showShortcuts || s.showAutoArrange || s.showPerformanceGuide || s.profileEditorTarget || s.showMusicLibrary) {
         if (e.key !== ' ' || s.cueEditorTarget || !s.transitionEditorTarget) return;
         const c = s.clip(s.transitionEditorTarget);
         if (!c) return;
@@ -198,9 +208,14 @@ export function App() {
         </div>
         {s.showInspector && <Inspector />}
       </div>
+      {s.showAutoArrange && <AutoArrangeSheet />}
+      {s.showMusicLibrary && <MusicLibrarySheet />}
       {s.transitionEditorTarget && <TransitionEditor />}
       {s.cueEditorTarget && <CueEditor key={s.cueEditorTarget ? 'cue' : ''} />}
       {s.showExport && <ExportSheet />}
+      {s.showPerformanceGuide && <PerformanceGuideSheet />}
+      <VisualPreviewWindow />
+      {s.profileEditorTarget && <TrackProfileSheet />}
       {s.showShortcuts && <Shortcuts />}
       <Alert />
       <ContextMenuHost />

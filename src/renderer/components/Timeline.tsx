@@ -641,12 +641,13 @@ class TimelineView {
     ctx.fillRect(area.x, top, area.w, h);
     ctx.fillStyle = 'rgba(255,255,255,0.10)';
     ctx.fillRect(area.x, mid, area.w, 0.5);
-    const done = store.mixPeaks, partial = store.mixPeaksPartial, rendering = store.mixWaveformIsRendering;
+    const done = store.mixPeaks, partial = store.mixPeaksPartial, rendering = store.mixWaveformIsRendering, stale = store.mixStaleRange;
     const half = h / 2 - 3;
     const x0 = Math.max(area.x, this.x(0)), x1 = area.x + area.w;
     for (let px = Math.floor(x0); px < x1; px++) {
       const ra = this.tempo.real(this.time(px)), rb = this.tempo.real(this.time(px + 1));
-      let src = done, fresh = !rendering, isFinal = true;
+      // A partial update leaves everything outside the stretch being rendered as it is.
+      let src = done, fresh = !rendering || (!!stale && !(ra >= stale[0] && ra <= stale[1]) && !(rb >= stale[0] && rb <= stale[1])), isFinal = true;
       if (partial && rb <= partial.rendered) { src = partial; fresh = true; isFinal = false; }
       if (!src) continue;
       const gain = store.exportNormalize && isFinal ? normalizeGain(src.peak) : 1;
@@ -672,7 +673,8 @@ class TimelineView {
     }
     let text = L('MIX（書き出しと同じ波形）', 'MIX (exactly what Export writes)') + ' · 44.1 kHz';
     text += store.exportNormalize ? L(' · 正規化あり', ' · normalized') : L(' · 正規化なし', ' · not normalized');
-    if (rendering) {
+    if (rendering && stale) text += L('  — 更新中…', '  — updating…');
+    else if (rendering) {
       const pct = partial ? Math.round(100 * partial.rendered / Math.max(1, this.tempo.real(store.mixDuration))) : 0;
       text += L(`  — 更新中 ${Math.min(99, pct)}%`, `  — updating ${Math.min(99, pct)}%`);
     } else if (!done) text += L('  — 準備中…', '  — preparing…');

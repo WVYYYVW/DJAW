@@ -41,6 +41,7 @@ function buildMenu() {
         },
         sep,
         item(L('曲を追加…', 'Add Tracks…'), 'addTracks', 'CmdOrCtrl+Shift+I'),
+        item(L('ミュージックから追加…', 'Add from Music…'), 'musicLibrary', 'CmdOrCtrl+Alt+Shift+I'),
         sep,
         item(L('保存', 'Save'), 'save', 'CmdOrCtrl+S'),
         item(L('別名で保存…', 'Save As…'), 'saveAs', 'CmdOrCtrl+Shift+S'),
@@ -48,6 +49,7 @@ function buildMenu() {
         sep,
         item(L('書き出し…', 'Export…'), 'export', 'CmdOrCtrl+E'),
         item(L('曲リストをコピー（SoundCloud 用）', 'Copy Track List (for SoundCloud)'), 'copyTrackList', 'CmdOrCtrl+Alt+C'),
+        item(L('演奏手順と曲リスト…', 'How to Play & Track List…'), 'performanceGuide', 'CmdOrCtrl+Shift+P'),
         sep,
         { role: 'quit', label: L('終了', 'Quit') },
       ],
@@ -89,11 +91,16 @@ function buildMenu() {
         item(L('つなぎエディタを開く…', 'Open Transition Editor…'), 'transitionEditor', 'CmdOrCtrl+T'),
         item(L('つなぎ方をコピー', 'Copy Transition'), 'copyTransition', 'CmdOrCtrl+Alt+Shift+C'),
         item(L('つなぎ方をペースト', 'Paste Transition'), 'pasteTransition', 'CmdOrCtrl+Alt+Shift+V'),
+        sep,
+        item(L('曲を解析して全体を自動ミックス', 'Analyse & Auto-Mix Everything'), 'autoMix', 'CmdOrCtrl+Shift+M'),
+        item(L('おまかせミックス（曲順も）…', 'Auto-Arrange (Order Too)…'), 'autoArrange', 'CmdOrCtrl+Shift+A'),
       ],
     },
     {
       label: L('表示', 'View'),
       submenu: [
+        item(L('映像プレビュー', 'Visuals Preview'), 'visualPreview', 'CmdOrCtrl+Alt+V'),
+        sep,
         item(L('拡大', 'Zoom In'), 'zoomIn', 'CmdOrCtrl+='),
         item(L('縮小', 'Zoom Out'), 'zoomOut', 'CmdOrCtrl+-'),
         item(L('全体を表示', 'Fit Mix'), 'zoomFit', 'CmdOrCtrl+0'),
@@ -150,6 +157,11 @@ function createWindow(fileToOpen?: string) {
     e.preventDefault();
     send('requestClose');
   });
+  // The visuals preview (a window the renderer draws into, so it can go on a second screen).
+  win.webContents.setWindowOpenHandler(d => d.frameName === 'djaw-visuals'
+    ? { action: 'allow', overrideBrowserWindowOptions: { width: 960, height: 600, minWidth: 480, minHeight: 320, backgroundColor: '#000000', autoHideMenuBar: true, title: L('映像プレビュー', 'Visuals Preview') } }
+    : { action: 'deny' });
+  win.webContents.on('did-create-window', w => w.setMenu(null));
   win.webContents.on('render-process-gone', (_e, d) => console.error('[DJAW] renderer gone:', d.reason, d.exitCode));
   win.on('closed', () => { win = null; });
   buildMenu();

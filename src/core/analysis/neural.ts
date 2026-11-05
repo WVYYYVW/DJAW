@@ -272,3 +272,141 @@ export function tempoRegions(b: number[], db: number[], minBeats = 24): TempoReg
   }
   return out;
 }
+
+// MARK: - CUE-DETR
+
+/** Runs CUE-DETR on `batch` images (B × 3 × 128 × 355); returns score (B × 100) and boxes (B × 100 × 4). */
+export type CueModel = (pixels: Float32Array, batch: number) => Promise<{ score: Float32Array; boxes: Float32Array }>;
+
+export interface CueAssets {
+  model: CueModel;
+  /** 128 × 1025 mel filterbank (librosa, row-major). */
+  melfb: Float32Array;
+  /** viridis colour map, 256 × RGB. */
+  lut: Uint8Array;
+}
+
+/** Cue points a pro DJ would set (mac NeuralAnalyzer.cueDETR): spectrogram image windows → DETR boxes → peaks. */
+export async function cueDETR(y: Float32Array, a: CueAssets, progress?: (p: number) => void): Promise<CueHint[] | null> {
+  const spec = stft(y, 2048, 512, false, true);
+  const F = spec.frames;
+  if (F <= 32) return null;
+  const mel = new Float32Array(F * 128);
+  for (let f = 0; f < F; f++) {
+    const row = spec.data.subarray(f * 1025, f * 1025 + 1025);
+    for (let m = 0; m < 128; m++) {
+      const fb = a.melfb.subarray(m * 1025, m * 1025 + 1025);
+      let s = 0;
+      for (let k = 0; k < 1025; k++) s += row[k] * fb[k];
+      mel[f * 128 + m] = s;
+    }
+  }
+  let maxM = 1e-10;
+  for (let i = 0; i < mel.length; i++) if (mel[i] > maxM) maxM = mel[i];
+  const ref = 10 * Math.log10(maxM);
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < mel.length; i++) {
+    let v = 10 * Math.log10(Math.max(1e-10, mel[i])) - ref;
+    v = Math.max(v, -80);
+    mel[i] = v;
+    if (v < lo) lo = v;
+    if (v > hi) hi = v;
+  }
+  const span = Math.max(hi - lo, 1e-6);
+  const img = new Uint8Array(128 * F * 3);
+  for (let f = 0; f < F; f++) {
+    for (let m = 0; m < 128; m++) {
+      const x = (mel[f * 128 + m] - lo) / span;
+      const k = Math.min(255, Math.max(0, Math.trunc(x * 256)));
+      const o = ((127 - m) * F + f) * 3;
+      img[o] = a.lut[k * 3]; img[o + 1] = a.lut[k * 3 + 1]; img[o + 2] = a.lut[k * 3 + 2];
+    }
+  }
+  const W = 355, padding = 266, step = W * 0.25;
+  const nWin = Math.floor((F + padding) / step);
+  if (nWin <= 0) return null;
+  const mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225];
+  const positions: { pos: number; score: number }[] = [];
+  const batch = 8;
+  for (let w0 = 0; w0 < nWin; w0 += batch) {
+    const w1 = Math.min(nWin, w0 + batch);
+    const n = w1 - w0;
+    const px = new Float32Array(n * 3 * 128 * W);
+    const borders: number[] = [];
+    for (let i = w0; i < w1; i++) {
+      const l = Math.floor(i * step) - padding;
+      borders.push(l);
+      const base = (i - w0) * 3 * 128 * W;
+      const first = Math.max(0, l), last = Math.min(F - 1, l + W - 1);
+      const leftPad = Math.max(0, -l);
+      const inside = Math.min(F, l + W) - Math.max(0, l);
+      const rightPad = W - leftPad - inside;
+      for (let row = 0; row < 128; row++) {
+        for (let c = 0; c < 3; c++) {
+          const leftEdge = img[(row * F + first) * 3 + c], rightEdge = img[(row * F + last) * 3 + c];
+          const o = base + (c * 128 + row) * W;
+          for (let x = 0; x < W; x++) {
+            let v: number;
+            if (x < leftPad) v = Math.floor(leftEdge * x / leftPad);
+            else if (x < leftPad + inside) v = img[(row * F + (l + x)) * 3 + c];
+            else { const j = x - leftPad - inside + 1; v = Math.floor(rightEdge * (rightPad - j) / rightPad); }
+            px[o + x] = (v / 255 - mean[c]) / std[c];
+          }
+        }
+      }
+    }
+    const out = await a.model(px, n);
+    progress?.(w1 / nWin);
+    for (let k = 0; k < n; k++) {
+      for (let q = 0; q < 100; q++) {
+        const cx = out.boxes[(k * 100 + q) * 4], w = out.boxes[(k * 100 + q) * 4 + 2];
+        const x0 = (cx - 0.5 * w) * W, x1 = (cx + 0.5 * w) * W;
+        positions.push({ pos: Math.floor((x0 + x1) / 2) + borders[k], score: out.score[k * 100 + q] });
+      }
+    }
+  }
+  positions.sort((p, q) => (p.pos !== q.pos ? p.pos - q.pos : p.score - q.score));
+  let smin = Infinity, smax = -Infinity;
+  for (const p of positions) { if (p.score < smin) smin = p.score; if (p.score > smax) smax = p.score; }
+  const sc = positions.map(p => (p.score - smin) / Math.max(smax - smin, 1e-9));
+  return findPeaks(sc, 0.9, 16).map(k => ({ time: positions[k].pos * 512 / 22050, score: sc[k] })).filter(c => c.time >= 0);
+}
+
+/** scipy.signal.find_peaks(x, height, distance) for the parts CUE-DETR uses. */
+export function findPeaks(x: number[], height: number, distance: number): number[] {
+  let peaks: number[] = [];
+  let i = 1;
+  while (i < x.length - 1) {
+    if (x[i - 1] < x[i]) {
+      let ahead = i + 1;
+      while (ahead < x.length - 1 && x[ahead] === x[i]) ahead++;
+      if (x[ahead] < x[i]) {
+        peaks.push(Math.trunc((i + ahead - 1) / 2));
+        i = ahead;
+      }
+    }
+    i++;
+  }
+  peaks = peaks.filter(p => x[p] >= height);
+  if (distance <= 1 || peaks.length <= 1) return peaks;
+  const keep = new Array(peaks.length).fill(true);
+  const order = peaks.map((_, k) => k).sort((p, q) => x[peaks[p]] - x[peaks[q]] || p - q);
+  for (const idx of order.reverse()) {
+    if (!keep[idx]) continue;
+    for (let k = idx - 1; k >= 0 && peaks[idx] - peaks[k] < distance; k--) keep[k] = false;
+    for (let k = idx + 1; k < peaks.length && peaks[k] - peaks[idx] < distance; k++) keep[k] = false;
+  }
+  return peaks.filter((_, k) => keep[k]);
+}
+
+/** Neighbouring windows can report the same cue twice: keep the stronger one within half a bar. */
+export function mergeCues(cues: CueHint[], grid: NeuralGrid | null): CueHint[] {
+  const minGap = grid ? 120 / grid.bpm : 1;
+  const merged: CueHint[] = [];
+  for (const c of [...cues].sort((p, q) => p.time - q.time)) {
+    const last = merged[merged.length - 1];
+    if (last && c.time - last.time < minGap) { if (c.score > last.score) merged[merged.length - 1] = c; }
+    else merged.push(c);
+  }
+  return merged;
+}

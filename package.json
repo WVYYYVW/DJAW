@@ -22,7 +22,7 @@
       "!build/tests/**",
       "!build/cli/**",
       "!build/**/*.map",
-      "models/*.onnx",
+      "models/**/*",
       "assets/**/*",
       "package.json"
     ],
@@ -63,6 +63,7 @@
     "typescript": "5.6"
   },
   "dependencies": {
+    "mp4-muxer": "^5.2.2",
     "music-metadata": "^10.9.1",
     "onnxruntime-node": "1.22",
     "react": "^18.3.1",

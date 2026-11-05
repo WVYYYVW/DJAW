@@ -38,6 +38,7 @@ function TrackRow({ clip, index, inMix }: { clip: Clip; index: number; inMix: bo
         ...(index > 0 ? [{ label: s.isTransitionLocked(clip.id) ? L('前の曲とのつなぎの固定を解除', 'Unlock Transition from Previous Track') : L('前の曲とのつなぎを固定', 'Lock Transition from Previous Track'), action: () => s.toggleTransitionLock(clip.id) }] : []),
         { separator: true },
         { label: L('CUE（IN / OUT）を編集…', 'Edit Cues (IN / OUT)…'), action: () => s.openCueEditor(clip.id) },
+        { label: L('曲の情報（ジャケット・アーティスト）を編集…', 'Edit Track Info (Artwork, Artist)…'), action: () => s.openProfileEditor(clip.id) },
         { label: L('ライブラリに戻す', 'Move Back to Library'), action: () => s.removeFromMix(clip.id) },
         { label: L('ここから再生', 'Play from Here'), action: () => { s.seek(clip.start); if (!s.isPlaying) s.play(); } },
         { separator: true },
@@ -48,9 +49,11 @@ function TrackRow({ clip, index, inMix }: { clip: Clip; index: number; inMix: bo
       const ids = s.librarySelection.size > 1 ? [...s.librarySelection] : [clip.id];
       showContextMenu(e, ids.length > 1 ? [
         { label: L(`${ids.length}曲をミックスの末尾に入れる`, `Add ${ids.length} Tracks to End of Mix`), action: () => s.addToMixMany(ids, s.clips.length) },
+        { label: L(`${ids.length}曲でおまかせミックス（曲順も）…`, `Auto-Arrange ${ids.length} Tracks (Order Too)…`), action: () => s.autoArrangePreselecting(ids) },
         { label: L(`${ids.length}曲をライブラリから削除`, `Remove ${ids.length} Tracks from Library`), action: () => s.removeFromLibrary(ids) },
       ] : [
         { label: L('CUE（IN / OUT）を編集…', 'Edit Cues (IN / OUT)…'), action: () => s.openCueEditor(clip.id) },
+        { label: L('曲の情報（ジャケット・アーティスト）を編集…', 'Edit Track Info (Artwork, Artist)…'), action: () => s.openProfileEditor(clip.id) },
         { label: L('ミックスの末尾に入れる', 'Add to End of Mix'), action: () => s.addToMix(clip.id, s.clips.length) },
         { label: L('選択中の曲の後に入れる', 'Add After Selected Track'), action: () => s.addToMix(clip.id) },
         { separator: true },
@@ -138,6 +141,7 @@ export function Sidebar() {
       <div className="side-section grow">
         <div className="side-head">
           <span>{L('ライブラリ（未配置）', 'Library (not in mix)')}</span>
+          <button className="link" title={L('iTunes／ミュージックのライブラリから追加（Ctrl+Alt+Shift+I）', 'Add from the iTunes / Music library (Ctrl+Alt+Shift+I)')} onClick={() => { s.showMusicLibrary = true; s.changed(); }}>♫ {L('ミュージック', 'Music')}</button>
           {s.library.length > 1 && (
             <button className="link" onClick={() => { s.librarySelection = s.librarySelection.size > 1 ? new Set() : new Set(s.library.map(c => c.id)); s.changed(); }}>
               {s.librarySelection.size > 1 ? L('選択解除', 'Deselect') : L('全選択', 'Select All')}
@@ -158,7 +162,7 @@ export function Sidebar() {
           {!s.library.length && !s.pending.length && (
             <div className="empty">
               {L('ここに音声ファイルをドロップすると、ミックスに入れる前の曲として準備できます', 'Drop audio files here to prepare tracks before they go into the mix')}
-              <div><button className="tbtn" onClick={() => s.presentAddFiles()}>{L('曲を追加…', 'Add Tracks…')}</button></div>
+              <div><button className="tbtn" onClick={() => s.presentAddFiles()}>{L('曲を追加…', 'Add Tracks…')}</button> <button className="tbtn" onClick={() => { s.showMusicLibrary = true; s.changed(); }}>{L('ミュージックから追加…', 'Add from Music…')}</button></div>
             </div>
           )}
         </div>

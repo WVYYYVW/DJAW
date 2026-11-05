@@ -27,8 +27,15 @@ import { dataDir } from '../services/env';
 import { Player } from '../services/player';
 import { Jobs } from '../services/jobs';
 import { MixPeaks } from '../../core/render/offline';
+import { MixWaveformChange, MixWaveformInputs, mixWaveformChange, provisionalPeaks, splicePeaks } from '../../core/render/mixWaveform';
 import type { MixMessage } from '../../workers/render.worker';
 import { Fmt } from '../format';
+import { PerformanceGuide } from '../../core/performance';
+import { TrackProfiles } from '../services/trackProfiles';
+import type { GenreResult } from '../../core/genre';
+import type { MixStyle, SetArc } from '../../core/automixer';
+import type { TrackUse } from '../../core/models';
+import type { MixPattern, TransitionVariation } from './automix';
 
 export const audioExtensions = new Set(['mp3', 'wav', 'wave', 'aif', 'aiff', 'aifc', 'm4a', 'aac', 'flac', 'caf', 'mp4', 'ogg', 'opus']);
 
@@ -37,7 +44,7 @@ export type ExportPhase = { kind: 'idle' } | { kind: 'rendering'; progress: numb
 export type InspectorTab = 'transition' | 'deck' | 'fx' | 'mixer';
 export type AddDestination = { kind: 'library' } | { kind: 'mix'; index: number | null };
 
-interface Snapshot { clips: Clip[]; library: Clip[]; masterBPM: number; gridOffset: number }
+export interface Snapshot { clips: Clip[]; library: Clip[]; masterBPM: number; gridOffset: number }
 
 const settingsFile = () => dataDir('settings.json');
 function loadSettings(): Record<string, unknown> {
@@ -75,6 +82,25 @@ export class MixStore {
   loudnessSegments = new Map<string, Float32Array>();
   private loudnessInFlight = new Set<string>();
 
+  /** Genre / vocal analysis per audio file. */
+  genreResults = new Map<string, GenreResult>();
+
+  // MARK: Auto-mix settings and state (see automix.ts)
+  mixStyle: MixStyle = 'auto';
+  setArc: SetArc = 'none';
+  trackUse: TrackUse = 'auto';
+  verifyTransitions = true;
+  mixPatterns: MixPattern[] = [];
+  currentPatternID: string | null = null;
+  /** "i / n" while the planned transitions are being rendered and checked. */
+  verifyProgress: { done: number; total: number } | null = null;
+  variations = new Map<string, TransitionVariation[]>();
+  variationPrev = new Map<string, string>();
+  replannable = new Set<string>();
+  autoMixWhenReady = false;
+  undoSerial = 0;
+  attackCache = new Map<string, number>();
+
   // MARK: UI
   pending: PendingTrack[] = [];
   selectedClipID: string | null = null;
@@ -91,6 +117,14 @@ export class MixStore {
   showMixer = true;
   showExport = false;
   showShortcuts = false;
+  showAutoArrange = false;
+  showMusicLibrary = false;
+  autoArrangePreselect: Set<string> | null = null;
+  artworkCache = new Map<string, ImageBitmap | null>();
+  artworkLoading = new Set<string>();
+  artworkRevision = 0;
+  showPerformanceGuide = false;
+  profileEditorTarget: string | null = null;
   cueEditorTarget: string | null = null;
   transitionEditorTarget: string | null = null;
   inspectorTab: InspectorTab = 'transition';
@@ -100,6 +134,7 @@ export class MixStore {
   exportStartedAt = 0;
   exportSteady: { progress: number; at: number } | null = null;
   exportSampleRate = 44100;
+  exportFormat: 'wav24' | 'aac256' = 'wav24';
   exportNormalize = true;
   openCueEditorOnAdd = false;
   embedMedia = true;
@@ -139,6 +174,10 @@ export class MixStore {
     this.customTransitions = (s.customTransitions as CustomTransition[]) ?? [];
     this.recentDocuments = ((s.recentDocuments as string[]) ?? []).filter(p => fs.existsSync(p));
     this.defaultTransitionStyle = (s.defaultTransitionStyle as TransitionStyle) ?? 'bassSwap';
+    this.mixStyle = (s.mixStyle as MixStyle) ?? 'auto';
+    this.setArc = (s.setArc as SetArc) ?? 'none';
+    this.trackUse = (s.trackUse as TrackUse) ?? 'auto';
+    this.verifyTransitions = (s.verifyTransitions as boolean) ?? true;
     this.player.onRestartNeeded = () => this.restartPlayback(null);
   }
 
@@ -147,6 +186,7 @@ export class MixStore {
       showDecks: this.showDecks, showMixer: this.showMixer, exportNormalize: this.exportNormalize, embedMedia: this.embedMedia,
       openCueEditorOnAdd: this.openCueEditorOnAdd, showMixWaveform: this.showMixWaveform, customTransitions: this.customTransitions,
       recentDocuments: this.recentDocuments.slice(0, 10), defaultTransitionStyle: this.defaultTransitionStyle,
+      mixStyle: this.mixStyle, setArc: this.setArc, trackUse: this.trackUse, verifyTransitions: this.verifyTransitions,
       language: loadSettings().language,
     };
     try { fs.mkdirSync(path.dirname(settingsFile()), { recursive: true }); fs.writeFileSync(settingsFile(), JSON.stringify(s, null, 2)); } catch { /* ignore */ }
@@ -204,11 +244,12 @@ export class MixStore {
 
   // MARK: Undo
 
-  private snapshot(): Snapshot {
+  snapshot(): Snapshot {
     return structuredClone({ clips: this.clips, library: this.library, masterBPM: this.masterBPM, gridOffset: this.gridOffset });
   }
 
   pushUndo() {
+    this.undoSerial++;
     this.undoStack.push(this.snapshot());
     if (this.undoStack.length > 300) this.undoStack.shift();
     this.redoStack = [];
@@ -218,6 +259,7 @@ export class MixStore {
   undo() {
     const s = this.undoStack.pop();
     if (!s) return;
+    this.undoSerial--;
     this.redoStack.push(this.snapshot());
     this.restore(s);
   }
@@ -225,11 +267,12 @@ export class MixStore {
   redo() {
     const s = this.redoStack.pop();
     if (!s) return;
+    this.undoSerial++;
     this.undoStack.push(this.snapshot());
     this.restore(s);
   }
 
-  private restore(s: Snapshot) {
+  restore(s: Snapshot) {
     this.clips = s.clips;
     this.library = s.library;
     this.masterBPM = s.masterBPM;
@@ -449,17 +492,20 @@ export class MixStore {
     this.changed();
   }
 
-  private rememberAnalysis(url: string, a: TrackAnalysis) {
+  rememberAnalysis(url: string, a: TrackAnalysis) {
     this.waveforms.set(url, a.waveform);
     if (a.structure) this.structures.set(url, a.structure); else this.structures.delete(url);
     this.tempoReadings.set(url, [{ bpm: a.bpm, firstBeat: a.firstBeat, fit: 1 }, ...a.tempoOptions]);
     if (a.energies) this.bandEnergies.set(url, a.energies);
     if (a.neural) this.neuralResults.set(url, a.neural);
+    if (a.genre) this.genreResults.set(url, a.genre); else this.genreResults.delete(url);
   }
 
   private makeClip(a: TrackAnalysis, url: string): Clip {
     const c = newClip({ url, title: a.title || path.basename(url, path.extname(url)), artist: a.artist, duration: a.duration, bpm: a.bpm, firstBeat: a.firstBeat, trimEnd: a.duration });
     c.colorIndex = this.colorCounter++;
+    const pr = TrackProfiles.load(url);
+    if (pr) { c.title = pr.title; c.artist = pr.artist; }
     c.transitionBars = 0;
     c.transition = this.defaultTransitionStyle;
     resetToWholeTrack(c);
@@ -962,6 +1008,8 @@ export class MixStore {
 
   setLanes(id: string, lanes: TransitionLanes, undoable = true) {
     this.updateClip(id, undoable, c => { c.lanes = lanes; c.transition = 'custom'; c.transitionDone = true; });
+    // Vocal / instrumental lanes need the tracks' stems.
+    if (Lanes.usesStemsIncoming(lanes) || Lanes.usesStemsOutgoing(lanes)) this.prepareStemsIfNeeded();
   }
 
   applyCustomTransition(id: string, p: CustomTransition) { this.applyTransition(id, 'custom', p.bars, p.lanes); }
@@ -1191,7 +1239,8 @@ export class MixStore {
     const tempo = TempoMap.build(clips, this.masterBPM);
     const paths: Record<string, string> = {};
     for (const c of clips) { const p = this.pcmPaths.get(c.url); if (p) paths[c.url] = p; }
-    return { clips, master: this.masterBPM, tempo: { reference: tempo.reference, points: tempo.points }, gridOffset: this.gridOffset, paths };
+    const stems = this.stemPaths(clips);
+    return { clips, master: this.masterBPM, tempo: { reference: tempo.reference, points: tempo.points }, gridOffset: this.gridOffset, paths, stems };
   }
 
   playableClips() { return this.clips.filter(c => !this.missingFiles.has(c.url) && this.pcmPaths.has(c.url)); }
@@ -1292,41 +1341,145 @@ export class MixStore {
     this.changed();
   }
 
-  // MARK: Mix waveform (simplified: whole mix again after edits settle)
+  // MARK: Mix waveform (mac/DJAW/Store/MixStore+MixWaveform.swift): the export's own render, again whenever the mix
+  // changes — only the changed stretch when the rest is merely moved, and exactly in full once editing pauses.
 
   private peaksTimer: ReturnType<typeof setTimeout> | null = null;
   private peaksJob: { cancel(): void } | null = null;
-  private peaksSignature = '';
+  /** The mix `mixPeaks` shows exactly (null while it shows a provisional / older one). */
+  private mixPeaksSignature: string | null = null;
+  private mixPeaksInputs: MixWaveformInputs | null = null;
+  private renderingSignature: string | null = null;
+  /** While a partial update runs: the real-seconds stretch being rendered (shown dimmed). */
+  mixStaleRange: [number, number] | null = null;
+  private mixRerunPending = false;
+  private exactTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Audio the mix plays changed outside the clips (stems became ready): render again. */
+  mixInputsChanged() {
+    this.scheduleMixWaveform();
+    if (this.isPlaying) this.restartPlayback(null);
+  }
 
   private mixSignature() {
-    return JSON.stringify([this.masterBPM, this.gridOffset, this.playableClips().map(c => ({ ...c, takes: null, colorIndex: 0, cues: null, cueDone: null, transitionDone: null, autoNote: null }))]);
+    return JSON.stringify([this.masterBPM, this.gridOffset, this.stemSignature(), this.playableClips().map(c => ({ ...c, takes: null, colorIndex: 0, cues: null, cueDone: null, transitionDone: null, autoNote: null, title: null, artist: null }))]);
+  }
+
+  private setRendering(sig: string | null) {
+    this.renderingSignature = sig;
+    this.mixWaveformIsRendering = sig != null;
   }
 
   scheduleMixWaveform() {
     if (!this.showMixWaveform || this.isInteracting) return;
     const sig = this.mixSignature();
-    if (sig === this.peaksSignature) return;
+    if (sig === this.renderingSignature || (sig === this.mixPeaksSignature && !this.renderingSignature)) return;
     if (this.peaksTimer) clearTimeout(this.peaksTimer);
-    this.peaksTimer = setTimeout(() => this.renderMixWaveform(), 700);
+    this.peaksTimer = setTimeout(() => this.startMixRender(), 400);
   }
 
-  private renderMixWaveform() {
+  private startMixRender() {
+    if (!this.showMixWaveform) return;
     const sig = this.mixSignature();
-    if (sig === this.peaksSignature) return;
-    this.peaksSignature = sig;
-    this.peaksJob?.cancel();
-    if (!this.playableClips().length) { this.mixPeaks = null; this.changed(); return; }
-    this.mixWaveformIsRendering = true;
+    if (sig === this.mixPeaksSignature) {
+      this.peaksJob?.cancel(); this.peaksJob = null;
+      this.setRendering(null);
+      this.mixPeaksPartial = null; this.mixStaleRange = null;
+      this.redrawOnly();
+      return;
+    }
+    if (sig === this.renderingSignature) return;
+    // A partial update is running: let it finish (it is short), then update from its result.
+    if (this.renderingSignature && this.mixStaleRange) { this.mixRerunPending = true; return; }
+    this.peaksJob?.cancel(); this.peaksJob = null;
+    if (this.exactTimer) { clearTimeout(this.exactTimer); this.exactTimer = null; }
+    const clips = this.playableClips();
+    if (!clips.length) {
+      this.mixPeaks = null; this.mixPeaksSignature = null; this.mixPeaksInputs = null; this.setRendering(null);
+      this.redrawOnly();
+      return;
+    }
+    const mix = this.mixMessage(clips);
+    const inputs: MixWaveformInputs = { clips, master: mix.master, tempo: new TempoMap(mix.tempo.reference, mix.tempo.points), gridOffset: mix.gridOffset, sampleRate: 44100, stems: this.stemSignature() };
+    // Only part of the mix changed: re-render that stretch and move the rest along.
+    const old = this.mixPeaks, before = this.mixPeaksInputs;
+    if (old && before && !this.mixPeaksPartial) {
+      const ch = mixWaveformChange(before, inputs);
+      const prov = ch && provisionalPeaks(ch, old, inputs);
+      if (ch && prov) { this.renderChangedPart(ch, prov, inputs, mix, sig); return; }
+    }
+    this.renderWholeMix(inputs, mix, sig);
+  }
+
+  private redrawOnly() { for (const f of this.listeners) f(); }
+
+  private renderWholeMix(inputs: MixWaveformInputs, mix: MixMessage, sig: string) {
+    this.setRendering(sig);
     this.mixPeaksPartial = null;
-    const job = Jobs.peaks(this.mixMessage(), p => { this.mixPeaksPartial = p; for (const f of this.listeners) f(); });
+    this.mixStaleRange = null;
+    const job = Jobs.peaks(mix, p => { if (this.peaksJob === job) { this.mixPeaksPartial = p; this.redrawOnly(); } });
     this.peaksJob = job;
     job.promise.then(r => {
       if (this.peaksJob !== job) return;
       this.mixPeaks = r.peaks;
+      this.mixPeaksSignature = sig;
+      this.mixPeaksInputs = inputs;
+    }, () => { /* cancelled / failed */ }).finally(() => {
+      if (this.peaksJob !== job) return;
+      this.peaksJob = null;
       this.mixPeaksPartial = null;
-      this.mixWaveformIsRendering = false;
-      for (const f of this.listeners) f();
-    }).catch(() => { if (this.peaksJob === job) { this.mixWaveformIsRendering = false; } });
+      this.setRendering(null);
+      this.redrawOnly();
+    });
+  }
+
+  /** Shows the old waveform moved to the new layout at once, renders only the changed stretch, then splices it in. */
+  private renderChangedPart(ch: MixWaveformChange, provisional: MixPeaks, inputs: MixWaveformInputs, mix: MixMessage, sig: string) {
+    this.setRendering(sig);
+    this.mixPeaks = provisional;
+    this.mixPeaksSignature = null;
+    this.mixPeaksInputs = inputs;
+    this.mixStaleRange = [ch.fromReal, ch.toReal];
+    const job = Jobs.peakRange(mix, provisional.binsPerSecond, ch.fromReal, ch.toReal);
+    this.peaksJob = job;
+    this.redrawOnly();
+    job.promise.then(r => {
+      if (this.peaksJob !== job || !this.mixPeaks) return;
+      this.mixPeaks = splicePeaks(this.mixPeaks, r.range);
+      // Nothing moved by a fraction of a bin: exactly what a full render gives. Otherwise, render in full later.
+      if (ch.exact) this.mixPeaksSignature = sig; else this.scheduleExactMixRender(sig);
+    }, () => { if (this.peaksJob === job) this.mixPeaksInputs = null; }).finally(() => {
+      if (this.peaksJob !== job) return;
+      this.peaksJob = null;
+      this.setRendering(null);
+      this.mixStaleRange = null;
+      this.redrawOnly();
+      if (this.mixRerunPending) { this.mixRerunPending = false; this.startMixRender(); }
+      else this.scheduleMixWaveform();
+    });
+  }
+
+  /** After a partial update that moved the rest of the mix by a fraction of a bin, the full render once editing has
+   *  paused for 20 s (without dimming the lane: what is shown is already right to within a few milliseconds). */
+  private scheduleExactMixRender(sig: string) {
+    if (this.exactTimer) clearTimeout(this.exactTimer);
+    this.exactTimer = setTimeout(() => {
+      this.exactTimer = null;
+      if (!this.showMixWaveform || this.mixSignature() !== sig || this.renderingSignature) return;
+      if (this.isPlaying || this.isInteracting) { this.scheduleExactMixRender(sig); return; }
+      const clips = this.playableClips();
+      const mix = this.mixMessage(clips);
+      const inputs: MixWaveformInputs = { clips, master: mix.master, tempo: new TempoMap(mix.tempo.reference, mix.tempo.points), gridOffset: mix.gridOffset, sampleRate: 44100, stems: this.stemSignature() };
+      const job = Jobs.peaks(mix, () => {});
+      this.peaksJob = job;
+      job.promise.then(r => {
+        if (this.peaksJob !== job || this.mixSignature() !== sig || this.renderingSignature) return;
+        this.mixPeaks = r.peaks;
+        this.mixPeaksSignature = sig;
+        this.mixPeaksInputs = inputs;
+        this.redrawOnly();
+      }, () => {}).finally(() => { if (this.peaksJob === job) this.peaksJob = null; });
+    }, 20000);
   }
 
   // MARK: Documents
@@ -1426,6 +1579,10 @@ export class MixStore {
       this.missingFiles = new Set([...this.clips, ...this.library].map(c => c.url).filter(u => !fs.existsSync(u)));
       this.macAnalyses = f.analyses ?? null;
       this.macProfiles = f.profiles ?? null;
+      TrackProfiles.importBlobs(f.profiles);
+      this.applySavedProfiles();
+      this.prepareStemsIfNeeded();
+      this.artworkCache.clear();
       this.waveforms.clear(); this.structures.clear();
       if (f.ui) {
         this.playhead = f.ui.playhead;
@@ -1479,6 +1636,7 @@ export class MixStore {
     }));
     this.applyLoudness();
     this.changed();
+    this.runPendingAutoMix();
   }
 
   private noteRecent(file: string) {
@@ -1502,7 +1660,8 @@ export class MixStore {
       customTransitions: used, masterBPM: this.masterBPM, gridOffset: this.gridOffset,
       defaultTransitionBars: this.defaultTransitionBars, defaultTransitionStyle: this.defaultTransitionStyle,
       library: this.library.map(withRel), snap: this.snap, clips: this.clips.map(withRel), projectID: this.projectID,
-      loudnessMode: this.loudnessMode, analyses: this.macAnalyses, profiles: this.macProfiles,
+      loudnessMode: this.loudnessMode, analyses: this.macAnalyses,
+      profiles: (TrackProfiles.blobs([...this.clips, ...this.library].map(c => c.url)) as Record<string, unknown> | null) ?? this.macProfiles,
     };
   }
 
@@ -1585,8 +1744,10 @@ export class MixStore {
   // MARK: Export
 
   async startExport(normalize: boolean) {
+    const m4a = this.exportFormat === 'aac256';
     const r = await ipcRenderer.invoke('dialog:save', {
-      title: L('書き出し', 'Export'), defaultPath: this.documentTitle + '.wav', filters: [{ name: 'WAV', extensions: ['wav'] }],
+      title: L('書き出し', 'Export'), defaultPath: this.documentTitle + (m4a ? '.m4a' : '.wav'),
+      filters: [m4a ? { name: 'M4A (AAC)', extensions: ['m4a'] } : { name: 'WAV', extensions: ['wav'] }],
     });
     if (!r) return;
     this.pause();
@@ -1596,8 +1757,9 @@ export class MixStore {
     this.exportStartedAt = Date.now();
     this.exportSteady = null;
     this.changed();
-    const knownPeak = this.peaksSignature === this.mixSignature() && this.mixPeaks ? this.mixPeaks.peak : null;
-    const job = Jobs.export(this.mixMessage(), r, { sampleRate: 44100, normalize, bits: 24 }, knownPeak, p => {
+    await this.ensureStemsForExport();
+    const knownPeak = this.knownMixPeak();
+    const job = Jobs.export(this.mixMessage(), r, { sampleRate: this.exportSampleRate, normalize, bits: 24, format: this.exportFormat }, knownPeak, p => {
       if (this.exportPhase.kind !== 'rendering') return;
       this.exportPhase = { kind: 'rendering', progress: p };
       const steadyFrom = normalize && knownPeak == null ? 0.02 : 0.02;
@@ -1616,7 +1778,9 @@ export class MixStore {
     this.changed();
   }
 
-  private exportJob: { cancel(): void } | null = null;
+  exportJob: { cancel(): void } | null = null;
+  /** The peak of the mix waveform when it matches the mix as it is now (saves the normalize pass). */
+  knownMixPeak() { return this.mixPeaksSignature != null && this.mixPeaksSignature === this.mixSignature() && this.mixPeaks ? this.mixPeaks.peak : null; }
   cancelExport() { this.exportJob?.cancel(); }
 
   /** Seconds left, from the steady part of the render only (null = not known yet). */
@@ -1631,17 +1795,14 @@ export class MixStore {
   // MARK: Misc
 
   copyTrackList() {
-    const tempo = this.tempoMap;
-    const lines = this.clips.map((c, i) => {
-      const t = tempo.real(Automation.switchTime(this.clips, i, this.masterBPM));
-      const name = c.artist ? `${c.artist} - ${c.title}` : c.title;
-      return `${Fmt.duration(t)} ${name}`;
-    });
-    clipboard.writeText(lines.join('\n'));
+    clipboard.writeText(PerformanceGuide.trackList(this.clips, this.masterBPM, this.tempoMap));
   }
 
   revealInFolder(id: string) { const c = this.clip(id); if (c) shell.showItemInFolder(c.url); }
   revealPath(p: string) { shell.showItemInFolder(p); }
+
+  /** Opens the auto-arrange sheet with these tracks ticked. */
+  autoArrangePreselecting(ids: string[]) { this.autoArrangePreselect = new Set(ids); this.showAutoArrange = true; this.changed(); }
 }
 
 export const store = new MixStore();

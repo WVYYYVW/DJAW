@@ -87,10 +87,22 @@ function JogWheel({ info, side, playing }: { info: DeckInfo; side: number; playi
       ctx.lineTo(cx + Math.cos(a) * pr * 0.92, cy + Math.sin(a) * pr * 0.92);
       ctx.strokeStyle = `rgba(255,255,255,${k === 0 ? 0.6 : 0.15})`; ctx.lineWidth = k === 0 ? 4 : 2; ctx.lineCap = 'round'; ctx.stroke();
     }
-    const lr = pr * 0.4;
-    ctx.fillStyle = info.clip ? accent : 'rgb(56,56,56)';
-    ctx.beginPath(); ctx.arc(cx, cy, lr, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 2; ctx.stroke();
+    const art = info.clip ? store.artwork(info.clip.url) : null;
+    const lr = pr * (art ? 0.5 : 0.4);
+    if (art) {
+      // Centre label: the cover turning with the record, with a thin ring in the track's colour.
+      ctx.save();
+      ctx.beginPath(); ctx.arc(cx, cy, lr, 0, Math.PI * 2); ctx.clip();
+      ctx.translate(cx, cy); ctx.rotate(angle);
+      const k = Math.max(2 * lr / art.width, 2 * lr / art.height);
+      ctx.drawImage(art, -art.width * k / 2, -art.height * k / 2, art.width * k, art.height * k);
+      ctx.restore();
+      ctx.strokeStyle = accent; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy, lr, 0, Math.PI * 2); ctx.stroke();
+    } else {
+      ctx.fillStyle = info.clip ? accent : 'rgb(56,56,56)';
+      ctx.beginPath(); ctx.arc(cx, cy, lr, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, lr, 0, Math.PI * 2); ctx.stroke();
     ctx.fillStyle = 'rgb(217,217,217)';
     ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2); ctx.fill();
     if (info.active && playing) { ctx.strokeStyle = accent; ctx.globalAlpha = 0.5; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, pr, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1; }

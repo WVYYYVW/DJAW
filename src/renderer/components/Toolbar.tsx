@@ -85,6 +85,8 @@ export function Toolbar() {
       <Toggle on={s.showDecks} onClick={() => s.toggle('showDecks')} title={L('ターンテーブルとミキサーの表示', 'Show turntables and mixer')}>{L('デッキ', 'Decks')}</Toggle>
       <Toggle on={s.showMixer} disabled={!s.showDecks} onClick={() => s.toggle('showMixer')} title={L('デッキの間のミキサーの表示 / 非表示', 'Show or hide the mixer')}>{L('ミキサー', 'Mixer')}</Toggle>
       <Toggle on={s.followPlayhead} onClick={() => s.toggle('followPlayhead')} title={L('再生中に表示を再生位置に追従させる', 'Keep the playhead in view while playing')}>{L('追従', 'Follow')}</Toggle>
+      <button className="tbtn" onClick={() => { s.showVisualPreview = true; s.changed(); }} title={L('映像プレビュー：書き出す映像を、再生に合わせてその場で確認（Ctrl+Alt+V）', 'Visuals preview: see the video visuals live with playback (Ctrl+Alt+V)')}>✦ {L('映像', 'Visuals')}</button>
+      <button className="tbtn" disabled={!s.clips.length} onClick={() => { s.showPerformanceGuide = true; s.changed(); }} title={L('このセットを DJ 機材で実際に演奏する手順と、曲リスト（SoundCloud の概要用）', 'Steps to play this set live on DJ gear, and the track list (for SoundCloud descriptions)')}>☰ {L('演奏手順', 'How to Play')}</button>
       <button className="tbtn" disabled={!s.clips.length} onClick={() => { s.showExport = true; s.changed(); }} title={L('ミックスを書き出し（Ctrl+E）', 'Export the mix (Ctrl+E)')}>⇪ {L('書き出し', 'Export')}</button>
       <Toggle on={s.showInspector} onClick={() => s.toggle('showInspector')} title={L('インスペクタの表示切替（Ctrl+Alt+I）', 'Show or hide the inspector (Ctrl+Alt+I)')}>▥</Toggle>
     </div>

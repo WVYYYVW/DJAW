@@ -2,7 +2,9 @@
 // key and structure (with the neural beat grid when the model is available).
 import { Mathx, Waveform } from '../models';
 import { AudioSource } from '../render/source';
-import { BeatModel, NEURAL_VERSION, NeuralResult, beatHitRate, beatThis, estimateGrid, resample } from './neural';
+import { BeatModel, CueAssets, CueHint, NEURAL_VERSION, NeuralResult, beatHitRate, beatThis, cueDETR, estimateGrid, mergeCues, resample } from './neural';
+import { GenreAssets, classifyGenre } from './genreModel';
+import type { GenreResult } from '../genre';
 import { ChromaAccumulator, MusicalKey, StructureHints, TrackStructure, analyzeStructure } from './structure';
 
 export interface TempoOption { bpm: number; firstBeat: number; fit: number }
@@ -33,7 +35,7 @@ export interface TrackAnalysis {
   tempoOptions: TempoOption[];
   energies: BandEnergies | null;
   neural: NeuralResult | null;
-  genre?: unknown;
+  genre?: GenreResult | null;
 }
 
 /**
@@ -88,7 +90,11 @@ export function structureTrusted(e: BandEnergies, bpm: number, firstBeat: number
 export interface AnalyzeOptions {
   /** Beat This! (null = energy-based tempo only). */
   beatModel?: BeatModel | null;
-  progress?: (stage: 'read' | 'beats', fraction: number) => void;
+  /** CUE-DETR (null = no cue suggestions). */
+  cues?: CueAssets | null;
+  /** Discogs-EffNet and heads (null = no genre / vocal analysis). */
+  genre?: GenreAssets | null;
+  progress?: (stage: 'read' | 'beats' | 'cues' | 'genre', fraction: number) => void;
 }
 
 export async function analyzeAudio(src: AudioSource, o: AnalyzeOptions = {}): Promise<TrackAnalysis> {
@@ -119,7 +125,7 @@ export async function analyzeAudio(src: AudioSource, o: AnalyzeOptions = {}): Pr
     accMax = 0; accLowMax = 0; accSq = 0; accLowSq = 0; accHighSq = 0; count = 0;
   };
   // Mono at 22.05 kHz for the beat tracker is collected along the way (only when the model is there).
-  const monoAll = o.beatModel ? new Float32Array(totalFrames) : null;
+  const monoAll = o.beatModel || o.genre || o.cues ? new Float32Array(totalFrames) : null;
   const block = 1 << 16;
   const L = new Float32Array(block), R = new Float32Array(block), mono = new Float32Array(block);
   for (let pos = 0, reads = 0; pos < totalFrames; pos += block, reads++) {
@@ -167,14 +173,22 @@ export async function analyzeAudio(src: AudioSource, o: AnalyzeOptions = {}): Pr
   };
 
   let neural: NeuralResult | null = null;
-  if (o.beatModel && monoAll && duration > 5) {
+  if ((o.beatModel || o.cues) && monoAll && duration > 5) {
     const y = resample(monoAll, sampleRate, 22050);
-    const bt = await beatThis(y, o.beatModel, p => o.progress?.('beats', p));
-    if (bt) {
-      neural = { version: NEURAL_VERSION, beats: bt.beats, downbeats: bt.downbeats, cues: [],
-        grid: bt.beats.length >= 16 ? estimateGrid(bt.beats, bt.downbeats) : null };
-    }
+    const bt = o.beatModel ? await beatThis(y, o.beatModel, p => o.progress?.('beats', p)) : null;
     o.progress?.('beats', 1);
+    const grid = bt && bt.beats.length >= 16 ? estimateGrid(bt.beats, bt.downbeats) : null;
+    let cues: CueHint[] = [];
+    if (o.cues) {
+      try { cues = mergeCues((await cueDETR(y, o.cues, p => o.progress?.('cues', p))) ?? [], grid); } catch (e) { console.warn('[DJAW] cue model:', e); }
+      o.progress?.('cues', 1);
+    }
+    if (bt || cues.length) neural = { version: NEURAL_VERSION, beats: bt?.beats ?? [], downbeats: bt?.downbeats ?? [], cues, grid };
+  }
+  let genre: GenreResult | null = null;
+  if (o.genre && monoAll && duration > 5) {
+    try { genre = await classifyGenre(resample(monoAll, sampleRate, 16000), o.genre, p => o.progress?.('genre', p)); } catch (e) { console.warn('[DJAW] genre model:', e); }
+    o.progress?.('genre', 1);
   }
 
   const tempo = chooseGrid(classic, neural);
@@ -191,7 +205,7 @@ export async function analyzeAudio(src: AudioSource, o: AnalyzeOptions = {}): Pr
     title: '', artist: '', duration, sampleRate, bpm: tempo.bpm,
     // The structure check may move the downbeat to where the sections really change.
     firstBeat: structure?.firstBeat ?? tempo.firstBeat,
-    waveform, structure, tempoOptions: tempo.options, energies, neural,
+    waveform, structure, tempoOptions: tempo.options, energies, neural, genre,
   };
 }
 

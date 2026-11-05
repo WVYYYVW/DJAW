@@ -3,6 +3,8 @@ import { Clip, clipEnd } from '../models';
 import { TempoMap } from '../tempo';
 import { RenderSession, SessionOptions } from './session';
 import { WavBits, WavWriter } from './wav';
+import { StreamResampler } from './resampler';
+import { Mp4Writer } from './mp4';
 
 export class CancelFlag {
   cancelled = false;
@@ -20,6 +22,7 @@ export interface MixInput {
   gridOffset: number;
   sampleRate: number;
   open: SessionOptions['open'];
+  openStems?: SessionOptions['openStems'];
   pool: SessionOptions['pool'];
 }
 
@@ -32,7 +35,7 @@ const tick = () => new Promise<void>(r => setImmediate(r));
 
 /** Renders the mix once from the start; returns the peak (after gain). */
 async function pass(m: MixInput, gain: number, cancel: CancelFlag, progress: (p: number) => void,
-  sink: (L: Float32Array, R: Float32Array, n: number, frame0: number) => void, clamp: boolean): Promise<number> {
+  sink: (L: Float32Array, R: Float32Array, n: number, frame0: number) => void, clamp: boolean, drain?: () => Promise<void>): Promise<number> {
   const session = await RenderSession.create({ ...m });
   try {
     const total = Math.round((mixEndReal(m) + 0.3) * m.sampleRate);
@@ -52,7 +55,7 @@ async function pass(m: MixInput, gain: number, cancel: CancelFlag, progress: (p:
       sink(L, R, n, f0);
       const p = session.renderedFrames / total;
       if (p - last >= 0.005) { progress(p); last = p; }
-      if (++steps % 64 === 0) await tick();
+      if (++steps % 64 === 0) { if (drain) await drain(); await tick(); }
     }
     return peak;
   } finally {
@@ -60,21 +63,53 @@ async function pass(m: MixInput, gain: number, cancel: CancelFlag, progress: (p:
   }
 }
 
-export interface ExportOptions { sampleRate: number; normalize: boolean; bits: WavBits }
+export type ExportFormat = 'wav24' | 'aac256';
+export interface ExportOptions { sampleRate: number; normalize: boolean; bits: WavBits; format?: ExportFormat }
 
-/** Writes the mix as a WAV. Normalizing renders twice (peak first) unless the peak is already known. */
+/** A sink for rendered audio at the engine rate: resampled to the export rate when they differ. */
+export function rateSink(from: number, to: number, write: (L: Float32Array, R: Float32Array, n: number) => void | Promise<void>) {
+  if (from === to) return { push: (L: Float32Array, R: Float32Array, n: number) => write(L, R, n), finish: async () => {} };
+  const rs = new StreamResampler(from, to);
+  const pending: Promise<void>[] = [];
+  const out = (L: Float32Array, R: Float32Array, n: number) => { const r = write(L, R, n); if (r) pending.push(r); };
+  return {
+    push: async (L: Float32Array, R: Float32Array, n: number) => { rs.push(L, R, n, out); while (pending.length) await pending.shift(); },
+    finish: async () => { rs.finish(out); while (pending.length) await pending.shift(); },
+  };
+}
+
+/** Writes the mix as WAV (24-bit) or M4A (AAC 256 kbps). Normalizing renders twice (peak first) unless the peak is already known. */
 export async function exportWav(m: MixInput, dest: string, o: ExportOptions, cancel: CancelFlag,
   progress: (p: number) => void, knownPeak?: number | null): Promise<void> {
   if (!(mixEndReal(m) > 0)) throw new Error('no tracks');
   let gain = 1;
   if (o.normalize && knownPeak != null) gain = normalizeGain(knownPeak);
   else if (o.normalize) gain = normalizeGain(await pass(m, 1, cancel, p => progress(p * 0.5), () => {}, false));
-  const w = new WavWriter(dest, m.sampleRate, o.bits);
-  try {
-    const base = o.normalize ? 0.5 : 0, span = o.normalize ? 0.5 : 1;
-    await pass(m, gain, cancel, p => progress(base + p * span), (L, R, n) => w.write(L, R, n), true);
-  } finally {
-    w.close();
+  const base = o.normalize ? 0.5 : 0, span = o.normalize ? 0.5 : 1;
+  const rate = o.sampleRate || m.sampleRate;
+  if (o.format === 'aac256') {
+    const w = await Mp4Writer.create(dest, rate, 256000);
+    let ok = false;
+    try {
+      const sink = rateSink(m.sampleRate, rate, (L, R, n) => w.write(L, R, n));
+      const queue: Promise<void>[] = [];
+      await pass(m, gain, cancel, p => progress(base + p * span), (L, R, n) => { queue.push(sink.push(L.slice(0, n), R.slice(0, n), n) as Promise<void>); }, true, async () => { while (queue.length) await queue.shift(); });
+      while (queue.length) await queue.shift();
+      await sink.finish();
+      await w.close();
+      ok = true;
+    } finally {
+      if (!ok) w.abort();
+    }
+  } else {
+    const w = new WavWriter(dest, rate, o.bits);
+    try {
+      const sink = rateSink(m.sampleRate, rate, (L, R, n) => w.write(L, R, n));
+      await pass(m, gain, cancel, p => progress(base + p * span), (L, R, n) => { void sink.push(L, R, n); }, true);
+      await sink.finish();
+    } finally {
+      w.close();
+    }
   }
   progress(1);
 }

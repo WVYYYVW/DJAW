@@ -22,6 +22,8 @@ export function Shortcuts() {
       ['Delete', L('選択した曲を削除', 'Delete the selected track')],
       ['Ctrl+Alt+Shift+C / V', L('つなぎ方をコピー / ペースト', 'Copy / paste a transition')],
       ['1 – 6', L('つなぎ方を適用（カットイン〜ロングミックス）', 'Apply a transition recipe (Cut In … Long Mix)')],
+      ['Ctrl+Shift+M', L('曲を解析して全体を自動ミックス', 'Analyse & auto-mix everything')],
+      ['Ctrl+Shift+A', L('おまかせミックス（曲順も自動）', 'Auto-arrange (order too)')],
     ]],
     [L('曲', 'Tracks'), [
       ['Ctrl+↑ / Ctrl+↓', L('前 / 次の曲を選択', 'Select previous / next track')],
@@ -31,6 +33,7 @@ export function Shortcuts() {
       ['Ctrl+T', L('つなぎエディタを開く', 'Open the transition editor')],
       ['Ctrl+Enter', L('ライブラリの曲をミックスに入れる（複数可）', 'Add library track(s) to the mix')],
       [L('Ctrl / Shift + クリック', 'Ctrl / Shift + click'), L('ライブラリの曲を複数選択', 'Select several library tracks')],
+      ['Ctrl+Alt+A', L('ライブラリの曲をすべて選択', 'Select all library tracks')],
       ['Ctrl+Shift+Delete', L('ミックスの曲をライブラリに戻す', 'Move a mix track back to the library')],
     ]],
     [L('表示', 'View'), [
@@ -39,12 +42,15 @@ export function Shortcuts() {
       ['Ctrl+Alt+I', L('インスペクタの表示切替', 'Show / hide the inspector')],
       ['Ctrl+Shift+D', L('デッキの表示切替', 'Show / hide the decks')],
       ['Ctrl+Shift+X', L('ミキサーの表示切替', 'Show / hide the mixer')],
+      ['Ctrl+Alt+V', L('映像プレビュー', 'Visuals preview')],
     ]],
     [L('ファイル', 'File'), [
       ['Ctrl+N / Ctrl+O / Ctrl+S', L('新規 / 開く / 保存', 'New / open / save')],
       ['Ctrl+Shift+I', L('曲を追加', 'Add tracks')],
+      ['Ctrl+Alt+Shift+I', L('ミュージック（iTunes）から追加', 'Add from Music (iTunes)')],
       ['Ctrl+E', L('書き出し', 'Export')],
       ['Ctrl+Alt+C', L('曲リストをコピー（SoundCloud 用）', 'Copy the track list (for SoundCloud)')],
+      ['Ctrl+Shift+P', L('演奏手順と曲リスト', 'How to play & track list')],
     ]],
     [L('CUE エディタ', 'CUE editor'), [
       ['I / L / O', L('入口 / 切替完了 / 出口をセット', 'Set IN / switch / OUT')],
