@@ -1,6 +1,6 @@
 // Builds everything with esbuild into build/:
 //   main.js (Electron main), renderer.js (+ index.html, styles), worklet.js (AudioWorklet),
-//   render.worker.js / analysis.worker.js (Web Workers with Node), tests/*.js (node --test).
+//   render.worker.js (Web Worker with Node), analysis.child.js (child Node process), tests/*.js (node --test).
 import * as esbuild from 'esbuild';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,7 +16,7 @@ if (!fs.existsSync('src/vendor/stretch-core.mjs')) {
   execFileSync(process.execPath, ['tools/signalsmith/make-core.mjs', 'node_modules/signalsmith-stretch/SignalsmithStretch.mjs', 'src/vendor/stretch-core.mjs'], { stdio: 'inherit' });
 }
 
-const common = { bundle: true, sourcemap: 'linked', logLevel: 'info', target: 'es2022' };
+const common = { bundle: true, sourcemap: 'linked', logLevel: 'info', target: 'es2022', define: { 'process.env.NODE_ENV': watch ? '"development"' : '"production"' } };
 const node = { ...common, platform: 'node', format: 'cjs', external: ['electron', 'onnxruntime-node'] };
 
 const builds = [
@@ -24,7 +24,7 @@ const builds = [
   // Renderer and workers run with Node integration: Node built-ins stay `require`s.
   { ...node, entryPoints: ['src/renderer/index.tsx'], outfile: `${out}/renderer.js`, loader: { '.css': 'css' } },
   { ...node, entryPoints: ['src/workers/render.worker.ts'], outfile: `${out}/render.worker.js` },
-  { ...node, entryPoints: ['src/workers/analysis.worker.ts'], outfile: `${out}/analysis.worker.js` },
+  { ...node, entryPoints: ['src/workers/analysis.child.ts'], outfile: `${out}/analysis.child.js` },
   { ...common, platform: 'browser', format: 'iife', entryPoints: ['src/renderer/worklet.ts'], outfile: `${out}/worklet.js` },
 ];
 if (cli) {

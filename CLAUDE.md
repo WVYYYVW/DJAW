@@ -62,7 +62,8 @@ Windows 版では最初から **1 つの TypeScript 製レンダリングエン�
 - **プロセス構成**
   - Electron main：ウィンドウ、メニュー、ファイルダイアログ、保存・読み込み。
   - renderer（React）：UI。タイムラインは Canvas。
-  - Web Worker（`nodeIntegrationInWorker`）：解析とミックスの描画（レンダリング）。重い処理は UI スレッドに置かない。
+  - Web Worker（`nodeIntegrationInWorker`）：ミックスの描画（レンダリング）。重い処理は UI スレッドに置かない。
+  - 解析用の子プロセス（`ELECTRON_RUN_AS_NODE` で fork）：解析・ONNX 推論・リサンプル。onnxruntime-node は Web Worker 内では落ちるため。
   - 再生：Worker が描画した音を AudioWorklet に流す（Worker → Worklet 間は MessageChannel）。
 - **音声の読み込み**：Chromium の `decodeAudioData`（MP3/AAC/M4A/FLAC/WAV/OGG）でデコードし、
   **44.1kHz ステレオ 16bit の PCM キャッシュ**（`userData/cache/pcm/<指紋>.pcm`）に書き出す。以後はそこから必要な範囲だけ読む

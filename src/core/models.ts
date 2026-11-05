@@ -605,12 +605,15 @@ export interface TransitionLanes {
 const laneKey = (kind: LaneKind, incoming: boolean) =>
   ((incoming ? 'in' : 'out') + kind[0].toUpperCase() + kind.slice(1)) as keyof TransitionLanes;
 
+const laneTemplates = ['linear', 'equalPower', 'instantMiddle', 'secondHalf', 'open'] as const;
+export type LaneTemplate = typeof laneTemplates[number];
+
 export const Lanes = {
   flat: (kind: LaneKind): AutoPoint[] => [pt(0, Lane.neutral(kind)), pt(1, Lane.neutral(kind))],
   points(l: TransitionLanes, kind: LaneKind, incoming: boolean): AutoPoint[] {
     return (l[laneKey(kind, incoming)] as AutoPoint[] | null | undefined) ?? Lanes.flat(kind);
   },
-  isActive(l: TransitionLanes, kind: LaneKind, incoming: boolean) {
+  isActive(l: TransitionLanes, kind: LaneKind, incoming: boolean): boolean {
     return Lanes.points(l, kind, incoming).some(p => Math.abs(p.y - Lane.neutral(kind)) > 0.002);
   },
   /** Returns a copy with the lane set (an effect / stem lane back at neutral is stored as "not drawn"). */
@@ -635,7 +638,7 @@ export const Lanes = {
     }
     return last.y;
   },
-  valueOf: (l: TransitionLanes, kind: LaneKind, incoming: boolean, x: number) => Lanes.value(Lanes.points(l, kind, incoming), x),
+  valueOf: (l: TransitionLanes, kind: LaneKind, incoming: boolean, x: number): number => Lanes.value(Lanes.points(l, kind, incoming), x),
 
   /** Converts a preset style into editable points (sampled, then simplified). */
   sampled(style: TransitionStyle, shape: TransitionShape): TransitionLanes {
@@ -695,8 +698,8 @@ export const Lanes = {
     return pts.filter((_, i) => keep[i]);
   },
 
-  templates: ['linear', 'equalPower', 'instantMiddle', 'secondHalf', 'open'] as const,
-  templateTitle(t: LaneTemplate) {
+  templates: laneTemplates,
+  templateTitle(t: LaneTemplate): string {
     switch (t) {
       case 'linear': return L('直線で入れ替え', 'Linear swap');
       case 'equalPower': return L('等パワーで入れ替え', 'Equal-power swap');
@@ -706,7 +709,7 @@ export const Lanes = {
     }
   },
   applyTemplate(l: TransitionLanes, template: LaneTemplate, kind: LaneKind): TransitionLanes {
-    let incoming: AutoPoint[];
+    let incoming: AutoPoint[] = [];
     switch (template) {
       case 'linear': incoming = [pt(0, 0), pt(1, 1)]; break;
       case 'equalPower': incoming = [pt(0, 0, 0.45), pt(1, 1)]; break;
@@ -763,12 +766,11 @@ export const Lanes = {
     l = Lanes.setPoints(l, kind, true, Lanes.flat(kind));
     return Lanes.setPoints(l, kind, false, Lanes.flat(kind));
   },
-  usesStemsOutgoing: (l: TransitionLanes) => Lanes.isActive(l, 'vocal', false) || Lanes.isActive(l, 'instrumental', false),
-  usesStemsIncoming: (l: TransitionLanes) => Lanes.isActive(l, 'vocal', true) || Lanes.isActive(l, 'instrumental', true),
-  usesReverb: (l: TransitionLanes) => Lanes.isActive(l, 'reverb', true) || Lanes.isActive(l, 'reverb', false),
+  usesStemsOutgoing: (l: TransitionLanes): boolean => Lanes.isActive(l, 'vocal', false) || Lanes.isActive(l, 'instrumental', false),
+  usesStemsIncoming: (l: TransitionLanes): boolean => Lanes.isActive(l, 'vocal', true) || Lanes.isActive(l, 'instrumental', true),
+  usesReverb: (l: TransitionLanes): boolean => Lanes.isActive(l, 'reverb', true) || Lanes.isActive(l, 'reverb', false),
 };
 
-export type LaneTemplate = typeof Lanes.templates[number];
 
 export interface EffectPreset { id: string; title: string; incoming: AutoPoint[] | null; outgoing: AutoPoint[] | null }
 

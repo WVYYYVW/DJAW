@@ -1,0 +1,604 @@
+// The inspector (mac/DJAW/Views/InspectorView.swift): transition / deck / FX / mixer for the selected track,
+// the library track, several library tracks, or the mix as a whole.
+import React, { useRef, useState } from 'react';
+import { L } from '../../core/i18n';
+import {
+  Clip, CurveShape, Curve, EQBand, Lanes, Loudness, Style, TransitionStyle, barAtSource, barLabel, clipEnd, cueList,
+  curveShapes, hasEdits, keepsLanding, landingBar, lastBar, loudnessModes, rate, transitionPresets, transitionShape,
+  effectiveLanes, Edit, Take,
+} from '../../core/models';
+import { FX, FXShapes, fxKinds } from '../../core/tempo';
+import { Key, Structure, sectionTitle } from '../../core/analysis/structure';
+import { Automation } from '../../core/automation';
+import { useStore } from '../hooks';
+import { store, InspectorTab } from '../store/store';
+import { Fmt, clipColor } from '../format';
+import { NumberField } from './Toolbar';
+import { showContextMenu } from './ContextMenu';
+
+export function Section({ title, footer, children }: { title?: React.ReactNode; footer?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="isection">
+      {title && <div className="isection-title">{title}</div>}
+      <div className="isection-body">{children}</div>
+      {footer && <div className="isection-footer">{footer}</div>}
+    </div>
+  );
+}
+
+export function Row({ label, children, title }: { label: React.ReactNode; children: React.ReactNode; title?: string }) {
+  return <div className="irow" title={title}><span className="irow-label">{label}</span><span className="irow-value">{children}</span></div>;
+}
+
+/** Slider with a value readout; double-click resets. One undo step per drag. */
+export function ValueSlider({ title, value, min, max, step = 0.1, def, format, onBegin, onChange }: {
+  title: string; value: number; min: number; max: number; step?: number; def: number; format: (v: number) => string;
+  onBegin: () => void; onChange: (v: number) => void;
+}) {
+  const dragging = useRef(false);
+  return (
+    <div className="vslider">
+      <span className="vslider-title">{title}</span>
+      <input type="range" min={min} max={max} step={step} value={value}
+        onPointerDown={() => { dragging.current = true; onBegin(); }}
+        onPointerUp={() => { dragging.current = false; }}
+        onChange={e => onChange(parseFloat(e.target.value))}
+        onDoubleClick={() => { onBegin(); onChange(def); }} />
+      <span className="vslider-value">{format(value)}</span>
+    </div>
+  );
+}
+
+/** ‹ › one bar, « » four bars (Alt: one beat). */
+function PositionRow({ title, value, color, help, onDelta }: { title: string; value: number; color: string; help?: string; onDelta: (d: number) => void }) {
+  const d = (e: React.MouseEvent, n: number) => onDelta(e.altKey ? Math.sign(n) * 0.25 : n);
+  return (
+    <div className="posrow" title={help}>
+      <span className="dot" style={{ background: color }} />
+      <span className="posrow-title">{title}</span>
+      <span className="posrow-value">{Fmt.barOrdinal(value)}</span>
+      <span className="posrow-buttons">
+        <button onClick={e => d(e, -4)}>«</button><button onClick={e => d(e, -1)}>‹</button>
+        <button onClick={e => d(e, 1)}>›</button><button onClick={e => d(e, 4)}>»</button>
+      </span>
+    </div>
+  );
+}
+
+function Tabs({ value, onChange, items }: { value: string; onChange: (v: string) => void; items: [string, string][] }) {
+  return <div className="segmented">{items.map(([k, label]) => <button key={k} className={value === k ? 'on' : ''} onClick={() => onChange(k)}>{label}</button>)}</div>;
+}
+
+/** Small picture of both tracks' volume through the transition. */
+function TransitionDiagram({ clip, prev }: { clip: Clip; prev: Clip }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  React.useEffect(() => {
+    const c = ref.current!;
+    const dpr = window.devicePixelRatio || 1;
+    const w = c.clientWidth, h = c.clientHeight;
+    c.width = w * dpr; c.height = h * dpr;
+    const ctx = c.getContext('2d')!;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = 'rgba(255,255,255,0.04)';
+    ctx.beginPath(); ctx.roundRect(0, 0, w, h, 6); ctx.fill();
+    const draw = (incoming: boolean, color: string) => {
+      ctx.beginPath();
+      for (let k = 0; k <= 120; k++) {
+        const x = k / 120;
+        const cv = incoming ? Automation.incomingCurve(clip, x) : Automation.outgoingCurve(clip, x);
+        const y = h - 6 - cv.volume * (h - 12);
+        if (k === 0) ctx.moveTo(4 + x * (w - 8), y); else ctx.lineTo(4 + x * (w - 8), y);
+      }
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+      // Low kill as a band along the bottom.
+      for (let k = 0; k < 120; k++) {
+        const x = k / 120;
+        const cv = incoming ? Automation.incomingCurve(clip, x) : Automation.outgoingCurve(clip, x);
+        if (cv.lowKill > 0.5) { ctx.fillStyle = color; ctx.globalAlpha = 0.35; ctx.fillRect(4 + x * (w - 8), incoming ? h - 4 : h - 8, (w - 8) / 120 + 0.5, 3); ctx.globalAlpha = 1; }
+      }
+    };
+    draw(false, clipColor(prev.colorIndex));
+    draw(true, clipColor(clip.colorIndex));
+    const sp = Automation.switchPoint(clip);
+    ctx.fillStyle = 'rgba(191,90,242,0.8)';
+    ctx.fillRect(4 + sp * (w - 8), 4, 1.5, h - 8);
+  });
+  return <canvas ref={ref} className="tdiagram" title={L('音量の動き（細い帯＝低音を切っている所、紫の線＝曲が切り替わる所）', 'Volume through the transition (bands = low end cut, purple line = where the new track takes over)')} />;
+}
+
+const styleOrder: TransitionStyle[] = ['crossfade', 'bassSwap', 'filter', 'echoOut', 'cut', 'brake', 'backspin', 'custom'];
+const styleIcon: Record<TransitionStyle, string> = { crossfade: '⇄', bassSwap: '◖◗', filter: '⏚', echoOut: '◌))', cut: '✂', brake: '⏷', backspin: '⟲', custom: '✎' };
+
+function TransitionSection({ clip, index }: { clip: Clip; index: number }) {
+  const s = useStore();
+  const prev = s.clips[index - 1];
+  const [fine, setFine] = useState(false);
+  const [band, setBand] = useState<EQBand>('low');
+  const shape = transitionShape(clip);
+  const total = Math.max(1, clip.transitionBars * 4);
+  const step = 1 / total;
+  const posLabel = (x: number) => {
+    const beats = Math.round(x * total);
+    const bar = Math.floor(beats / 4) + 1, beat = beats % 4 + 1;
+    return beat === 1 ? L(`${bar}小節目`, `bar ${bar}`) : L(`${bar}小節目 ${beat}拍`, `bar ${bar} beat ${beat}`);
+  };
+  const b = shape[band];
+  const setB = (f: (x: typeof b) => void) => s.setTransitionShape(clip.id, true, sh => f(sh[band]));
+  const lengths = Style.lengthChoices(clip.transition);
+  return (
+    <>
+      <Section title={L('前の曲からのつなぎ', 'Transition from Previous Track')}>
+        <div className="sentence">{s.transitionSentence(index)}</div>
+        <label className="switch" title={L('2曲の間に曲が入らず、並べ替えでは2曲まとめて動きます', 'Nothing is put between the two, and reordering moves them together')}>
+          <input type="checkbox" checked={s.isTransitionLocked(clip.id)} onChange={e => s.setTransitionLocked(clip.id, e.target.checked)} />
+          <span>🔒 {L('このつなぎを固定', 'Lock This Transition')}</span>
+        </label>
+        <TransitionDiagram clip={clip} prev={prev} />
+        <div className="button-row">
+          <button className="btn primary" onClick={() => s.previewTransition(clip.id)} title={L('つなぎの4小節前から再生します', 'Plays from 4 bars before the transition')}>▶ {L('試聴', 'Preview')}</button>
+          <button className="btn" disabled={clip.transitionBars < 0.01} onClick={() => s.openTransitionEditor(clip.id)}>✎ {L('つなぎエディタで描く…', 'Draw in Transition Editor…')}</button>
+        </div>
+        {clip.autoNote?.text && (
+          <div className="autonote">
+            <div className="autonote-title">✦ {L('自動ミックスの判断', 'Why the auto-mix chose this')}</div>
+            {clip.autoNote.text.split('\n').map((l, k) => <div key={k}>• {l}</div>)}
+          </div>
+        )}
+      </Section>
+      <Section title={L('つなぎ方', 'Style')}>
+        <div className="style-grid">
+          {styleOrder.map(st => (
+            <button key={st} className={'style-tile' + (clip.transition === st ? ' on' : '')} onClick={() => s.setTransitionStyle(clip.id, st)} title={Style.detail(st)}>
+              <span className="style-icon">{styleIcon[st]}</span>
+              <span>{Style.title(st)}</span>
+            </button>
+          ))}
+        </div>
+        <div className="caption">{Style.detail(clip.transition)}</div>
+        {Style.usesLength(clip.transition) && (
+          <div className="chooser">
+            <span>{L('重ねる長さ', 'Overlap')}</span>
+            {lengths.map(n => <button key={n} className={Math.abs(clip.transitionBars - n) < 0.01 ? 'on' : ''} onClick={() => s.setTransitionLength(clip.id, n)}>{n}</button>)}
+            <NumberField value={Math.round(clip.transitionBars * 100) / 100} width={44} min={0} max={128} onCommit={v => s.setTransitionLength(clip.id, v)} />
+            <span className="dim">{L('小節', 'bars')}</span>
+          </div>
+        )}
+        {Style.spinChoices(clip.transition).length > 0 && (
+          <div className="chooser">
+            <span>{clip.transition === 'brake' ? L('止まるまで', 'Stop over') : L('回す長さ', 'Spin over')}</span>
+            {Style.spinChoices(clip.transition).map(n => <button key={n} className={(clip.spinBeats ?? 2) === n ? 'on' : ''} onClick={() => s.setSpinBeats(clip.id, n)}>{n}</button>)}
+            <span className="dim">{L('拍', 'beats')}</span>
+          </div>
+        )}
+        <div className="presets">
+          {transitionPresets().map((p, k) => (
+            <button key={p.id} className="chip" title={p.detail + ` (${k + 1})`} onClick={() => s.applyPreset(clip.id, p)}>{p.title}</button>
+          ))}
+        </div>
+        {s.customTransitions.length > 0 && (
+          <div className="presets">
+            <span className="dim">{L('マイつなぎ', 'My Transitions')}</span>
+            {s.customTransitions.map(p => (
+              <button key={p.id} className={'chip' + (clip.transition === 'custom' && JSON.stringify(clip.lanes) === JSON.stringify(p.lanes) ? ' on' : '')}
+                onClick={() => s.applyCustomTransition(clip.id, p)}
+                onContextMenu={e => { e.preventDefault(); showContextMenu(e, [{ label: L('削除', 'Delete'), action: () => s.deleteCustomTransition(p.id) }]); }}>★ {p.name} · {p.bars}</button>
+            ))}
+          </div>
+        )}
+      </Section>
+      <Section title={L('位置', 'Positions')} footer={L('‹ › で1小節、« » で4小節（Alt を押しながらで1拍）。タイムラインでは曲のドラッグで出口、左端で入口、右端で長さを変えられます。', '‹ › move 1 bar, « » 4 bars (hold Alt for 1 beat). On the timeline, drag a track to move the mix-out, its left edge for the mix-in, the right edge for the length.')}>
+        <PositionRow title={L('前の曲の出口', 'Previous mix-out')} value={prev.mixOutBar} color="rgb(255,159,10)" help={L('ここから2曲が重なり始めます', 'The two tracks start overlapping here')} onDelta={d => s.setEntryPoint(clip.id, prev.mixOutBar + d)} />
+        <PositionRow title={L('この曲の入口', 'This track’s mix-in')} value={clip.mixInBar} color="rgb(48,209,88)" help={L('この曲のどこから鳴らし始めるか', 'Where in this track playback starts')} onDelta={d => s.setMixIn(clip.id, clip.mixInBar + d)} />
+        {clip.transitionBars > 0.01 && <>
+          <PositionRow title={L('切替完了', 'Switch done')} value={landingBar(clip)} color="rgb(191,90,242)" help={L('前の曲が消えて、この曲だけになる位置（ドロップ頭が定番）', 'Where only this track remains (usually a drop)')} onDelta={d => s.setLandingBar(clip.id, landingBar(clip) + d)} />
+          <label className="check small"><input type="checkbox" checked={keepsLanding(clip)} onChange={e => s.setLandingLock(clip.id, e.target.checked)} /> {L('長さを変えても「切替完了」を動かさない', 'Keep “switch done” when changing the length')}</label>
+        </>}
+      </Section>
+      {Style.editableVolume(clip.transition) && clip.transitionBars > 0.01 && (
+        <Section>
+          <button className="disclosure" onClick={() => setFine(!fine)}>{fine ? '▾' : '▸'} {L('音量カーブとEQを細かく調整', 'Fine-tune volume curves & EQ')}</button>
+          {fine && <div className="fine">
+            <Row label={L('音量カーブ', 'Volume curve')}>
+              <select value={shape.volumeCurve} onChange={e => s.setTransitionShape(clip.id, true, sh => { sh.volumeCurve = e.target.value as CurveShape; })}>
+                {curveShapes.map(c => <option key={c} value={c}>{Curve.title(c)}</option>)}
+              </select>
+            </Row>
+            <Row label={L('次の曲が上がりきる', 'Next track at full')}>
+              {posLabel(shape.inRise)} <span className="stepbtns"><button onClick={() => s.setTransitionShape(clip.id, true, sh => { sh.inRise -= step; })}>−</button><button onClick={() => s.setTransitionShape(clip.id, true, sh => { sh.inRise += step; })}>＋</button></span>
+            </Row>
+            <Row label={L('前の曲が下がり始める', 'Previous starts fading')}>
+              {posLabel(shape.outFadeStart)} <span className="stepbtns"><button onClick={() => s.setTransitionShape(clip.id, true, sh => { sh.outFadeStart -= step; })}>−</button><button onClick={() => s.setTransitionShape(clip.id, true, sh => { sh.outFadeStart += step; })}>＋</button></span>
+            </Row>
+            <Tabs value={band} onChange={v => setBand(v as EQBand)} items={(['low', 'mid', 'high'] as EQBand[]).map(k => [k, (shape[k].enabled ? '● ' : '') + k.toUpperCase()])} />
+            <label className="check"><input type="checkbox" checked={b.enabled} onChange={e => setB(x => { x.enabled = e.target.checked; })} /> {L(`${band.toUpperCase()} を入れ替える`, `Swap ${band.toUpperCase()}`)}</label>
+            {b.enabled && <>
+              <label className="check small"><input type="checkbox" checked={b.affectsIncoming !== false} onChange={e => setB(x => { x.affectsIncoming = e.target.checked; })} /> {L(`次の曲の ${band.toUpperCase()} も入れる（オフ＝前の曲を削るだけ）`, `Bring in the next track’s ${band.toUpperCase()} too (off = only cut the previous)`)}</label>
+              <Row label={L('入れ替え開始', 'Swap starts')}>{posLabel(b.point)} <span className="stepbtns"><button onClick={() => setB(x => { x.point -= step; })}>−</button><button onClick={() => setB(x => { x.point += step; })}>＋</button></span></Row>
+              <Row label={L('かける長さ', 'Takes')}>{b.ramp < step * 0.5 ? L('瞬時', 'Instant') : Fmt.beats(Math.round(b.ramp * total))} <span className="stepbtns"><button onClick={() => setB(x => { x.ramp = Math.max(0, x.ramp - step); })}>−</button><button onClick={() => setB(x => { x.ramp += step; })}>＋</button></span></Row>
+              <Row label={L('カーブ', 'Curve')}>
+                <select value={b.curve} onChange={e => setB(x => { x.curve = e.target.value as CurveShape; })}>{curveShapes.map(c => <option key={c} value={c}>{Curve.title(c)}</option>)}</select>
+              </Row>
+              <div className="button-row small">
+                <button className="btn" onClick={() => setB(x => { x.point = 0; x.ramp = 1; x.curve = 'smooth'; })}>{L('全体で徐々に', 'Gradual, whole')}</button>
+                <button className="btn" onClick={() => setB(x => { x.point = 0.5; x.ramp = 0; x.curve = 'linear'; })}>{L('中間で瞬時', 'Instant, middle')}</button>
+                <button className="btn" onClick={() => setB(x => { x.point = 0.5; x.ramp = 0.5; x.curve = 'smooth'; })}>{L('後半で徐々に', 'Gradual, 2nd half')}</button>
+              </div>
+            </>}
+            {clip.shape && <button className="btn" onClick={() => s.resetTransitionShape(clip.id)}>↺ {L('カーブを既定に戻す', 'Reset curve')}</button>}
+          </div>}
+        </Section>
+      )}
+    </>
+  );
+}
+
+function TakesSection({ clip }: { clip: Clip }) {
+  const s = useStore();
+  const list = s.takes(clip.id);
+  const current = s.currentTakeID(clip.id);
+  const [name, setName] = useState('');
+  return (
+    <Section title={L(`保存したつなぎ（${list.length}）`, `Saved Takes (${list.length})`)}
+      footer={L('いまのつなぎを候補として保存しておくと、別のつなぎ方を作っても消えません。いくつか作って聴き比べ、最後に使うものを選べます。', 'Save the current transition as a take and it stays when you make another one. Make a few, compare them, and pick the one to keep.')}>
+      {list.map(t => (
+        <div key={t.id} className={'take' + (t.id === current ? ' on' : '')}>
+          <div className="take-text">
+            <div className="take-name">{t.id === current ? '● ' : ''}{t.name}</div>
+            <div className="take-sub">{Take.summary(t)}</div>
+          </div>
+          <button className="btn small" onClick={() => s.useTake(clip.id, t.id)} disabled={t.id === current}>{L('使う', 'Use')}</button>
+          <button className="btn small" onClick={() => { if (t.id !== current) s.useTake(clip.id, t.id); s.previewTransition(clip.id); }}>▶</button>
+          <button className="btn small" title={L('削除', 'Delete')} onClick={() => s.deleteTake(clip.id, t.id)}>✕</button>
+        </div>
+      ))}
+      <div className="button-row">
+        <input className="text" placeholder={L('名前（省略可）', 'Name (optional)')} value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.stopPropagation()} />
+        <button className="btn" disabled={current != null} onClick={() => { s.saveTake(clip.id, name || null); setName(''); }}>{current ? L('保存済み', 'Saved') : L('いまのつなぎを保存', 'Save Current')}</button>
+      </div>
+    </Section>
+  );
+}
+
+function TempoChangeSection({ clip, index }: { clip: Clip; index: number }) {
+  const s = useStore();
+  if (index === 0) {
+    return (
+      <Section title={L('テンポ（ミックスBPM）', 'Tempo (Mix BPM)')} footer={L('2曲目以降で「この曲からテンポを変える」を使うと、途中でBPMを変えられます。', 'From the second track on, “Change tempo from this track” changes the BPM mid-mix.')}>
+        <Row label={L('ミックスBPM', 'Mix BPM')}><NumberField value={s.masterBPM} min={40} max={220} onCommit={v => s.setMasterBPM(v)} /></Row>
+      </Section>
+    );
+  }
+  const before = s.tempoBefore(index);
+  const own = clip.tempo != null;
+  const bpmHere = clip.tempo ?? before;
+  const rateNow = rate(clip, bpmHere);
+  return (
+    <Section title={L('テンポ（ミックスBPM）', 'Tempo (Mix BPM)')}>
+      <label className="check"><input type="checkbox" checked={own} onChange={e => s.setTrackTempo(clip.id, e.target.checked ? Math.round(clip.bpm * 100) / 100 : null)} /> {L('この曲からテンポを変える', 'Change tempo from this track')}</label>
+      {own ? <>
+        <Row label={L('この曲からの BPM', 'BPM from here')}>
+          <NumberField value={clip.tempo!} min={40} max={220} onCommit={v => s.setTrackTempo(clip.id, v)} />
+          <button className="btn small" onClick={() => s.setTrackTempo(clip.id, Math.round(clip.bpm * 100) / 100)}>{L('この曲の速さ', 'This track’s tempo')}</button>
+        </Row>
+        <Row label={L('変え方', 'Change')}>
+          <select value={clip.tempoBars == null ? -1 : clip.tempoBars} onChange={e => s.setTempoBars(clip.id, Number(e.target.value) < 0 ? null : Number(e.target.value))}>
+            <option value={-1}>{L('つなぎの長さで', 'Over the transition')}</option>
+            <option value={0}>{L('切替の瞬間に', 'Instantly')}</option>
+            {[1, 2, 4, 8, 16, 32].map(n => <option key={n} value={n}>{L(`${n}小節かけて`, `Over ${n} bars`)}</option>)}
+          </select>
+        </Row>
+        <div className="caption">{L(`この曲は ${Fmt.ratePercent(rateNow)} で再生されます。BPM が大きく変わるときは、つなぎ方を「カットイン」「ブレーキ」「バックスピン」にすると自然です。`, `This track plays at ${Fmt.ratePercent(rateNow)}. For big tempo jumps, Cut In, Brake or Backspin sound natural.`)}</div>
+      </> : <div className="caption">{L(`前の曲と同じ ${Fmt.bpm(before)} BPM で再生（この曲の速さ ${Fmt.ratePercent(rate(clip, before))}）`, `Plays at the previous ${Fmt.bpm(before)} BPM (this track at ${Fmt.ratePercent(rate(clip, before))})`)}</div>}
+    </Section>
+  );
+}
+
+function DeckTab({ clip, index }: { clip: Clip; index: number }) {
+  const s = useStore();
+  const st = s.structures.get(clip.url);
+  const ai = s.aiGrid(clip);
+  const differs = s.gridDiffersFromAI(clip);
+  const [loopBars, setLoopBars] = useState(4);
+  const [loopRepeats, setLoopRepeats] = useState(1);
+  const playBar = s.sourceBar(clip.id, s.playhead);
+  const r = rate(clip, s.masterBPM);
+  const keySug = s.suggestedKeyShift(clip.id);
+  return (
+    <>
+      <Section>
+        <button className="btn wide" onClick={() => s.openCueEditor(clip.id)}>⎍ {L('CUE（IN / OUT）を編集…', 'Edit Cues (IN / OUT)…')}</button>
+      </Section>
+      <Section title={L('AI 解析（拍・小節）', 'AI Analysis (Beats, Bars)')}>
+        {ai ? <>
+          <div className="caption">{L(`AI が聴き取った拍: ${Fmt.bpm(ai.bpm)} BPM · 拍への一致 ${Math.round(ai.fit * 100)}%（いまのグリッド ${Math.round(ai.currentFit * 100)}%）`, `Beats the AI hears: ${Fmt.bpm(ai.bpm)} BPM · fit ${Math.round(ai.fit * 100)}% (current grid ${Math.round(ai.currentFit * 100)}%)`)}</div>
+          {differs ? <button className="btn" onClick={() => s.applyAIGrid(clip.id)}>{L('拍・小節を AI 解析に合わせる', 'Match the Beat Grid to the AI')}</button>
+            : <div className="caption ok">✓ {L('グリッドは AI 解析と一致しています', 'The grid matches the AI analysis')}</div>}
+        </> : <div className="caption">{s.pending.some(p => p.url === clip.url) ? L('解析中…', 'Analysing…') : L('AI の拍解析はありません（エネルギーから推定した BPM を使用）', 'No AI beat analysis (BPM estimated from the energy)')}</div>}
+        {st && <StructureSummary clip={clip} />}
+      </Section>
+      <Section title={L('DJ操作（ループ・ジャンプ・キー）', 'DJ Controls (Loop · Jump · Key)')} footer={L('ループやジャンプを入れると曲の長さが変わり、後ろの曲は自動でずれます。タイムラインで右クリックしても追加できます。', 'Loops and jumps change the track length; later tracks move automatically. You can also add them by right-clicking on the timeline.')}>
+        <div className="chooser">
+          <span>{L('ループ', 'Loop')}</span>
+          <select value={loopBars} onChange={e => setLoopBars(Number(e.target.value))}>{[0.25, 0.5, 1, 2, 4, 8, 16, 32].map(b => <option key={b} value={b}>{b < 1 ? L(`${b * 4}拍`, `${b * 4} beats`) : L(`${b}小節`, `${b} bars`)}</option>)}</select>
+          <select value={loopRepeats} onChange={e => setLoopRepeats(Number(e.target.value))}>{[1, 2, 3, 4, 7].map(n => <option key={n} value={n}>{`×${n + 1}`}</option>)}</select>
+          <button className="btn small" disabled={playBar == null} title={L('再生位置からループ', 'Loop from the playhead')} onClick={() => playBar != null && s.addLoop(clip.id, playBar, loopBars, loopRepeats)}>{L('再生位置に', 'At playhead')}</button>
+        </div>
+        <div className="chooser">
+          <span>{L('ジャンプ', 'Jump')}</span>
+          {[1, 2, 4, 8, 16].map(b => <button key={b} disabled={playBar == null} onClick={() => playBar != null && s.addJump(clip.id, playBar, b)}>{b}</button>)}
+          <span className="dim">{L('小節先へ（再生位置で）', 'bars ahead (at the playhead)')}</span>
+        </div>
+        {(clip.edits ?? []).map(e => (
+          <div key={e.id} className="edit-row">
+            <span>{e.kind === 'loop' ? '⟲' : '⇥'} {Edit.summary(e)}</span>
+            {e.kind === 'loop' && <span className="stepbtns"><button onClick={() => s.setEditRepeats(clip.id, e.id, e.repeats - 1)}>−</button><button onClick={() => s.setEditRepeats(clip.id, e.id, e.repeats + 1)}>＋</button></span>}
+            <button className="btn small" onClick={() => s.removeEdit(clip.id, e.id)}>✕</button>
+          </div>
+        ))}
+        <label className="check"><input type="checkbox" checked={clip.keyLock ?? true} onChange={e => s.setKeyLock(clip.id, e.target.checked)} /> {L('キーロック（オフにするとテンポに合わせて音程も変わる、レコード風）', 'Key lock (off: pitch follows the tempo, like vinyl)')}</label>
+        <Row label={L('キーシフト', 'Key Shift')}>
+          <span className="stepbtns"><button onClick={() => s.setKeyShift(clip.id, (clip.keyShift ?? 0) - 1)}>−</button></span>
+          <span className="mono">{(clip.keyShift ?? 0) > 0 ? '+' : ''}{clip.keyShift ?? 0}</span>
+          <span className="stepbtns"><button onClick={() => s.setKeyShift(clip.id, (clip.keyShift ?? 0) + 1)}>＋</button></span>
+          {s.playedKey(clip) && <span className="keybadge">{Key.camelot(s.playedKey(clip)!)} · {Key.name(s.playedKey(clip)!)}</span>}
+          {index > 0 && keySug != null && keySug !== (clip.keyShift ?? 0) && <button className="btn small" onClick={() => s.matchKeyToPrevious(clip.id)}>{L(`前の曲に合わせる（${keySug > 0 ? '+' : ''}${keySug}）`, `Match previous (${keySug > 0 ? '+' : ''}${keySug})`)}</button>}
+        </Row>
+      </Section>
+      <Section title={L('テンポ', 'Tempo')}>
+        <Row label="BPM">
+          <NumberField value={clip.bpm} min={30} max={300} onCommit={v => s.setClipBPM(clip.id, v)} width={70} />
+          <button className="btn small" onClick={() => s.scaleClipBPM(clip.id, 2)}>×2</button>
+          <button className="btn small" onClick={() => s.scaleClipBPM(clip.id, 0.5)}>÷2</button>
+          <button className="btn small" onClick={() => s.reanalyze(clip.id)}>{L('再解析', 'Re-analyze')}</button>
+        </Row>
+        <label className="check"><input type="checkbox" checked={clip.tempoSync} onChange={e => s.setTempoSync(clip.id, e.target.checked)} /> {L('ミックスBPMに合わせる', 'Sync to Mix BPM')}</label>
+        {clip.tempoSync && <Row label={L('再生速度', 'Speed')}><span style={{ color: Math.abs(r - 1) > 0.08 ? 'rgb(255,159,10)' : undefined }}>{Fmt.ratePercent(r)}</span></Row>}
+        {clip.tempoSync && Math.abs(r - 1) > 0.08 && <div className="caption warn">⚠ {L('テンポ差が大きいため音質が劣化する場合があります', 'Large tempo change — sound quality may suffer')}</div>}
+      </Section>
+      <Section title={L('ビートグリッド', 'Beat Grid')} footer={L('小節番号が曲の展開とずれている時は「1小節目の位置」を1拍ずつ動かします。キックがずれて聞こえる時は微調整を使います。', 'If bar numbers don’t match the song’s phrases, move “Bar 1 Position” one beat at a time. If the kicks sound flammed, use fine-tune.')}>
+        <Row label={L('1小節目の位置', 'Bar 1 Position')}><button className="btn small" onClick={() => s.shiftDownbeat(clip.id, -1)}>‹ {L('1拍前へ', '1 beat earlier')}</button><button className="btn small" onClick={() => s.shiftDownbeat(clip.id, 1)}>{L('1拍後ろへ', '1 beat later')} ›</button></Row>
+        <Row label={L('グリッド微調整', 'Grid Fine-Tune')}><button className="btn small" onClick={() => s.nudgeGrid(clip.id, -10)}>−10ms</button><button className="btn small" onClick={() => s.nudgeGrid(clip.id, 10)}>+10ms</button><button className="btn small" onClick={() => s.nudgeGrid(clip.id, -1)}>−1ms</button><button className="btn small" onClick={() => s.nudgeGrid(clip.id, 1)}>+1ms</button></Row>
+      </Section>
+    </>
+  );
+}
+
+function StructureSummary({ clip }: { clip: Clip }) {
+  const s = useStore();
+  const st = s.structures.get(clip.url);
+  if (!st) return null;
+  const n = Math.max(1, st.barCount);
+  const colors = { intro: 'rgba(255,255,255,0.28)', drop: 'rgb(255,159,10)', breakdown: 'rgb(64,200,224)', outro: 'rgba(255,255,255,0.16)' };
+  const bar = (b: number) => barLabel(barAtSource(clip, Structure.timeOfBar(st, b)));
+  return (
+    <div className="structure">
+      <div className="structure-bar">{st.sections.map((sec, k) => <span key={k} title={`${sectionTitle(sec.kind)} ${bar(sec.start)}–${bar(sec.end)}`} style={{ left: `${sec.start / n * 100}%`, width: `${(sec.end - sec.start) / n * 100}%`, background: colors[sec.kind] }} />)}</div>
+      <div className="caption">{L(`最初のドロップ ${bar(st.firstDrop)}小節目 · アウトロ ${bar(st.lastDropEnd)}小節目〜`, `First drop bar ${bar(st.firstDrop)} · outro from bar ${bar(st.lastDropEnd)}`)}</div>
+    </div>
+  );
+}
+
+function FXTab({ clip }: { clip: Clip }) {
+  const s = useStore();
+  return (
+    <>
+      <Section title={L('エフェクトを追加', 'Add an Effect')} footer={L('再生位置に置きます（再生位置がこの曲の外なら、出口の手前）。タイムラインの曲を右クリック ▸「ここにエフェクト」でも追加できます。', 'Placed at the playhead (or before the mix-out when the playhead is outside this track). You can also right-click the track ▸ “Add Effect Here”.')}>
+        <div className="fx-grid">
+          {fxKinds.map(k => (
+            <button key={k} className="chip" title={FX.detail(k)} onClick={() => {
+              const bar = s.sourceBar(clip.id, s.playhead);
+              const id = s.addFX(clip.id, k, bar != null ? Math.floor(bar * 4) / 4 : undefined);
+              if (id) { s.focusedFX = id; s.changed(); }
+            }}>{FX.title(k)}</button>
+          ))}
+        </div>
+      </Section>
+      {(clip.fx ?? []).map(fx => (
+        <Section key={fx.id} title={<span style={{ color: `hsl(${FX.hue(fx.kind) * 360},70%,65%)` }}>{FX.title(fx.kind)}</span>}>
+          <div className="caption">{L(`${barLabel(fx.bar)}〜${barLabel(fx.bar + fx.bars)}小節 · ${FXShapes.title(fx.shape)} · ${Math.round(fx.amount * 100)}%`, `Bars ${barLabel(fx.bar)}–${barLabel(fx.bar + fx.bars)} · ${FXShapes.title(fx.shape)} · ${Math.round(fx.amount * 100)}%`)}</div>
+          <PositionRow title={L('開始', 'Start')} value={fx.bar} color={`hsl(${FX.hue(fx.kind) * 360},70%,60%)`} onDelta={d => s.updateFX(clip.id, fx.id, true, f => { f.bar += d; })} />
+          <Row label={L('長さ', 'Length')}>
+            <NumberField value={fx.bars} min={0.25} max={128} width={48} onCommit={v => s.updateFX(clip.id, fx.id, true, f => { f.bars = v; })} />
+            <span className="dim">{L('小節', 'bars')}</span>
+          </Row>
+          <ValueSlider title={L('強さ', 'Amount')} value={fx.amount} min={0} max={1} step={0.01} def={FX.defaultAmount(fx.kind)} format={v => `${Math.round(v * 100)}%`}
+            onBegin={() => s.pushUndo()} onChange={v => s.updateFX(clip.id, fx.id, false, f => { f.amount = v; })} />
+          <Row label={L('かかり方', 'Shape')}>
+            <select value={fx.shape} onChange={e => s.updateFX(clip.id, fx.id, true, f => { f.shape = e.target.value as never; })}>
+              {FXShapes.all.map(sh => <option key={sh} value={sh}>{FXShapes.title(sh)}</option>)}
+            </select>
+          </Row>
+          {FX.divisions(fx.kind).length > 0 && (
+            <div className="chooser">
+              <span>{L('リズム', 'Rhythm')}</span>
+              {FX.divisions(fx.kind).map(d => <button key={d} className={Math.abs(fx.division - d) < 1e-6 ? 'on' : ''} onClick={() => s.updateFX(clip.id, fx.id, true, f => { f.division = d; })}>{FX.divisionLabel(d)}</button>)}
+              <span className="dim">{L('拍', 'beats')}</span>
+            </div>
+          )}
+          <button className="btn small" onClick={() => s.removeFX(clip.id, fx.id)}>✕ {L('削除', 'Remove')}</button>
+        </Section>
+      ))}
+    </>
+  );
+}
+
+function MixerTab({ clip, index }: { clip: Clip; index: number }) {
+  const s = useStore();
+  const isLast = index === s.clips.length - 1;
+  const eq = (title: string, key: 'eqLow' | 'eqMid' | 'eqHigh') => (
+    <ValueSlider title={title} value={clip[key]} min={-26} max={6} def={0} format={Fmt.db} onBegin={() => s.pushUndo()} onChange={v => s.updateClip(clip.id, false, c => { c[key] = v; })} />
+  );
+  return (
+    <>
+      <Section title={L('ミキサー', 'Mixer')}>
+        <ValueSlider title={L('音量', 'Volume')} value={clip.gainDB} min={-18} max={6} def={0} format={Fmt.db} onBegin={() => s.pushUndo()} onChange={v => s.updateClip(clip.id, false, c => { c.gainDB = v; })} />
+        {s.loudnessMode !== 'off' && <div className="caption">{L('ラウドネス補正', 'Loudness')}: {clip.loudnessGainDB != null && clip.lufs != null ? `${clip.loudnessGainDB > 0 ? '+' : ''}${clip.loudnessGainDB.toFixed(1)} dB (${clip.lufs.toFixed(1)} LUFS)` : L('測定中…', 'Measuring…')}</div>}
+        {eq('LOW', 'eqLow')}{eq('MID', 'eqMid')}{eq('HIGH', 'eqHigh')}
+      </Section>
+      {(index === 0 || isLast) && (
+        <Section title={L('フェード', 'Fades')}>
+          {index === 0 && <ValueSlider title={L('フェードイン', 'Fade In')} value={clip.fadeInBeats} min={0} max={64} step={1} def={0} format={Fmt.beats} onBegin={() => s.pushUndo()} onChange={v => s.updateClip(clip.id, false, c => { c.fadeInBeats = v; })} />}
+          {isLast && <>
+            <ValueSlider title={L('フェードアウト', 'Fade Out')} value={clip.fadeOutBeats} min={0} max={64} step={1} def={0} format={Fmt.beats} onBegin={() => s.pushUndo()} onChange={v => s.updateClip(clip.id, false, c => { c.fadeOutBeats = v; })} />
+            <PositionRow title={L('終了位置', 'End Point') + (clip.endBar == null ? L('（曲の最後）', ' (end of track)') : '')} value={clip.endBar ?? barAtSource(clip, clip.trimEnd)} color="rgb(255,255,255)"
+              onDelta={d => { const cur = clip.endBar ?? Math.floor(lastBar(clip)); const v = cur + d; s.setEndBar(clip.id, v >= lastBar(clip) - 0.01 ? null : v); }} />
+          </>}
+        </Section>
+      )}
+    </>
+  );
+}
+
+function ClipInspector({ clip, index }: { clip: Clip; index: number }) {
+  const s = useStore();
+  const isLast = index === s.clips.length - 1;
+  const key = s.structures.get(clip.url)?.key;
+  const next = s.clips[index + 1];
+  return (
+    <div className="inspector-content">
+      <Tabs value={s.inspectorTab} onChange={v => { s.inspectorTab = v as InspectorTab; s.changed(); }} items={[
+        ['transition', L('つなぎ', 'Transition')], ['deck', L('デッキ', 'Deck')], ['fx', clip.fx?.length ? `FX ${clip.fx.length}` : 'FX'], ['mixer', L('ミキサー', 'Mixer')],
+      ]} />
+      <div className="iheader">
+        <span className="swatch big" style={{ background: clipColor(clip.colorIndex) }}>{index % 2 === 0 ? 'A' : 'B'}</span>
+        <div>
+          <div className="ititle">{clip.title}</div>
+          <div className="isub">{clip.artist || clip.url.split(/[\\/]/).pop()}</div>
+          <div className="isub mono">{L(`${index + 1}曲目 · ${Fmt.bpm(clip.bpm)} BPM · ${Fmt.duration(clip.duration)}`, `Track ${index + 1} · ${Fmt.bpm(clip.bpm)} BPM · ${Fmt.duration(clip.duration)}`)}{key ? <span className="keybadge">{Key.camelot(key)}</span> : null}</div>
+        </div>
+        <button className="btn small" title={L('この曲の操作', 'Track actions')} onClick={e => showContextMenu(e, [
+          { label: L('ライブラリに戻す', 'Move Back to Library'), action: () => s.removeFromMix(clip.id) },
+          { label: L('エクスプローラーで表示', 'Show in Explorer'), action: () => s.revealInFolder(clip.id) },
+          { separator: true },
+          { label: L('ミックスから削除', 'Remove from Mix'), action: () => s.deleteClip(clip.id) },
+        ])}>…</button>
+      </div>
+      {s.inspectorTab === 'transition' && <>
+        {index > 0 ? <><TakesSection clip={clip} /><TransitionSection clip={clip} index={index} /></>
+          : <Section title={L('つなぎ', 'Transition')}><div className="caption">⚑ {L('ミックスの1曲目です', 'This is the first track of the mix')}</div></Section>}
+        <TempoChangeSection clip={clip} index={index} />
+        {!isLast && next && (
+          <Section title={L('次の曲へ', 'Into the Next Track')}>
+            <div className="next-row">
+              <div>
+                <div>{next.title}</div>
+                <div className="caption">{L(`出口 ${Fmt.barOrdinal(clip.mixOutBar)} · ${next.transitionBars < 0.01 ? Style.title(next.transition) : Fmt.bars(next.transitionBars) + ' ' + Style.title(next.transition)}`, `Mix-out ${Fmt.barOrdinal(clip.mixOutBar)} · ${next.transitionBars < 0.01 ? Style.title(next.transition) : Fmt.bars(next.transitionBars) + ' ' + Style.title(next.transition)}`)}</div>
+              </div>
+              <button className="btn small" onClick={() => { s.selectedClipID = next.id; s.changed(); }}>{L('編集', 'Edit')}</button>
+            </div>
+          </Section>
+        )}
+      </>}
+      {s.inspectorTab === 'deck' && <DeckTab clip={clip} index={index} />}
+      {s.inspectorTab === 'fx' && <FXTab clip={clip} />}
+      {s.inspectorTab === 'mixer' && <MixerTab clip={clip} index={index} />}
+    </div>
+  );
+}
+
+function LibraryInspector({ clip }: { clip: Clip }) {
+  const s = useStore();
+  const key = s.structures.get(clip.url)?.key;
+  return (
+    <div className="inspector-content">
+      <div className="iheader">
+        <span className="swatch big" style={{ background: clipColor(clip.colorIndex) }} />
+        <div>
+          <div className="ititle">{clip.title}</div>
+          <div className="isub">{L('ライブラリ（未配置）', 'Library (not in mix)')} · {Fmt.bpm(clip.bpm)} BPM · {Fmt.duration(clip.duration)}{key ? <span className="keybadge">{Key.camelot(key)}</span> : null}</div>
+        </div>
+      </div>
+      <StructureSummary clip={clip} />
+      <Section title={L('CUE', 'Cues')}>
+        <Row label="IN">{Fmt.barOrdinal(clip.mixInBar)}</Row>
+        <Row label="OUT">{Fmt.barOrdinal(clip.mixOutBar)}</Row>
+        {cueList(clip).map(c => <Row key={c.id} label={c.label}>{Fmt.barOrdinal(c.bar)}</Row>)}
+        <button className="btn" onClick={() => s.openCueEditor(clip.id)}>⎍ {L('CUE（IN / OUT）を編集…', 'Edit Cues (IN / OUT)…')}</button>
+      </Section>
+      <Section footer={L('ミックスに入れると、前の曲の OUT からこの曲の IN で直結されます。つなぎ方はそのあと選びます。', 'In the mix, it connects straight from the previous track’s OUT to this IN. Choose the transition afterwards.')}>
+        <div className="button-row">
+          <button className="btn primary" onClick={() => s.addToMix(clip.id, s.clips.length)}>{L('ミックスの末尾に入れる', 'Add to End of Mix')}</button>
+          <button className="btn" disabled={s.selectedIndex == null} onClick={() => s.addToMix(clip.id)}>{L('選択中の曲の後に入れる', 'Add After Selected')}</button>
+        </div>
+      </Section>
+    </div>
+  );
+}
+
+function MultiLibraryInspector() {
+  const s = useStore();
+  const ids = s.library.map(c => c.id).filter(id => s.librarySelection.has(id));
+  return (
+    <div className="inspector-content">
+      <Section title={L(`${ids.length}曲を選択中`, `${ids.length} tracks selected`)}>
+        <div className="button-row">
+          <button className="btn primary" onClick={() => s.addToMixMany(ids, s.clips.length)}>{L(`${ids.length}曲をミックスの末尾に入れる`, `Add ${ids.length} Tracks to End of Mix`)}</button>
+          <button className="btn" onClick={() => s.removeFromLibrary(ids)}>{L('ライブラリから削除', 'Remove from Library')}</button>
+        </div>
+      </Section>
+      <Section footer={L('Ctrl+クリックで1曲ずつ、Shift+クリックで範囲を選べます。Delete で選んだ曲を削除します（Ctrl+Z で元に戻せます）。', 'Ctrl-click picks single tracks, Shift-click a range. Delete removes them (Ctrl+Z undoes it).')}>{null}</Section>
+    </div>
+  );
+}
+
+function MixInspector() {
+  const s = useStore();
+  const p = s.progressSummary;
+  return (
+    <div className="inspector-content">
+      <Section title={L('進捗とメモ', 'Progress & Notes')}>
+        <div className="caption">{L(`CUE ${p.cues}/${p.cueTotal} · つなぎ ${p.transitions}/${p.transitionTotal}`, `Cues ${p.cues}/${p.cueTotal} · Transitions ${p.transitions}/${p.transitionTotal}`)}</div>
+        <textarea className="notes" placeholder={L('構成案・やることなど', 'Ideas, to-dos…')} value={s.notes}
+          onKeyDown={e => e.stopPropagation()} onChange={e => { s.notes = e.target.value; s.markDirty(); s.changed(); }} />
+      </Section>
+      <Section title={L('ミックス', 'Mix')}>
+        <Row label={L('ミックスBPM', 'Mix BPM')}><NumberField value={s.masterBPM} min={40} max={220} onCommit={v => s.setMasterBPM(v)} /></Row>
+        <Row label={L('音量をそろえる', 'Loudness')} title={Loudness.detail(s.loudnessMode)}>
+          <select value={s.loudnessMode} onChange={e => s.setLoudnessMode(e.target.value as never)}>
+            {loudnessModes.map(m => <option key={m} value={m}>{Loudness.title(m)}</option>)}
+          </select>
+        </Row>
+        <div className="caption">{Loudness.detail(s.loudnessMode)}</div>
+        <Row label={L('曲を追加したら CUE エディタを開く', 'Open the CUE editor after adding')}><input type="checkbox" checked={s.openCueEditorOnAdd} onChange={() => s.toggle('openCueEditorOnAdd')} /></Row>
+        <Row label={L('曲の音声をファイルに含めて保存', 'Include audio when saving')}><input type="checkbox" checked={s.embedMedia} onChange={() => s.toggle('embedMedia')} /></Row>
+      </Section>
+      <Section title={L('標準のつなぎ', 'Default Transition')} footer={L('新しく入れた曲のつなぎ方。下のボタンで、いまのミックスのすべてのつなぎを同じにできます（Ctrl+Z で戻せます）。', 'Used for newly added tracks. The buttons below apply a recipe to every transition in the mix (Ctrl+Z undoes it).')}>
+        <Row label={L('つなぎ方', 'Style')}>
+          <select value={s.defaultTransitionStyle} onChange={e => { s.defaultTransitionStyle = e.target.value as TransitionStyle; s.saveSettings(); s.changed(); }}>
+            {styleOrder.filter(x => x !== 'custom').map(st => <option key={st} value={st}>{Style.title(st)}</option>)}
+          </select>
+        </Row>
+        <div className="presets">
+          {transitionPresets().map(p => <button key={p.id} className="chip" disabled={s.clips.length < 2} onClick={() => s.applyPresetToAll(p)}>{L('全部を', 'All: ')}{p.title}</button>)}
+        </div>
+      </Section>
+      <Section title={L('操作', 'Controls')}>
+        <div className="shortcuts-mini">
+          <div><kbd>Space</kbd> {L('再生 / 停止', 'Play / pause')}</div>
+          <div><kbd>← →</kbd> {L('選んだ曲の入る位置を1小節ずつ', 'Move the selected entry by a bar')}</div>
+          <div><kbd>1</kbd>–<kbd>6</kbd> {L('つなぎのレシピ', 'Transition recipes')}</div>
+          <div><kbd>Ctrl+T</kbd> {L('つなぎエディタ', 'Transition editor')}</div>
+          <div><kbd>Ctrl+K</kbd> {L('CUE エディタ', 'Cue editor')}</div>
+          <div><kbd>Ctrl+/</kbd> {L('ショートカット一覧', 'All shortcuts')}</div>
+        </div>
+      </Section>
+    </div>
+  );
+}
+
+export function Inspector() {
+  const s = useStore();
+  let body: React.ReactNode;
+  if (s.librarySelection.size > 1) body = <MultiLibraryInspector />;
+  else {
+    const id = s.selectedClipID;
+    const i = id ? s.index(id) : null;
+    if (id && i != null) body = <ClipInspector key={id} clip={s.clips[i]} index={i} />;
+    else if (id && s.libraryIndex(id) != null) body = <LibraryInspector key={id} clip={s.library[s.libraryIndex(id)!]} />;
+    else body = <MixInspector />;
+  }
+  return <div className="inspector">{body}</div>;
+}
+
+void clipEnd; void hasEdits; void Lanes; void effectiveLanes;

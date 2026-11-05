@@ -81,7 +81,7 @@ export function writeProject(p: ProjectFile, media: { id: string; file: string }
   let offset = 0;
   for (const m of media) {
     const size = fs.statSync(m.file).size;
-    entries.push({ id: m.id, fileName: path.basename(m.file), offset, length: size });
+    entries.push({ id: m.id, fileName: storedName(m.id, m.file), offset, length: size });
     offset += size;
   }
   const json = Buffer.from(encodeProject({ ...p, media: entries.length ? entries : null }), 'utf8');
@@ -136,6 +136,79 @@ export function extractMedia(m: MediaEntry, project: string, blobStart: number, 
     fs.closeSync(out);
   }
   fs.renameSync(partial, dest);
+}
+
+/** The file name kept in the package, without the "<mediaID>-" prefixes that unpacking adds. */
+function storedName(id: string, file: string) {
+  let name = path.basename(file);
+  while (name.startsWith(id + '-')) name = name.slice(id.length + 1);
+  return name;
+}
+
+/** Same as `writeProject`, without blocking (the UI stays responsive while hundreds of MB are written). */
+export async function writeProjectAsync(p: ProjectFile, media: { id: string; file: string }[], dest: string) {
+  const entries: MediaEntry[] = [];
+  let offset = 0;
+  for (const m of media) {
+    const size = (await fs.promises.stat(m.file)).size;
+    entries.push({ id: m.id, fileName: storedName(m.id, m.file), offset, length: size });
+    offset += size;
+  }
+  const json = Buffer.from(encodeProject({ ...p, media: entries.length ? entries : null }), 'utf8');
+  const tmp = dest + '.saving';
+  const out = await fs.promises.open(tmp, 'w');
+  try {
+    const header = Buffer.alloc(20);
+    MAGIC.copy(header, 0);
+    header.writeUInt32LE(CONTAINER_VERSION, 8);
+    header.writeBigUInt64LE(BigInt(json.length), 12);
+    await out.write(header);
+    await out.write(json);
+    const chunk = Buffer.alloc(4 << 20);
+    for (const [k, m] of media.entries()) {
+      const src = await fs.promises.open(m.file, 'r');
+      let copied = 0;
+      try {
+        while (copied < entries[k].length) {
+          const { bytesRead } = await src.read(chunk, 0, Math.min(chunk.length, entries[k].length - copied), copied);
+          if (bytesRead <= 0) break;
+          await out.write(chunk, 0, bytesRead);
+          copied += bytesRead;
+        }
+      } finally {
+        await src.close();
+      }
+      if (copied !== entries[k].length) throw new Error(`could not read ${m.file}`);
+    }
+  } finally {
+    await out.close();
+  }
+  await fs.promises.rename(tmp, dest);
+}
+
+/** Same as `extractMedia`, without blocking. */
+export async function extractMediaAsync(m: MediaEntry, project: string, blobStart: number, dest: string) {
+  try {
+    if ((await fs.promises.stat(dest)).size === m.length) return;
+  } catch { /* not there yet */ }
+  await fs.promises.mkdir(path.dirname(dest), { recursive: true });
+  const partial = dest + '.part';
+  const src = await fs.promises.open(project, 'r');
+  const out = await fs.promises.open(partial, 'w');
+  try {
+    const chunk = Buffer.alloc(4 << 20);
+    let done = 0;
+    while (done < m.length) {
+      const { bytesRead } = await src.read(chunk, 0, Math.min(chunk.length, m.length - done), blobStart + m.offset + done);
+      if (bytesRead <= 0) throw new Error('the .djaw file is damaged');
+      await out.write(chunk, 0, bytesRead);
+      done += bytesRead;
+    }
+  } finally {
+    await src.close();
+    await out.close();
+  }
+  await fs.promises.rename(partial, dest);
 }
 
 /** Where audio from a package is unpacked: <appData>/DJAW/Media/<project>/ */

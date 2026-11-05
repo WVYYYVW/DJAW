@@ -43,21 +43,48 @@ export function resample(x: Float32Array, from: number, to: number): Float32Arra
   const TAB = 4096;
   const win = new Float32Array(TAB + 1);
   for (let i = 0; i <= TAB; i++) { const r = i / TAB; win[i] = I0(beta * Math.sqrt(Math.max(0, 1 - r * r))) / i0b; }
-  for (let i = 0; i < n; i++) {
-    const c = i / ratio;
+  const weights = (c: number) => {
     const a = Math.ceil(c - width), b = Math.floor(c + width);
-    let s = 0, wsum = 0;
+    const w = new Float32Array(b - a + 1);
+    let wsum = 0;
     for (let j = a; j <= b; j++) {
       const d = j - c;
       const r = Math.abs(d) / width;
       if (r >= 1) continue;
       const arg = Math.PI * d * cutoff;
       const sinc = arg === 0 ? 1 : Math.sin(arg) / arg;
-      const w = sinc * win[Math.round(r * TAB)];
-      wsum += w;
-      if (j >= 0 && j < x.length) s += x[j] * w;
+      const v = sinc * win[Math.round(r * TAB)];
+      w[j - a] = v;
+      wsum += v;
     }
-    out[i] = wsum > 0 ? s / wsum : 0;
+    if (wsum > 0) for (let k = 0; k < w.length; k++) w[k] /= wsum;
+    return { a, w };
+  };
+  // Rational ratios (44.1 ↔ 22.05 / 48 kHz): the filter only has `L` different phases, so compute them once.
+  const gcd = (u: number, v: number): number => (v ? gcd(v, u % v) : u);
+  const g = Number.isInteger(from) && Number.isInteger(to) ? gcd(from, to) : 0;
+  const L = g ? to / g : 0, M = g ? from / g : 0;
+  if (L > 0 && L <= 4096) {
+    const phases = Array.from({ length: L }, (_, k) => weights((k * M % L) / L));
+    for (let i = 0; i < n; i++) {
+      const base = Math.floor(i * M / L);
+      const { a, w } = phases[i % L];
+      const j0 = base + a;
+      let s = 0;
+      if (j0 >= 0 && j0 + w.length <= x.length) {
+        for (let k = 0; k < w.length; k++) s += x[j0 + k] * w[k];
+      } else {
+        for (let k = 0; k < w.length; k++) { const j = j0 + k; if (j >= 0 && j < x.length) s += x[j] * w[k]; }
+      }
+      out[i] = s;
+    }
+    return out;
+  }
+  for (let i = 0; i < n; i++) {
+    const { a, w } = weights(i / ratio);
+    let s = 0;
+    for (let k = 0; k < w.length; k++) { const j = a + k; if (j >= 0 && j < x.length) s += x[j] * w[k]; }
+    out[i] = s;
   }
   return out;
 }

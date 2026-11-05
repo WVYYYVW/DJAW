@@ -19,11 +19,17 @@
     "productName": "DJAW",
     "files": [
       "build/**/*",
+      "!build/tests/**",
+      "!build/cli/**",
+      "!build/**/*.map",
+      "models/*.onnx",
       "assets/**/*",
       "package.json"
     ],
     "asarUnpack": [
-      "**/*.node"
+      "**/*.node",
+      "node_modules/onnxruntime-node/**",
+      "models/**"
     ],
     "fileAssociations": [
       {
@@ -33,7 +39,14 @@
       }
     ],
     "win": {
-      "target": "nsis"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,

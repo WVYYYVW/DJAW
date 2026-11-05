@@ -19,7 +19,7 @@ src/core/               UI に依存しない TypeScript（Node 単体でテス�
   analysis/*.ts         AudioAnalyzer, StructureAnalyzer, LoudnessAnalyzer, NeuralAnalyzer(ONNX), AnalysisCache
   render/*.ts           Voice（読み出し→伸縮→EQ→FXKernel→エコー→リバーブ→フェーダー）, RenderSession, WAV 書き出し, ミックス波形
   i18n.ts               L(ja, en)
-src/workers/            render.worker.ts（プレビュー・書き出し・波形）, analysis.worker.ts
+src/workers/            render.worker.ts（プレビュー・書き出し・波形。Web Worker）, analysis.child.ts（解析。子プロセス）
 src/renderer/           React UI（store.ts＝MixStore の UI 状態部分、components/…）
 src/vendor/stretch-core.mjs   tools/signalsmith/make-core.mjs で生成
 tests/                  core のテスト（Node）
@@ -169,7 +169,7 @@ JSON                  ProjectFile（キーはソート、日付は ISO8601）
 | Discogs-EffNet（ジャンル, CC BY-NC-SA） | `DJAW_genre_models/discogs-effnet-bsdynamic-1.onnx`, ヘッド `genre_discogs400-...pb`、`DJAW_heads/*.onnx` | 本体とヘッド 4 つは ONNX のまま使える。genre400 ヘッドは .pb → ONNX（tf2onnx）か、重みを取り出して行列計算 |
 | Spleeter 2stems（MIT） | Mac 版では PyTorch に組み直して Core ML 化（TF と相対誤差 8e-6 で一致を確認済み） | 同じ手順で ONNX 化。STFT 4096/1024、1024 ビン × 512 フレーム、伴奏＝原音−ボーカル |
 
-推論は analysis.worker で。Mac 版の前処理（`NeuralAnalyzer.swift`, `GenreAnalyzer.swift`, `StemSeparator.swift`）を厳密に写すこと。
+推論は analysis.child（Electron を Node として起動した子プロセス）で。**onnxruntime-node は renderer の Web Worker では動かない**（読み込むと renderer ごと落ちる）ため。Mac 版の前処理（`NeuralAnalyzer.swift`, `GenreAnalyzer.swift`, `StemSeparator.swift`）を厳密に写すこと。
 
 ## 7. 落とし穴・経緯（Mac 版で分かったこと）
 
