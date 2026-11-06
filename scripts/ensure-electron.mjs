@@ -23,6 +23,23 @@ function installed() {
   } catch { return false; }
 }
 
+/** Unpacks with the system's own tools (the extract-zip package never finishes on Node.js 26). */
+function unzip(zip, to) {
+  const run = (cmd, args) => spawnSync(cmd, args, { stdio: ['ignore', 'ignore', 'inherit'] }).status === 0;
+  let ok = false;
+  if (platform === 'win32') {
+    const tar = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
+    ok = fs.existsSync(tar) && run(tar, ['-xf', zip, '-C', to]);
+    if (!ok) ok = run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+      `Expand-Archive -LiteralPath '${zip.replace(/'/g, "''")}' -DestinationPath '${to.replace(/'/g, "''")}' -Force`]);
+  } else if (platform === 'darwin') {
+    ok = run('ditto', ['-x', '-k', zip, to]);
+  } else {
+    ok = run('unzip', ['-q', '-o', zip, '-d', to]);
+  }
+  if (!ok) throw new Error('ZIP を展開できませんでした');
+}
+
 if (!installed()) {
   console.log('Electron を準備しています（初回のみ、約 100MB のダウンロード）…');
   if (process.env.ELECTRON_SKIP_BINARY_DOWNLOAD) console.log('（環境変数 ELECTRON_SKIP_BINARY_DOWNLOAD が設定されているため、Electron 標準のダウンロードは飛ばされます）');
@@ -49,12 +66,14 @@ if (!installed()) {
     const sums = JSON.parse(fs.readFileSync(path.join(dir, 'checksums.json'), 'utf8'));
     const sha = createHash('sha256').update(zip).digest('hex');
     if (sums[name] && sums[name] !== sha) throw new Error('ダウンロードしたファイルが壊れています（チェックサム不一致）');
-    const tmp = path.join(os.tmpdir(), `${name}.${process.pid}`);
+    // Leftovers of an earlier run that stopped half-way.
+    for (const f of fs.readdirSync(os.tmpdir())) if ((f === `${name}.${f.split('.').pop()}` && /^\d+$/.test(f.split('.').pop()) || /^djaw-\d+-/.test(f) && f.endsWith(name))) fs.rmSync(path.join(os.tmpdir(), f), { force: true });
+    const tmp = path.join(os.tmpdir(), `djaw-${process.pid}-${name}`);
     fs.writeFileSync(tmp, zip);
     const dist = path.join(dir, 'dist');
     fs.rmSync(dist, { recursive: true, force: true });
-    const extract = require(require.resolve('extract-zip', { paths: [dir] }));
-    await extract(tmp, { dir: dist });
+    fs.mkdirSync(dist, { recursive: true });
+    unzip(tmp, dist);
     fs.rmSync(tmp, { force: true });
     const dts = path.join(dist, 'electron.d.ts');
     if (fs.existsSync(dts)) fs.renameSync(dts, path.join(dir, 'electron.d.ts'));
