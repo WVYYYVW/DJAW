@@ -20,6 +20,7 @@ DJAW は、ユーザーが自分で作っている **DAW 風（リアルタイ�
 - ユーザーが作業中のアプリを **勝手に再起動・終了しない**（保存していないミックスが消える）。再起動が必要なら先に聞く。
 - 動作確認用に作った一時ファイル（例：`DJAW_*.wav` などのデバッグ出力）は、終わったら消す。
 - 返答は簡潔に。結果を中心に、何が変わったかをユーザーの言葉で説明する。
+- **更新したら GitHub の Releases に追加する**（2026-11-09 ユーザーの指示）。手順：`package.json` の version を上げる → `RELEASE_NOTES.md` をその版の内容に書き換える → commit・push → Actions の「Release」を起動（`gh api -X POST repos/WVYYYVW/DJAW/actions/workflows/release.yml/dispatches -f ref=main`。クラウドのセッションからはタグの push が通らないため。タグはワークフローが付ける）。Windows インストーラと Mac（Apple シリコン）の dmg が GitHub の機械で作られて載る。
 
 ---
 
