@@ -1,7 +1,7 @@
 {
   "name": "djaw",
   "productName": "DJAW",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DAW-style DJ mix editor",
   "main": "build/main.js",
   "private": true,
@@ -12,8 +12,9 @@
     "watch": "node scripts/build.mjs --watch",
     "typecheck": "tsc --noEmit -p .",
     "test": "node scripts/build.mjs --tests && node --test build/tests/*.test.js",
-    "dist": "node scripts/ensure-electron.mjs && node scripts/build.mjs && electron-builder --win",
-    "postinstall": "node scripts/ensure-electron.mjs"
+    "dist": "node scripts/ensure-electron.mjs && node scripts/build.mjs && electron-builder --win --publish never",
+    "postinstall": "node scripts/ensure-electron.mjs",
+    "dist:mac": "node scripts/ensure-electron.mjs && node scripts/build.mjs && electron-builder --mac --publish never"
   },
   "build": {
     "appId": "com.djaw.mix",
@@ -47,11 +48,43 @@
             "x64"
           ]
         }
+      ],
+      "signAndEditExecutable": false,
+      "files": [
+        "!node_modules/onnxruntime-node/bin/napi-v6/linux/**",
+        "!node_modules/onnxruntime-node/bin/napi-v6/darwin/**",
+        "!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64/**"
       ]
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "DJAW-Setup-${version}.${ext}"
+    },
+    "npmRebuild": false,
+    "artifactName": "DJAW-${version}-${os}-${arch}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "WVYYYVW",
+        "repo": "DJAW"
+      }
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.music",
+      "files": [
+        "!node_modules/onnxruntime-node/bin/napi-v6/linux/**",
+        "!node_modules/onnxruntime-node/bin/napi-v6/win32/**",
+        "!node_modules/onnxruntime-node/bin/napi-v6/darwin/x64/**"
+      ]
     }
   },
   "devDependencies": {
