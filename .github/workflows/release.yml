@@ -1,0 +1,66 @@
+# Builds the Windows installer and the Mac (Apple Silicon) disk image on GitHub's own machines and publishes them
+# as a GitHub Release. Runs when a version tag (v0.2.0, …) is pushed, or by hand from the Actions tab.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            command: npx electron-builder --win --x64 --publish never
+          - os: macos-latest
+            command: npx electron-builder --mac --arm64 --publish never
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: node scripts/build.mjs
+      - name: Package
+        run: ${{ matrix.command }}
+        env:
+          # No Apple / Windows signing certificate: the Mac app is signed ad hoc (see package.json "mac").
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: djaw-${{ matrix.os }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Version
+        id: v
+        shell: bash
+        run: echo "tag=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || steps.v.outputs.tag }}
+          name: DJAW ${{ github.ref_type == 'tag' && github.ref_name || steps.v.outputs.tag }}
+          body_path: RELEASE_NOTES.md
+          files: out/*
+          make_latest: true
