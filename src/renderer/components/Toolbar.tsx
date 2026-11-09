@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { L } from '../../core/i18n';
 import { Snap, snapUnits, clipEnd } from '../../core/models';
 import { useStore, usePlayhead } from '../hooks';
+import { CloudChip } from './CloudSheet';
 import { store } from '../store/store';
 import { Fmt, Theme, clipColor } from '../format';
 
@@ -65,7 +66,7 @@ export function Toolbar() {
   return (
     <div className="toolbar">
       <button className="tbtn" onClick={() => s.presentAddFiles()} title={L('曲を追加（Ctrl+Shift+I）— ファイルやフォルダをドロップしても追加できます', 'Add tracks (Ctrl+Shift+I) — you can also drop files or folders')}>＋ {L('曲を追加', 'Add Tracks')}</button>
-      <div className="doc-title">{s.documentTitle}{s.isDirty ? <span className="edited"> — {L('編集済み', 'Edited')}</span> : null}</div>
+      <div className="doc-title">{s.documentTitle}{s.isDirty && !s.isCloudDocument() ? <span className="edited"> — {L('編集済み', 'Edited')}</span> : null}<CloudChip /></div>
       <div className="transport">
         <button className="tbtn icon" onClick={() => { s.seek(0); s.requestScroll(0); }} title={L('先頭へ（Home）', 'Go to start (Home)')}>⏮</button>
         <button className="tbtn icon play" onClick={() => s.togglePlay()} disabled={!s.clips.length} title={L('再生 / 一時停止（Space）', 'Play / pause (Space)')}>{s.isPlaying ? '⏸' : '▶'}</button>
@@ -86,6 +87,7 @@ export function Toolbar() {
       <Toggle on={s.showMixer} disabled={!s.showDecks} onClick={() => s.toggle('showMixer')} title={L('デッキの間のミキサーの表示 / 非表示', 'Show or hide the mixer')}>{L('ミキサー', 'Mixer')}</Toggle>
       <Toggle on={s.followPlayhead} onClick={() => s.toggle('followPlayhead')} title={L('再生中に表示を再生位置に追従させる', 'Keep the playhead in view while playing')}>{L('追従', 'Follow')}</Toggle>
       <button className="tbtn" onClick={() => { s.showVisualPreview = true; s.changed(); }} title={L('映像プレビュー：書き出す映像を、再生に合わせてその場で確認（Ctrl+Alt+V）', 'Visuals preview: see the video visuals live with playback (Ctrl+Alt+V)')}>✦ {L('映像', 'Visuals')}</button>
+      <button className="tbtn" onClick={() => { s.showCloud = true; s.changed(); }} title={L('クラウド（MEGA）：Windows と Mac でミックスを共有（Ctrl+Shift+O）', 'Cloud (MEGA): share mixes between Windows and Mac (Ctrl+Shift+O)')}>☁ {L('クラウド', 'Cloud')}</button>
       <button className="tbtn" disabled={!s.clips.length} onClick={() => { s.showPerformanceGuide = true; s.changed(); }} title={L('このセットを DJ 機材で実際に演奏する手順と、曲リスト（SoundCloud の概要用）', 'Steps to play this set live on DJ gear, and the track list (for SoundCloud descriptions)')}>☰ {L('演奏手順', 'How to Play')}</button>
       <button className="tbtn" disabled={!s.clips.length} onClick={() => { s.showExport = true; s.changed(); }} title={L('ミックスを書き出し（Ctrl+E）', 'Export the mix (Ctrl+E)')}>⇪ {L('書き出し', 'Export')}</button>
       <Toggle on={s.showInspector} onClick={() => s.toggle('showInspector')} title={L('インスペクタの表示切替（Ctrl+Alt+I）', 'Show or hide the inspector (Ctrl+Alt+I)')}>▥</Toggle>

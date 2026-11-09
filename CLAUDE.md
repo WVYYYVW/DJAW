@@ -120,6 +120,7 @@ Windows では WebCodecs（H.264）＋ mp4 マルチプレクサ、または ffm
 - 自動ミックス：`src/core/automixer.ts`、`src/renderer/store/automix.ts`、演奏手順 `src/core/performance.ts`
 - ストア拡張：`src/renderer/store/{automix,simplify,profiles,video,stems}.ts`（`declare module './store'` で MixStore に足す方式。store.ts からこれらを import しないこと＝循環 import で起動時に落ちる）
 - AAC エンコーダが無い環境（Linux の Electron など）では、映像の音声は Opus 48kHz に自動で切り替え。M4A 書き出しはエラー表示
+- クラウド（MEGA の同期フォルダ）：`src/core/cloud.ts`、`src/renderer/store/cloud.ts`、`components/CloudSheet.tsx`。クラウドに保存するミックスは音声を埋め込まず、曲は `<MEGA>/DJAW/曲/` に1回だけコピーし relativePath で引く。Mac 版の解析データ（analyses、10MB 超）はクラウド保存では省く。一時ファイルは「.」始まり（MEGA が同期しない）
 - まだ Windows 実機で確認していないもの：AAC（Media Foundation）での M4A／映像書き出し、映像プレビューの別ウィンドウ、iTunes XML の実データ
 
 ## 7. 参考：Mac 版の状態（2026-11-05）

@@ -27,6 +27,7 @@ import { dataDir } from '../services/env';
 import { Player } from '../services/player';
 import { Jobs } from '../services/jobs';
 import { MixPeaks } from '../../core/render/offline';
+import { resolveRelative } from '../../core/cloud';
 import { MixWaveformChange, MixWaveformInputs, mixWaveformChange, provisionalPeaks, splicePeaks } from '../../core/render/mixWaveform';
 import type { MixMessage } from '../../workers/render.worker';
 import { Fmt } from '../format';
@@ -282,8 +283,12 @@ export class MixStore {
     this.changed();
   }
 
+  /** Counts edits (a save only clears isDirty when nothing was edited while it ran). */
+  editSerial = 0;
+
   markDirty() {
     this.isDirty = true;
+    this.editSerial++;
     this.scheduleAutosave();
   }
 
@@ -1509,6 +1514,7 @@ export class MixStore {
     this.macAnalyses = null; this.macProfiles = null;
     this.isDirty = false;
     this.removeAutosave();
+    this.cloudDidOpen();
     this.changed();
     this.emitClock();
   }
@@ -1526,8 +1532,8 @@ export class MixStore {
 
   private static relink(c: Clip, projectFile: string | null): Clip {
     if (fs.existsSync(c.url) || !c.relativePath || !projectFile) return c;
-    const candidate = path.resolve(path.dirname(projectFile), c.relativePath.split('/').join(path.sep));
-    return fs.existsSync(candidate) ? { ...c, url: candidate } : c;
+    const candidate = resolveRelative(path.dirname(projectFile), c.relativePath);
+    return candidate ? { ...c, url: candidate } : c;
   }
 
   async load(file: string, asRecovery = false) {
@@ -1599,7 +1605,9 @@ export class MixStore {
       }
       this.isDirty = asRecovery;
       if (!asRecovery) this.noteRecent(file);
-      if (this.missingFiles.size) this.alertMessage = L(`${this.missingFiles.size}個の音声ファイルが見つかりません。移動または削除された可能性があります。`, `${this.missingFiles.size} audio file(s) could not be found. They may have been moved or deleted.`);
+      this.cloudDidOpen();
+      // In the cloud folder, missing tracks are usually still on their way (shown in the cloud bar instead).
+      if (this.missingFiles.size && !this.isCloudDocument()) this.alertMessage = L(`${this.missingFiles.size}個の音声ファイルが見つかりません。移動または削除された可能性があります。`, `${this.missingFiles.size} audio file(s) could not be found. They may have been moved or deleted.`);
       this.changed();
       this.emitClock();
       await this.loadAnalyses();
@@ -1610,7 +1618,7 @@ export class MixStore {
   }
 
   /** Waveforms / structures for every track (cached analyses load at once; new files are analysed). */
-  private async loadAnalyses() {
+  async loadAnalyses() {
     const urls = [...new Set([...this.clips, ...this.library].map(c => c.url))].filter(u => !this.missingFiles.has(u) && !this.waveforms.has(u));
     const items: PendingTrack[] = urls.map(u => ({ id: uuid(), url: u, name: path.basename(u, path.extname(u)) }));
     this.pending = [...this.pending, ...items];
@@ -1639,7 +1647,7 @@ export class MixStore {
     this.runPendingAutoMix();
   }
 
-  private noteRecent(file: string) {
+  noteRecent(file: string) {
     this.recentDocuments = [file, ...this.recentDocuments.filter(p => p !== file)].slice(0, 10);
     this.saveSettings();
     ipcRenderer.send('recent:add', file);
@@ -1649,7 +1657,7 @@ export class MixStore {
     return path.relative(fromDir, to).split(path.sep).join('/');
   }
 
-  private makeProjectFile(file: string | null, originalPath: string | null = null): ProjectFile {
+  makeProjectFile(file: string | null, originalPath: string | null = null): ProjectFile {
     const dir = file ? path.dirname(file) : null;
     const withRel = (c: Clip) => (dir ? { ...c, relativePath: MixStore.relativePath(dir, c.url) } : c);
     const used = this.customTransitions.filter(p => this.clips.some(c => c.transition === 'custom' && JSON.stringify(c.lanes) === JSON.stringify(p.lanes)));
@@ -1676,6 +1684,8 @@ export class MixStore {
       if (!r) return false;
       target = r;
     }
+    // In the cloud folder: tracks copied once into it, the mix itself without audio (see store/cloud.ts).
+    if (this.isCloudPath(target!)) return this.saveCloud(target!, false);
     try {
       if (this.embedMedia) {
         const ids = new Map<string, string>();
@@ -1717,6 +1727,8 @@ export class MixStore {
 
   private writeAutosave() {
     if (!this.isDirty || (!this.clips.length && !this.library.length)) return;
+    // A mix in the cloud folder is saved there by itself (so the other computer gets it).
+    if (this.cloudAutoSave && this.isCloudDocument()) void this.saveCloud(this.documentPath!, true);
     try {
       fs.mkdirSync(path.dirname(MixStore.autosavePath), { recursive: true });
       fs.writeFileSync(MixStore.autosavePath, encodeProject(this.makeProjectFile(this.documentPath, this.documentPath)));

@@ -22,6 +22,7 @@ import { AutoArrangeSheet } from './components/AutoArrangeSheet';
 import { PerformanceGuideSheet } from './components/PerformanceGuideSheet';
 import { VisualPreviewWindow } from './components/VisualPreview';
 import { MusicLibrarySheet } from './components/MusicLibrarySheet';
+import { CloudBar, CloudSheet } from './components/CloudSheet';
 import { TrackProfileSheet } from './components/TrackProfileSheet';
 
 function readLanguage(): AppLanguage {
@@ -84,6 +85,8 @@ export function App() {
         case 'musicLibrary': s.showMusicLibrary = true; s.changed(); break;
         case 'save': await s.save(false); break;
         case 'saveAs': await s.save(true); break;
+        case 'cloud': s.showCloud = true; s.changed(); break;
+        case 'saveToCloud': await s.saveToCloudAs(); break;
         case 'toggleEmbed': s.toggle('embedMedia'); break;
         case 'export': if (s.clips.length) { s.showExport = true; s.changed(); } break;
         case 'copyTrackList': s.copyTrackList(); break;
@@ -139,7 +142,7 @@ export function App() {
       if (e.defaultPrevented || isTextField(e.target)) return;
       if (s.showExport || s.alertMessage) return;
       // Inside an editor the keys belong to it; only Space in the transition editor is shared.
-      if (s.cueEditorTarget || s.transitionEditorTarget || s.showShortcuts || s.showAutoArrange || s.showPerformanceGuide || s.profileEditorTarget || s.showMusicLibrary) {
+      if (s.cueEditorTarget || s.transitionEditorTarget || s.showShortcuts || s.showAutoArrange || s.showPerformanceGuide || s.profileEditorTarget || s.showMusicLibrary || s.showCloud) {
         if (e.key !== ' ' || s.cueEditorTarget || !s.transitionEditorTarget) return;
         const c = s.clip(s.transitionEditorTarget);
         if (!c) return;
@@ -199,6 +202,7 @@ export function App() {
   return (
     <div className="app" key={lang}>
       <Toolbar />
+      <CloudBar />
       <div className="body">
         <Sidebar />
         <div className="main" ref={mainRef}>
@@ -210,6 +214,7 @@ export function App() {
       </div>
       {s.showAutoArrange && <AutoArrangeSheet />}
       {s.showMusicLibrary && <MusicLibrarySheet />}
+      {s.showCloud && <CloudSheet />}
       {s.transitionEditorTarget && <TransitionEditor />}
       {s.cueEditorTarget && <CueEditor key={s.cueEditorTarget ? 'cue' : ''} />}
       {s.showExport && <ExportSheet />}

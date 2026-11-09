@@ -35,6 +35,7 @@ function buildMenu() {
       submenu: [
         item(L('新規ミックス', 'New Mix'), 'new', 'CmdOrCtrl+N'),
         item(L('開く…', 'Open…'), 'open', 'CmdOrCtrl+O'),
+        item(L('クラウドのミックス（MEGA）…', 'Cloud Mixes (MEGA)…'), 'cloud', 'CmdOrCtrl+Shift+O'),
         {
           label: L('最近使ったミックスを開く', 'Open Recent'),
           submenu: recent.length ? recent.map(p => item(path.basename(p, '.djaw'), 'openRecent', undefined, p)) : [{ label: L('なし', 'None'), enabled: false }],
@@ -45,6 +46,7 @@ function buildMenu() {
         sep,
         item(L('保存', 'Save'), 'save', 'CmdOrCtrl+S'),
         item(L('別名で保存…', 'Save As…'), 'saveAs', 'CmdOrCtrl+Shift+S'),
+        item(L('クラウド（MEGA）に保存…', 'Save to Cloud (MEGA)…'), 'saveToCloud', 'CmdOrCtrl+Alt+S'),
         item(L('曲の音声をファイルに含めて保存（切替）', 'Include Audio When Saving (toggle)'), 'toggleEmbed'),
         sep,
         item(L('書き出し…', 'Export…'), 'export', 'CmdOrCtrl+E'),

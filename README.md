@@ -35,5 +35,6 @@ Mac 版で作った `.djaw` ファイルはそのまま開けます（音声を�
 - ボーカル分離（Spleeter、1 曲 4 分で約 15 秒、`%APPDATA%\DJAW\Stems` に保存）
 - 書き出し：WAV（24bit）／M4A（AAC 256kbps）、44.1／48 kHz、映像付き MP4（H.264、オート VJ・パルス・トンネル・レーザー・スペクトラム）、映像プレビュー（別ウィンドウ、Ctrl+Alt+V）
 - プレビュー再生は書き出しと同じエンジン。`.djaw` の読み書き・自動保存
+- クラウド（MEGA）：MEGA の同期フォルダに保存して Windows と Mac で共有（曲は `MEGA/DJAW/曲` に1回だけコピー、ミックス本体は数十KB。自動保存・別のパソコンの新しい版の自動読み込み・使用中の表示・同期待ちの曲の自動読み込み）
 
 `models/` のモデルのライセンスは `models/ThirdPartyNotices.txt`（EffNet は非商用）。

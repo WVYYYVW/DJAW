@@ -983,6 +983,8 @@ export interface ProjectFile {
   analysesJS?: Record<string, string> | null;
   loudnessMode?: LoudnessMode | null;
   profiles?: Record<string, unknown> | null;
+  /** Which computer saved it last (for mixes shared through a cloud folder). */
+  savedOn?: string | null;
 }
 
 export const projectFormatID = 'DJAW-Mix';
