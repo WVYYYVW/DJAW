@@ -48,11 +48,6 @@
             "x64"
           ]
         }
-      ],
-      "files": [
-        "!node_modules/onnxruntime-node/bin/napi-v6/linux/**",
-        "!node_modules/onnxruntime-node/bin/napi-v6/darwin/**",
-        "!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64/**"
       ]
     },
     "nsis": {
@@ -79,18 +74,14 @@
         }
       ],
       "category": "public.app-category.music",
-      "files": [
-        "!node_modules/onnxruntime-node/bin/napi-v6/linux/**",
-        "!node_modules/onnxruntime-node/bin/napi-v6/win32/**",
-        "!node_modules/onnxruntime-node/bin/napi-v6/darwin/x64/**"
-      ],
       "identity": "-",
       "hardenedRuntime": false,
       "gatekeeperAssess": false
     },
     "dmg": {
       "artifactName": "DJAW-${version}-mac-arm64.${ext}"
-    }
+    },
+    "afterPack": "scripts/after-pack.cjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
