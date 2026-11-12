@@ -396,11 +396,15 @@ export class MixStore {
     return out;
   }
 
-  async presentAddFiles() {
+  /** Windows (and Linux) dialogs can't pick files and folders at once — asking for both shows a folder picker —
+   *  so there they are two commands; on the Mac one dialog takes either. */
+  async presentAddFiles(folders = false) {
+    const mac = process.platform === 'darwin';
     const r = await ipcRenderer.invoke('dialog:open', {
-      title: L('曲を追加', 'Add Tracks'), message: L('ミックスに追加する曲（またはフォルダ）を選択してください', 'Choose tracks (or folders) to add to the mix'),
-      properties: ['openFile', 'openDirectory', 'multiSelections'],
-      filters: [{ name: L('音声', 'Audio'), extensions: [...audioExtensions] }],
+      title: folders ? L('フォルダから曲を追加', 'Add Tracks from Folders') : L('曲を追加', 'Add Tracks'),
+      message: L('ミックスに追加する曲（またはフォルダ）を選択してください', 'Choose tracks (or folders) to add to the mix'),
+      properties: mac ? ['openFile', 'openDirectory', 'multiSelections'] : [folders ? 'openDirectory' : 'openFile', 'multiSelections'],
+      filters: folders && !mac ? undefined : [{ name: L('音声', 'Audio'), extensions: [...audioExtensions] }, { name: L('すべてのファイル', 'All Files'), extensions: ['*'] }],
     });
     if (r && r.length) this.addFiles(r, { kind: 'library' });
   }

@@ -14,6 +14,7 @@ import { Structure } from '../../core/analysis/structure';
 import { normalizeGain } from '../../core/render/offline';
 import { store, MixStore } from '../store/store';
 import { Fmt, Theme, clipColor, hsb } from '../format';
+import { droppedPaths } from '../dropped';
 import { showContextMenu, MenuItem } from './ContextMenu';
 
 const INSET = 24, RULER = 34, LANE_GAP = 18, HEADER = 20, TEMPO_STRIP = 16, MIX_LANE = 64;
@@ -936,6 +937,7 @@ class TimelineView {
     } else {
       items.push({ label: L('再生位置をここに移動', 'Move Playhead Here'), action: () => store.seek(t) });
       items.push({ label: L('曲を追加…', 'Add Tracks…'), action: () => store.presentAddFiles() });
+      if (process.platform !== 'darwin') items.push({ label: L('フォルダから曲を追加…', 'Add Tracks from Folder…'), action: () => store.presentAddFiles(true) });
     }
     showContextMenu(e, items);
   }
@@ -1008,7 +1010,7 @@ export function Timeline() {
     const dragLeave = () => { v.dropTime = null; v.requestDraw(); };
     const drop = (e: DragEvent) => {
       e.preventDefault();
-      const files = [...(e.dataTransfer?.files ?? [])].map(f => (f as File & { path: string }).path).filter(Boolean);
+      const files = droppedPaths(e.dataTransfer);
       const index = v.dropIndex;
       v.dropTime = null;
       v.requestDraw();

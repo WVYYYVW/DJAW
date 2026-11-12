@@ -7,6 +7,7 @@ import { Key } from '../../core/analysis/structure';
 import { useStore } from '../hooks';
 import { store } from '../store/store';
 import { Fmt, clipColor } from '../format';
+import { droppedPaths } from '../dropped';
 import { showContextMenu } from './ContextMenu';
 
 function TrackRow({ clip, index, inMix }: { clip: Clip; index: number; inMix: boolean }) {
@@ -103,7 +104,7 @@ export function Sidebar() {
   const onDropMix = (e: React.DragEvent, k: number) => {
     e.preventDefault();
     setDropAt(null);
-    const files = [...e.dataTransfer.files].map(f => (f as File & { path: string }).path).filter(Boolean);
+    const files = droppedPaths(e.dataTransfer);
     if (files.length) { s.addFiles(files, { kind: 'mix', index: k }); return; }
     const raw = e.dataTransfer.getData('text/djaw-track');
     if (!raw) return;
@@ -114,7 +115,7 @@ export function Sidebar() {
     <div className="sidebar"
       onDragOver={e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }}
       onDrop={e => {
-        const files = [...e.dataTransfer.files].map(f => (f as File & { path: string }).path).filter(Boolean);
+        const files = droppedPaths(e.dataTransfer);
         if (files.length) { e.preventDefault(); s.addFiles(files, { kind: 'library' }); }
       }}>
       <div className="side-section">
@@ -162,7 +163,7 @@ export function Sidebar() {
           {!s.library.length && !s.pending.length && (
             <div className="empty">
               {L('ここに音声ファイルをドロップすると、ミックスに入れる前の曲として準備できます', 'Drop audio files here to prepare tracks before they go into the mix')}
-              <div><button className="tbtn" onClick={() => s.presentAddFiles()}>{L('曲を追加…', 'Add Tracks…')}</button> <button className="tbtn" onClick={() => { s.showMusicLibrary = true; s.changed(); }}>{L('ミュージックから追加…', 'Add from Music…')}</button></div>
+              <div><button className="tbtn" onClick={() => s.presentAddFiles()}>{L('曲を追加…', 'Add Tracks…')}</button> {process.platform !== 'darwin' && <button className="tbtn" onClick={() => s.presentAddFiles(true)}>{L('フォルダから追加…', 'Add Folder…')}</button>} <button className="tbtn" onClick={() => { s.showMusicLibrary = true; s.changed(); }}>{L('ミュージックから追加…', 'Add from Music…')}</button></div>
             </div>
           )}
         </div>

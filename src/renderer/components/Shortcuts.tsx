@@ -47,6 +47,7 @@ export function Shortcuts() {
     [L('ファイル', 'File'), [
       ['Ctrl+N / Ctrl+O / Ctrl+S', L('新規 / 開く / 保存', 'New / open / save')],
       ['Ctrl+Shift+I', L('曲を追加', 'Add tracks')],
+      ['Ctrl+Alt+Shift+F', L('フォルダから曲を追加（Windows）', 'Add tracks from a folder (Windows)')],
       ['Ctrl+Shift+O', L('クラウドのミックス（MEGA）', 'Cloud mixes (MEGA)')],
       ['Ctrl+Alt+S', L('クラウド（MEGA）に保存', 'Save to the cloud (MEGA)')],
       ['Ctrl+Alt+Shift+I', L('ミュージック（iTunes）から追加', 'Add from Music (iTunes)')],

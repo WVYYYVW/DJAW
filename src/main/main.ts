@@ -1,6 +1,7 @@
 // Electron main process: the window, the menu bar, file dialogs and the recent-documents list.
 import { app, BrowserWindow, dialog, ipcMain, Menu, MenuItemConstructorOptions, shell } from 'electron';
 import fs from 'node:fs';
+const isMac = process.platform === 'darwin';
 import path from 'node:path';
 
 app.setName('DJAW');
@@ -42,6 +43,7 @@ function buildMenu() {
         },
         sep,
         item(L('曲を追加…', 'Add Tracks…'), 'addTracks', 'CmdOrCtrl+Shift+I'),
+        ...(isMac ? [] : [item(L('フォルダから曲を追加…', 'Add Tracks from Folder…'), 'addFolder', 'CmdOrCtrl+Alt+Shift+F')]),
         item(L('ミュージックから追加…', 'Add from Music…'), 'musicLibrary', 'CmdOrCtrl+Alt+Shift+I'),
         sep,
         item(L('保存', 'Save'), 'save', 'CmdOrCtrl+S'),
