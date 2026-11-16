@@ -1,5 +1,7 @@
 # Builds the Windows installer and the Mac (Apple Silicon) disk image on GitHub's own machines and publishes them
 # as a GitHub Release. Runs when a version tag (v0.2.0, …) is pushed, or by hand from the Actions tab.
+# The release is created first and each build uploads its file to it directly (no workflow artifacts: their storage
+# is limited).
 name: Release
 
 on:
@@ -11,7 +13,27 @@ permissions:
   contents: write
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version
+        id: v
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = tag ]; then echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT";
+          else echo "tag=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"; fi
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.v.outputs.tag }}
+          name: DJAW ${{ steps.v.outputs.tag }}
+          body_path: RELEASE_NOTES.md
+          make_latest: true
+
   build:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -36,31 +58,10 @@ jobs:
         env:
           # No Apple / Windows signing certificate: the Mac app is signed ad hoc (see package.json "mac").
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      - uses: actions/upload-artifact@v4
-        with:
-          name: djaw-${{ matrix.os }}
-          path: |
-            dist/*.exe
-            dist/*.dmg
-          if-no-files-found: error
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          path: out
-          merge-multiple: true
-      - name: Version
-        id: v
-        shell: bash
-        run: echo "tag=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || steps.v.outputs.tag }}
-          name: DJAW ${{ github.ref_type == 'tag' && github.ref_name || steps.v.outputs.tag }}
-          body_path: RELEASE_NOTES.md
-          files: out/*
-          make_latest: true
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          files: |
+            dist/*.exe
+            dist/*.dmg
+          fail_on_unmatched_files: true
