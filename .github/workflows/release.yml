@@ -40,8 +40,10 @@ jobs:
         include:
           - os: windows-latest
             command: npx electron-builder --win --x64 --publish never
+            files: dist/*.exe
           - os: macos-latest
             command: npx electron-builder --mac --arm64 --publish never
+            files: dist/*.dmg
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -61,7 +63,5 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
-          files: |
-            dist/*.exe
-            dist/*.dmg
+          files: ${{ matrix.files }}
           fail_on_unmatched_files: true
