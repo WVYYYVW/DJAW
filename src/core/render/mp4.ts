@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { L } from '../i18n';
 import { Muxer, StreamTarget } from 'mp4-muxer';
 
-export interface Mp4Video { width: number; height: number; fps: number; bitrate: number }
+export interface Mp4Video { width: number; height: number; fps: number; bitrate: number; /** Use the GPU's encoder. */ hardware?: boolean }
 export type Mp4Audio = 'aac' | 'opus';
 
 export class Mp4Writer {
@@ -15,7 +15,12 @@ export class Mp4Writer {
   private samples = 0;
   private error: Error | null = null;
 
-  private constructor(readonly path: string, readonly sampleRate: number, bitrate: number, video: Mp4Video | null, readonly audioCodec: Mp4Audio) {
+  /** The video goes through the GPU's encoder. */
+  hardware = false;
+  private fdClosed = false;
+
+  private constructor(readonly path: string, readonly sampleRate: number, bitrate: number,
+    video: (Mp4Video & { mode?: 'prefer-hardware' | 'prefer-software' | 'no-preference' }) | null, readonly audioCodec: Mp4Audio) {
     this.fd = fs.openSync(path, 'w');
     const fd = this.fd;
     this.muxer = new Muxer({
@@ -34,8 +39,19 @@ export class Mp4Writer {
         output: (chunk, meta) => this.muxer.addVideoChunk(chunk, meta),
         error: e => { this.error = e instanceof Error ? e : new Error(String(e)); },
       });
-      this.video.configure({ codec: Mp4Writer.avcCodec(video), width: video.width, height: video.height, bitrate: video.bitrate, framerate: video.fps, avc: { format: 'avc' } });
+      this.video.configure(Mp4Writer.videoConfig(video, video.mode ?? 'no-preference'));
     }
+  }
+
+  static videoConfig(v: Mp4Video, hw: 'prefer-hardware' | 'prefer-software' | 'no-preference'): VideoEncoderConfig {
+    return { codec: Mp4Writer.avcCodec(v), width: v.width, height: v.height, bitrate: v.bitrate, framerate: v.fps,
+      hardwareAcceleration: hw, latencyMode: 'quality', avc: { format: 'avc' } } as VideoEncoderConfig;
+  }
+
+  /** Whether the GPU's H.264 encoder takes this size (Windows: NVIDIA / Intel / AMD through Media Foundation;
+   *  Mac: VideoToolbox). */
+  static async hardwareVideoSupported(v: Mp4Video) {
+    try { return !!(await VideoEncoder.isConfigSupported(Mp4Writer.videoConfig(v, 'prefer-hardware'))).supported; } catch { return false; }
   }
 
   /** H.264 High profile at a level that fits the frame size. */
@@ -51,11 +67,18 @@ export class Mp4Writer {
     if (audioCodec === 'aac' && !(await Mp4Writer.aacSupported(sampleRate, bitrate))) {
       throw new Error(L('このパソコンでは AAC（M4A）に書き出せません。WAV で書き出してください。', 'AAC (M4A) encoding is not available on this computer. Please export as WAV.'));
     }
+    let mode: 'prefer-hardware' | 'prefer-software' | 'no-preference' | null = null;
     if (video) {
-      const v = await VideoEncoder.isConfigSupported({ codec: Mp4Writer.avcCodec(video), width: video.width, height: video.height, bitrate: video.bitrate, framerate: video.fps });
-      if (!v.supported) throw new Error(L('このパソコンでは H.264 の映像を書き出せません。', 'H.264 video encoding is not available on this computer.'));
+      type Mode = 'prefer-hardware' | 'prefer-software' | 'no-preference';
+      const order: Mode[] = video.hardware ? ['prefer-hardware', 'no-preference', 'prefer-software'] : ['prefer-software', 'no-preference'];
+      for (const m of order) {
+        try { if ((await VideoEncoder.isConfigSupported(Mp4Writer.videoConfig(video, m))).supported) { mode = m; break; } } catch { /* next */ }
+      }
+      if (!mode) throw new Error(L('このパソコンでは H.264 の映像を書き出せません。', 'H.264 video encoding is not available on this computer.'));
     }
-    return new Mp4Writer(path, sampleRate, bitrate, video, audioCodec);
+    const w = new Mp4Writer(path, sampleRate, bitrate, video ? { ...video, mode: mode! } : null, audioCodec);
+    w.hardware = mode === 'prefer-hardware';
+    return w;
   }
 
   private async drain(enc: { encodeQueueSize: number }) {
@@ -93,7 +116,7 @@ export class Mp4Writer {
     } finally {
       try { this.audio.close(); } catch { /* closed */ }
       try { this.video?.close(); } catch { /* closed */ }
-      fs.closeSync(this.fd);
+      if (!this.fdClosed) { this.fdClosed = true; fs.closeSync(this.fd); }
     }
   }
 
@@ -101,6 +124,6 @@ export class Mp4Writer {
   abort() {
     try { this.audio.close(); } catch { /* closed */ }
     try { this.video?.close(); } catch { /* closed */ }
-    try { fs.closeSync(this.fd); } catch { /* closed */ }
+    if (!this.fdClosed) { this.fdClosed = true; try { fs.closeSync(this.fd); } catch { /* closed */ } }
   }
 }

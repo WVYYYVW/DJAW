@@ -64,7 +64,11 @@ async function pass(m: MixInput, gain: number, cancel: CancelFlag, progress: (p:
 }
 
 export type ExportFormat = 'wav24' | 'aac256';
-export interface ExportOptions { sampleRate: number; normalize: boolean; bits: WavBits; format?: ExportFormat }
+export interface ExportOptions {
+  sampleRate: number; normalize: boolean; bits: WavBits; format?: ExportFormat;
+  /** One pass at gain 1, unclipped (float WAV only): the caller applies the level itself, from the returned peak. */
+  raw?: boolean;
+}
 
 /** A sink for rendered audio at the engine rate: resampled to the export rate when they differ. */
 export function rateSink(from: number, to: number, write: (L: Float32Array, R: Float32Array, n: number) => void | Promise<void>) {
@@ -80,8 +84,21 @@ export function rateSink(from: number, to: number, write: (L: Float32Array, R: F
 
 /** Writes the mix as WAV (24-bit) or M4A (AAC 256 kbps). Normalizing renders twice (peak first) unless the peak is already known. */
 export async function exportWav(m: MixInput, dest: string, o: ExportOptions, cancel: CancelFlag,
-  progress: (p: number) => void, knownPeak?: number | null): Promise<void> {
+  progress: (p: number) => void, knownPeak?: number | null): Promise<number> {
   if (!(mixEndReal(m) > 0)) throw new Error('no tracks');
+  if (o.raw) {
+    const w = new WavWriter(dest, o.sampleRate || m.sampleRate, 32);
+    let peak = 0;
+    try {
+      const sink = rateSink(m.sampleRate, o.sampleRate || m.sampleRate, (L, R, n) => w.write(L, R, n));
+      peak = await pass(m, 1, cancel, progress, (L, R, n) => { void sink.push(L, R, n); }, false);
+      await sink.finish();
+    } finally {
+      w.close();
+    }
+    progress(1);
+    return peak;
+  }
   let gain = 1;
   if (o.normalize && knownPeak != null) gain = normalizeGain(knownPeak);
   else if (o.normalize) gain = normalizeGain(await pass(m, 1, cancel, p => progress(p * 0.5), () => {}, false));
@@ -112,6 +129,7 @@ export async function exportWav(m: MixInput, dest: string, o: ExportOptions, can
     }
   }
   progress(1);
+  return gain;
 }
 
 /** The mix waveform exactly as an export renders it: min / max / RMS per bin, before gain and clipping. */

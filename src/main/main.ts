@@ -1,10 +1,17 @@
 // Electron main process: the window, the menu bar, file dialogs and the recent-documents list.
 import { app, BrowserWindow, dialog, ipcMain, Menu, MenuItemConstructorOptions, shell } from 'electron';
 import fs from 'node:fs';
-const isMac = process.platform === 'darwin';
 import path from 'node:path';
+const isMac = process.platform === 'darwin';
 
 app.setName('DJAW');
+// Use the GPU as much as possible: drawing the visuals (canvas), and video encoding through the system's hardware
+// encoder (NVIDIA / Intel / AMD on Windows, VideoToolbox on the Mac). Set DJAW_NO_GPU=1 to start without these.
+if (!process.env.DJAW_NO_GPU && (process.platform === 'win32' || isMac)) {
+  app.commandLine.appendSwitch('ignore-gpu-blocklist');       // drivers Chromium is unsure about are used anyway
+  app.commandLine.appendSwitch('enable-gpu-rasterization');   // canvas drawing on the GPU
+  app.commandLine.appendSwitch('enable-zero-copy');            // drawn frames handed to the encoder without copies
+}
 let win: BrowserWindow | null = null;
 let lang: 'ja' | 'en' = 'ja';
 let canClose = false;
@@ -171,6 +178,14 @@ function createWindow(fileToOpen?: string) {
   buildMenu();
 }
 
+ipcMain.handle('gpu:status', async () => {
+  let devices: string[] = [];
+  try {
+    const info = await app.getGPUInfo('basic') as { gpuDevice?: { active?: boolean; vendorId?: number; deviceId?: number; driverVendor?: string; deviceString?: string }[] };
+    devices = (info.gpuDevice ?? []).filter(d => d.active !== false).map(d => d.deviceString || d.driverVendor || `${d.vendorId?.toString(16)}:${d.deviceId?.toString(16)}`);
+  } catch { /* no GPU info */ }
+  return { features: app.getGPUFeatureStatus(), devices };
+});
 ipcMain.handle('dialog:open', async (_e, opts) => {
   const r = await dialog.showOpenDialog(win!, opts);
   return r.canceled ? null : r.filePaths;

@@ -5,12 +5,39 @@ import { useStore } from '../hooks';
 import { Fmt } from '../format';
 import { VisualStyles, visualStyles, VisualStyle } from '../../core/visuals';
 import type { VideoSize } from '../store/video';
+import { Mp4Writer } from '../../core/render/mp4';
 
 function durationText(t: number) {
   const s = Math.round(t);
   if (s < 60) return L(`${s}秒`, `${s} s`);
   if (s < 3600) return L(`${Math.floor(s / 60)}分${s % 60}秒`, `${Math.floor(s / 60)} min ${s % 60} s`);
   return L(`${Math.floor(s / 3600)}時間${Math.floor((s % 3600) / 60)}分`, `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min`);
+}
+
+/** Whether the GPU draws and encodes (Chromium's feature status + whether the GPU's H.264 encoder takes this size). */
+function GPUStatus() {
+  const s = useStore();
+  const [hw, setHW] = useState<boolean | null>(null);
+  useEffect(() => { void s.loadGPUStatus(); }, []);
+  useEffect(() => {
+    const [w, h] = s.videoSize.split('x').map(Number);
+    let live = true;
+    setHW(null);
+    void Mp4Writer.hardwareVideoSupported({ width: w, height: h, fps: 30, bitrate: w * h >= 1920 * 1080 ? 14_000_000 : 8_000_000 }).then(v => { if (live) setHW(v); });
+    return () => { live = false; };
+  }, [s.videoSize]);
+  const f = s.gpuStatus?.features ?? {};
+  const on = (k: string) => (f[k] ?? '').startsWith('enabled');
+  const draw = on('2d_canvas') && on('gpu_compositing');
+  const name = s.gpuStatus?.devices[0];
+  return (
+    <div className="gpu-status">
+      <span className="gpu-title">GPU{name ? `：${name}` : ''}</span>
+      <span className={draw ? 'ok' : 'warn-text'}>{draw ? '✓' : '✕'} {L('映像の描画', 'Drawing')}</span>
+      <span className={hw ? 'ok' : hw === false ? 'warn-text' : 'dim'}>{hw == null ? '…' : hw ? '✓' : '✕'} {L('映像のエンコード', 'Encoding')}{hw === false ? L('（ソフトウェアで処理）', ' (software)') : ''}</span>
+      {s.gpuStatus && !draw && <span className="dim">{L('GPU が使えないため CPU で描画します（時間がかかります）。グラフィックドライバの更新で使えるようになることがあります。', 'The GPU is not available, so drawing runs on the CPU (slower). Updating the graphics driver may help.')}</span>}
+    </div>
+  );
 }
 
 function VideoOptions() {
@@ -27,6 +54,7 @@ function VideoOptions() {
       </select></div>
     <label className="check"><input type="checkbox" checked={s.visualShowInfo} onChange={() => { s.visualShowInfo = !s.visualShowInfo; s.changed(); }} />{L('曲が変わるたびにジャケット・曲名・アーティストを表示', 'Show artwork, title and artist when each track starts')}</label>
     <label className="check"><input type="checkbox" checked={s.visualShowTitle} onChange={() => { s.visualShowTitle = !s.visualShowTitle; s.changed(); }} />{L('最初にミックス名を表示', 'Show the mix name at the start')}</label>
+    <GPUStatus />
     <div className="caption">{L('映像は曲の音（スペクトラム・低音のキック）とビートのグリッドに合わせて動き、色は各曲の色、中央やカードには「曲の情報」で設定したジャケットを使います。音声は AAC 320kbps で入ります。', 'The visuals follow the mix’s spectrum, kicks and beat grid, use each track’s colour, and show the artwork set in Track Info. Audio is AAC 320 kbps.')}</div>
   </>;
 }
@@ -100,6 +128,9 @@ export function ExportSheet() {
           </div>
         )}
         {phase.kind === 'done' && <div className="ok">✓ {L(`書き出しが完了しました：${phase.path.split(/[\\/]/).pop()}`, `Export finished: ${phase.path.split(/[\\/]/).pop()}`)}</div>}
+        {phase.kind === 'done' && s.lastVideoStats && s.lastVideoStats.total > 0 && (
+          <div className="dim mono small">{L(`かかった時間 ${durationText(s.lastVideoStats.total)}（曲の長さの ${(s.lastVideoStats.total / Math.max(1, s.lastVideoStats.seconds)).toFixed(2)} 倍）・1コマ ${((s.lastVideoStats.draw + s.lastVideoStats.frame) / Math.max(1, s.lastVideoStats.frames) * 1000).toFixed(1)}ms・エンコード ${s.lastVideoStats.hardware ? 'GPU' : 'CPU'}`, `Took ${durationText(s.lastVideoStats.total)} (${(s.lastVideoStats.total / Math.max(1, s.lastVideoStats.seconds)).toFixed(2)}× the mix length) · ${((s.lastVideoStats.draw + s.lastVideoStats.frame) / Math.max(1, s.lastVideoStats.frames) * 1000).toFixed(1)} ms per frame · encoded on the ${s.lastVideoStats.hardware ? 'GPU' : 'CPU'}`)}</div>
+        )}
         {phase.kind === 'failed' && <div className="err">✕ {phase.message}</div>}
         <div className="button-row end">
           {phase.kind === 'idle' && <>

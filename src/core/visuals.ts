@@ -260,7 +260,8 @@ export class VisualPainter {
     readonly tempo: TempoMap, readonly gridOffset: number, readonly master: number) {
     this.w = o.width; this.h = o.height;
     this.canvas = new OffscreenCanvas(o.width, o.height);
-    this.ctx = this.canvas.getContext('2d')!;
+    // Opaque canvases: lets the GPU skip blending with what is behind them.
+    this.ctx = this.canvas.getContext('2d', { alpha: false })!;
     this.prev = new OffscreenCanvas(o.width, o.height);
     this.bloomCanvas = new OffscreenCanvas(Math.max(1, Math.round(o.width / 4)), Math.max(1, Math.round(o.height / 4)));
   }
@@ -381,7 +382,7 @@ export class VisualPainter {
     if (m.style === 'pulse') this.disc(ctx, w / 2, h / 2, h * 0.2 * (1 + 0.07 * m.kick * m.intensity), m);
     ctx.restore();
     // What is fed back next time: the picture before the glow and the text.
-    const pc = this.prev.getContext('2d')!;
+    const pc = this.prev.getContext('2d', { alpha: false })!;
     pc.globalCompositeOperation = 'copy';
     pc.drawImage(this.canvas, 0, 0);
     pc.globalCompositeOperation = 'source-over';
@@ -429,7 +430,7 @@ export class VisualPainter {
   }
 
   private bloom(m: Moment) {
-    const b = this.bloomCanvas, bc = b.getContext('2d')!;
+    const b = this.bloomCanvas, bc = b.getContext('2d', { alpha: false })!;
     bc.globalCompositeOperation = 'copy';
     bc.filter = `blur(${Math.max(1, this.h * 0.02 / 4)}px)`;
     bc.drawImage(this.canvas, 0, 0, b.width, b.height);

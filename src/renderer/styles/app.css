@@ -473,3 +473,7 @@ select { height: 24px; border-radius: 5px; background: var(--raised); border: 1p
 .cloud-msg progress { width: 90px; }
 .cloud-chip { margin-left: 8px; font-size: 10px; padding: 1px 7px; border-radius: 9px; border: 1px solid rgba(255,255,255,0.18); background: transparent; color: inherit; opacity: 0.85; cursor: pointer; }
 .cloud-chip.warn { border-color: #f0a63a; color: #f0a63a; }
+
+.gpu-status { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font-size: 11px; padding: 6px 8px; border-radius: 6px; background: rgba(255,255,255,0.04); }
+.gpu-status .gpu-title { font-weight: 600; }
+.gpu-status .ok { color: #3fb950; }

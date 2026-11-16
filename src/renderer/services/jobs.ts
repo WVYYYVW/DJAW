@@ -36,7 +36,7 @@ export const Jobs = {
   export: (mix: MixMessage, dest: string, options: { sampleRate: number; normalize: boolean; bits: 16 | 24 | 32; format?: 'wav24' | 'aac256' }, knownPeak: number | null, progress: (p: number) => void) =>
     run<{ type: 'done' }>({ type: 'export', ...mix, dest, options, knownPeak }, m => m.type === 'progress' && progress(m.progress)),
   video: (mix: MixMessage, dest: string, options: VideoExportOptions, tracks: TrackVisualMessage[], knownPeak: number | null, progress: (p: number) => void) =>
-    run<{ type: 'done' }>({ type: 'video', ...mix, dest, options, tracks, knownPeak }, m => m.type === 'progress' && progress(m.progress)),
+    run<{ type: 'done'; stats?: Record<string, number> }>({ type: 'video', ...mix, dest, options, tracks, knownPeak }, m => m.type === 'progress' && progress(m.progress)),
   peaks: (mix: MixMessage, partial: (p: any) => void) =>
     run<{ peaks: any }>({ type: 'peaks', ...mix }, m => m.type === 'partial' && partial(m.peaks)),
   peakRange: (mix: MixMessage, binsPerSecond: number, a: number, b: number) =>

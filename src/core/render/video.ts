@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { CancelFlag, Cancelled, exportWav, MixInput } from './offline';
+import { CancelFlag, Cancelled, exportWav, MixInput, normalizeGain } from './offline';
 import { Mp4Writer } from './mp4';
 import { ExportFeatures, TrackVisual, VisualOptions, VisualPainter, VisualSection, artworkPalette } from '../visuals';
 
@@ -43,19 +43,27 @@ async function decodeArtwork(bytes: Uint8Array | null) {
   try { return await createImageBitmap(new Blob([bytes as BlobPart])); } catch { return null; }
 }
 
+/** Seconds spent in each stage (shown in the console after an export, to see where the time goes). */
+export interface VideoExportStats { audio: number; features: number; draw: number; frame: number; encodeWait: number; audioEncode: number; frames: number; total: number; hardware: number }
+
 export async function exportVideo(m: MixInput, dest: string, o: VideoExportOptions, trackMsgs: TrackVisualMessage[],
-  cancel: CancelFlag, progress: (p: number) => void, knownPeak?: number | null): Promise<void> {
+  cancel: CancelFlag, progress: (p: number) => void, knownPeak?: number | null, stats?: VideoExportStats): Promise<void> {
+  const st0 = performance.now();
+  const lap = (() => { let t = performance.now(); return () => { const n = performance.now(); const d = (n - t) / 1000; t = n; return d; }; })();
   const tmp = path.join(os.tmpdir(), `DJAW-video-${Date.now()}-${Math.random().toString(36).slice(2)}.wav`);
   // AAC 320 kbps like the Mac; where the system has no AAC encoder, Opus (48 kHz) instead.
   const aac = await Mp4Writer.aacSupported(o.sampleRate || m.sampleRate, 320_000);
   const rate = aac ? o.sampleRate || m.sampleRate : 48000;
-  let writer: Mp4Writer | null = null;
+  const out: { writer: Mp4Writer | null } = { writer: null };
   let wav: FloatWavReader | null = null;
   let ok = false;
   try {
-    // 1. The audio, exactly as the audio export renders it.
-    await exportWav(m, tmp, { sampleRate: rate, normalize: o.normalize, bits: 32, format: 'wav24' }, cancel, p => progress(p * 0.35), knownPeak);
+    // 1. The audio, rendered once at full level; normalizing is applied while encoding (the same result as the audio
+    // export's second pass, without rendering the mix twice). The visuals don't depend on the level.
+    const peak = await exportWav(m, tmp, { sampleRate: rate, normalize: false, bits: 32, raw: true }, cancel, p => progress(p * 0.35));
+    const gain = o.normalize ? normalizeGain(knownPeak ?? peak) : 1;
     if (cancel.cancelled) throw new Cancelled();
+    if (stats) stats.audio = lap();
 
     // 2. What the music does in every video frame.
     wav = new FloatWavReader(tmp);
@@ -76,6 +84,7 @@ export async function exportVideo(m: MixInput, dest: string, o: VideoExportOptio
     }, mono.length, rate, o.fps, p => progress(0.35 + 0.05 * p));
     if (cancel.cancelled) throw new Cancelled();
     progress(0.4);
+    if (stats) stats.features = lap();
 
     // 3. Draw and encode.
     const tracks: TrackVisual[] = [];
@@ -85,41 +94,58 @@ export async function exportVideo(m: MixInput, dest: string, o: VideoExportOptio
         sections: t.sections, palette: artworkPalette(art) });
     }
     const bitrate = o.width * o.height >= 1920 * 1080 ? 14_000_000 : 8_000_000;
-    writer = await Mp4Writer.create(dest, rate, aac ? 320_000 : 256_000, { width: o.width, height: o.height, fps: o.fps, bitrate }, aac ? 'aac' : 'opus');
-    const painter = new VisualPainter(o, tracks, features, m.tempo, m.gridOffset, m.master);
-    const total = features.frames;
-    const audioPiece = 4096;
-    let audioPos = 0;
-    for (let f = 0; f < total; f++) {
-      if (cancel.cancelled) throw new Cancelled();
-      painter.draw(f);
-      const frame = new VideoFrame(painter.canvas, { timestamp: Math.round(f * 1e6 / o.fps), duration: Math.round(1e6 / o.fps) });
-      await writer.writeFrame(frame, f % (o.fps * 2) === 0);
-      // Keep the audio a little ahead of the picture (the muxer interleaves the two).
-      const until = Math.min(r.frames, Math.round(((f + 1) / o.fps + 1) * rate));
-      while (audioPos < until) {
-        const n = Math.min(audioPiece, until - audioPos);
-        const st = r.read(audioPos, n);
-        const Lc = new Float32Array(n), Rc = new Float32Array(n);
-        for (let i = 0; i < n; i++) { Lc[i] = st[i * 2]; Rc[i] = st[i * 2 + 1]; }
-        await writer.write(Lc, Rc, n);
-        audioPos += n;
+    // The whole picture stage, on the GPU's encoder if there is one; if that fails part-way (a driver problem),
+    // once more with the software encoder.
+    const encode = async (hardware: boolean) => {
+      out.writer = await Mp4Writer.create(dest, rate, aac ? 320_000 : 256_000, { width: o.width, height: o.height, fps: o.fps, bitrate, hardware }, aac ? 'aac' : 'opus');
+      const w = out.writer;
+      if (stats) stats.hardware = w.hardware ? 1 : 0;
+      const painter = new VisualPainter(o, tracks, features, m.tempo, m.gridOffset, m.master);
+      const total = features.frames;
+      const audioPiece = 4096;
+      let audioPos = 0;
+      const audioUntil = async (until: number) => {
+        while (audioPos < until) {
+          const n = Math.min(audioPiece, until - audioPos);
+          const st = r.read(audioPos, n);
+          const Lc = new Float32Array(n), Rc = new Float32Array(n);
+          for (let i = 0; i < n; i++) { Lc[i] = st[i * 2]; Rc[i] = st[i * 2 + 1]; }
+          await w.write(Lc, Rc, n, gain);
+          audioPos += n;
+        }
+      };
+      for (let f = 0; f < total; f++) {
+        if (cancel.cancelled) throw new Cancelled();
+        painter.draw(f);
+        if (stats) stats.draw += lap();
+        // Straight from the canvas: on the GPU this hands the encoder the drawn picture without copying it to memory.
+        const frame = new VideoFrame(painter.canvas, { timestamp: Math.round(f * 1e6 / o.fps), duration: Math.round(1e6 / o.fps) });
+        if (stats) stats.frame += lap();
+        await w.writeFrame(frame, f % (o.fps * 2) === 0);
+        if (stats) stats.encodeWait += lap();
+        // Keep the audio a little ahead of the picture (the muxer interleaves the two).
+        await audioUntil(Math.min(r.frames, Math.round(((f + 1) / o.fps + 1) * rate)));
+        if (stats) stats.audioEncode += lap();
+        if (f % 30 === 0) progress(0.4 + 0.6 * f / Math.max(1, total));
       }
-      if (f % 30 === 0) progress(0.4 + 0.6 * f / Math.max(1, total));
+      await audioUntil(r.frames);
+      await w.close();
+      if (stats) stats.frames = total;
+    };
+    try {
+      await encode(true);
+    } catch (e) {
+      if (e instanceof Cancelled || cancel.cancelled || !out.writer?.hardware) throw e;
+      console.warn('[DJAW] hardware video encoder failed, using the software encoder:', (e as Error).message);
+      out.writer?.abort();
+      out.writer = null;
+      await encode(false);
     }
-    while (audioPos < r.frames) {
-      const n = Math.min(audioPiece, r.frames - audioPos);
-      const st = r.read(audioPos, n);
-      const Lc = new Float32Array(n), Rc = new Float32Array(n);
-      for (let i = 0; i < n; i++) { Lc[i] = st[i * 2]; Rc[i] = st[i * 2 + 1]; }
-      await writer.write(Lc, Rc, n);
-      audioPos += n;
-    }
-    await writer.close();
     ok = true;
+    if (stats) stats.total = (performance.now() - st0) / 1000;
     progress(1);
   } finally {
-    if (!ok) writer?.abort();
+    if (!ok) out.writer?.abort();
     wav?.close();
     try { fs.rmSync(tmp, { force: true }); } catch { /* ignore */ }
   }

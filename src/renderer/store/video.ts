@@ -19,6 +19,11 @@ declare module './store' {
     videoSize: VideoSize;
     visualShowInfo: boolean;
     visualShowTitle: boolean;
+    /** Seconds per stage of the last video export, and whether the GPU encoded it. */
+    lastVideoStats: { total: number; frames: number; draw: number; frame: number; hardware: number; seconds: number } | null;
+    /** GPU features Chromium uses (from the main process) and the GPU's name. */
+    gpuStatus: { features: Record<string, string>; devices: string[] } | null;
+    loadGPUStatus(): Promise<void>;
     /** The live visuals preview window is open. */
     showVisualPreview: boolean;
     startVideoExport(): Promise<void>;
@@ -30,7 +35,13 @@ declare module './store' {
 }
 
 const P = MixStore.prototype;
-Object.assign(P, { exportVideo: false, visualStyle: 'pulse' as VisualStyle, videoSize: '1920x1080' as VideoSize, visualShowInfo: true, visualShowTitle: true, showVisualPreview: false });
+Object.assign(P, { exportVideo: false, visualStyle: 'pulse' as VisualStyle, videoSize: '1920x1080' as VideoSize, visualShowInfo: true, visualShowTitle: true, showVisualPreview: false, lastVideoStats: null, gpuStatus: null });
+
+P.loadGPUStatus = async function () {
+  if (this.gpuStatus) return;
+  try { this.gpuStatus = await ipcRenderer.invoke('gpu:status'); } catch { this.gpuStatus = { features: {}, devices: [] }; }
+  this.changed();
+};
 
 P.trackTimeline = function () {
   const tempo = this.tempoMap, master = this.masterBPM;
@@ -65,6 +76,7 @@ P.startVideoExport = async function () {
   this.exportPhase = { kind: 'rendering', progress: 0 };
   this.exportStartedAt = Date.now();
   this.exportSteady = null;
+  this.lastVideoStats = null;
   this.changed();
   const [w, h] = this.videoSize.split('x').map(Number);
   await this.ensureStemsForExport();
@@ -90,7 +102,9 @@ P.startVideoExport = async function () {
   });
   this.exportJob = job;
   try {
-    await job.promise;
+    const r = await job.promise;
+    if (r?.stats) console.info('[DJAW] video export (s):', JSON.stringify(r.stats));
+    this.lastVideoStats = r?.stats ? { ...(r.stats as never as { total: number; frames: number; draw: number; frame: number; hardware: number }), seconds: this.realMixDuration } : null;
     this.exportPhase = { kind: 'done', path: dest };
   } catch (e) {
     if ((e as Error).message === 'cancelled') { try { fs.rmSync(dest, { force: true }); } catch { /* ignore */ } this.exportPhase = { kind: 'idle' }; }
