@@ -22,7 +22,7 @@ import { fingerprint } from '../../core/analysis/cache';
 import { RenderSession } from '../../core/render/session';
 import { Automation } from '../../core/automation';
 import { analyze, loudness as loadLoudness } from '../services/analysis';
-import { enginePath } from '../services/decode';
+import { enginePath, ensurePcm } from '../services/decode';
 import { dataDir } from '../services/env';
 import { Player } from '../services/player';
 import { Jobs } from '../services/jobs';
@@ -1670,6 +1670,7 @@ export class MixStore {
     const items: PendingTrack[] = urls.map(u => ({ id: uuid(), url: u, name: path.basename(u, path.extname(u)) }));
     this.pending = [...this.pending, ...items];
     this.changed();
+    const failed: string[] = [];
     await Promise.all(items.map(async item => {
       try {
         const { analysis, pcm, fp } = await analyze(item.url, { progress: (stage, f) => { item.stage = stage; item.fraction = f; this.changed(); } });
@@ -1682,13 +1683,26 @@ export class MixStore {
           const st = structureFor(analysis.energies, c.bpm, c.firstBeat);
           if (st) this.structures.set(item.url, st);
         }
-      } catch {
-        this.missingFiles.add(item.url);
+      } catch (e) {
+        // Without the analysis the track can still be played and exported: only the audio is needed for that.
+        console.error('[DJAW] analysis failed', item.url, e);
+        const fp = fingerprint(item.url);
+        try {
+          if (!fp) throw e;
+          this.pcmPaths.set(item.url, await ensurePcm(item.url, fp));
+          this.fingerprints.set(item.url, fp);
+          failed.push(`${item.name}（${(e as Error).message}）`);
+        } catch {
+          this.missingFiles.add(item.url);
+        }
       } finally {
         this.pending = this.pending.filter(p => p.id !== item.id);
         this.changed();
       }
     }));
+    if (failed.length) {
+      this.alertMessage = L(`次の曲を解析できませんでした（再生と書き出しはできます）：\n${failed.join('\n')}`, `These tracks could not be analysed (they still play and export):\n${failed.join('\n')}`);
+    }
     this.applyLoudness();
     this.changed();
     this.runPendingAutoMix();

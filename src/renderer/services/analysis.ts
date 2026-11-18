@@ -31,8 +31,11 @@ function getChild(lane: Lane = 'analysis') {
     execPath: env.exe,
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
     serialization: 'advanced',
-    stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
+    // Its output comes here (inheriting the renderer's own streams can kill it on the Mac when they are closed).
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
+  c.stdout?.on('data', d => console.log(`[DJAW] ${lane}:`, String(d).trimEnd()));
+  c.stderr?.on('data', d => console.warn(`[DJAW] ${lane}:`, String(d).trimEnd()));
   // A process that does not start within 30 s is given up (its jobs fail with a message instead of waiting forever).
   const startup = setTimeout(() => { console.error('[DJAW] analysis process did not start'); c.kill(); }, 30000);
   c.on('message', (m: any) => {
@@ -45,10 +48,11 @@ function getChild(lane: Lane = 'analysis') {
     if (m.type === 'done') job.resolve(m); else job.reject(new Error(m.message));
   });
   c.on('error', e => console.error('[DJAW] analysis process:', e.message));
-  c.on('exit', code => {
+  c.on('exit', (code, signal) => {
     clearTimeout(startup);
     if (children.get(lane) === c) children.delete(lane);
-    for (const j of [...jobs.values()]) if (j.lane === lane) { jobs.delete(j.id); j.reject(new Error(`analysis process ended (${code})`)); }
+    if (code !== 0) console.error(`[DJAW] ${lane} process ended:`, code ?? signal);
+    for (const j of [...jobs.values()]) if (j.lane === lane) { jobs.delete(j.id); j.reject(new Error(`analysis process ended (${code ?? signal})`)); }
   });
   children.set(lane, c);
   return c;

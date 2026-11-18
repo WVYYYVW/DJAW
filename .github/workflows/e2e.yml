@@ -44,13 +44,18 @@ jobs:
         shell: bash
         continue-on-error: true
         run: |
-          app=dist/mac-arm64/DJAW.app
-          ELECTRON_RUN_AS_NODE=1 "$app/Contents/MacOS/DJAW" -e "console.log('node', process.versions.node, process.execPath)"; echo "exit $?"
-          ELECTRON_RUN_AS_NODE=1 "$app/Contents/MacOS/DJAW" -e "require(process.argv[1]); setTimeout(() => process.exit(0), 3000)" "$app/Contents/Resources/app.asar/build/analysis.child.js"; echo "child exit $?"
+          set +e
+          app="$PWD/dist/mac-arm64/DJAW.app"
+          ELECTRON_RUN_AS_NODE=1 "$app/Contents/MacOS/DJAW" -e "console.log('node', process.versions.node)"; echo "exit $?"
           ELECTRON_RUN_AS_NODE=1 "$app/Contents/MacOS/DJAW" -e "const o = require(process.argv[1]); console.log('onnxruntime ok', Object.keys(o).length)" "$app/Contents/Resources/app.asar.unpacked/node_modules/onnxruntime-node"; echo "onnx exit $?"
-          codesign -dv --verbose=2 "$app/Contents/Resources/app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/darwin/arm64/onnxruntime_binding.node" 2>&1 | head -5
-          ls -la "$app/Contents/Resources/app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/darwin/arm64/"
-          log show --last 3m --predicate 'eventMessage CONTAINS "DJAW"' --style compact 2>/dev/null | grep -i -E "kill|deny|signature|crash" | tail -20 || true
+          node -e "
+            const { fork } = require('child_process');
+            const c = fork(process.argv[1], [], { execPath: process.argv[2], env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, serialization: 'advanced', stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+            c.stdout.on('data', d => process.stdout.write('child out: ' + d)); c.stderr.on('data', d => process.stdout.write('child err: ' + d));
+            c.on('message', m => console.log('child message', JSON.stringify(m)));
+            c.on('exit', (code, sig) => console.log('child exit', code, sig));
+            setTimeout(() => { console.log('alive after 5 s:', c.exitCode === null && c.signalCode === null); c.kill(); }, 5000);
+          " "$app/Contents/Resources/app.asar/build/analysis.child.js" "$app/Contents/MacOS/DJAW"
       - name: Smoke test (packaged app)
         run: node tests/e2e/smoke.cjs ${{ matrix.app }}
       - name: Keep the screenshots (a draft release "e2e-results", visible only to the repository's owner)
