@@ -62,6 +62,17 @@ function VideoOptions() {
 export function ExportSheet() {
   const s = useStore();
   const [, tick] = useState(0);
+  // Whether this computer can encode AAC (Electron may not have the system's encoder); WAV is chosen when not.
+  const [aac, setAAC] = useState<boolean | null>(null);
+  useEffect(() => {
+    let live = true;
+    void Mp4Writer.aacSupported(s.exportSampleRate, 256_000).then(v => {
+      if (!live) return;
+      setAAC(v);
+      if (!v && s.exportFormat === 'aac256') { s.exportFormat = 'wav24'; s.changed(); }
+    });
+    return () => { live = false; };
+  }, [s.exportSampleRate]);
   const phase = s.exportPhase;
   useEffect(() => {
     if (phase.kind !== 'rendering') return;
@@ -111,9 +122,12 @@ export function ExportSheet() {
             {s.exportVideo ? <VideoOptions /> : (
               <div className="form-row"><span className="form-label">{L('形式', 'Format')}</span><span className="segmented">
                 <button className={s.exportFormat === 'wav24' ? 'on' : ''} onClick={() => { s.exportFormat = 'wav24'; s.changed(); }}>{L('WAV（24bit）', 'WAV (24-bit)')}</button>
-                <button className={s.exportFormat === 'aac256' ? 'on' : ''} onClick={() => { s.exportFormat = 'aac256'; s.changed(); }}>{L('M4A（AAC 256kbps）', 'M4A (AAC 256 kbps)')}</button>
+                <button className={s.exportFormat === 'aac256' ? 'on' : ''} disabled={aac === false}
+                  title={aac === false ? L('このパソコンには AAC の書き出し機能がないため使えません（WAV を使ってください）', 'Not available: this computer has no AAC encoder (use WAV)') : ''}
+                  onClick={() => { s.exportFormat = 'aac256'; s.changed(); }}>{L('M4A（AAC 256kbps）', 'M4A (AAC 256 kbps)')}</button>
               </span></div>
             )}
+            {!s.exportVideo && aac === false && <div className="caption">{L('このパソコンでは M4A（AAC）に書き出せないため、WAV で書き出します。', 'This computer cannot write M4A (AAC), so the mix is exported as WAV.')}</div>}
             <div className="form-row"><span className="form-label">{L('サンプルレート', 'Sample Rate')}</span><span className="segmented">
               {[44100, 48000].map(r => <button key={r} className={s.exportSampleRate === r ? 'on' : ''} onClick={() => { s.exportSampleRate = r; s.changed(); }}>{r === 44100 ? '44.1 kHz' : '48 kHz'}</button>)}
             </span></div>
