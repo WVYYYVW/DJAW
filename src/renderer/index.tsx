@@ -9,6 +9,7 @@ import './store/profiles';
 import './store/video';
 import './store/stems';
 import './store/cloud';
+import './store/libraryFolders';
 
 // For debugging from the developer tools.
 (window as unknown as { djaw: unknown }).djaw = store;

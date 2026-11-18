@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ipcRenderer, clipboard, shell } from 'electron';
 import { L } from '../../core/i18n';
-import {
+import { LibraryFolder,
   Clip, ClipFX, ClipEdit, CustomTransition, FXKind, Grid, LoudnessMode, Mathx, ProjectFile, SnapUnit, Snap, Style,
   Take, TransitionLanes, TransitionPreset, TransitionShape, TransitionStyle, TransitionTake, Waveform, EQBand,
   barAtSource, barLabel, barSource, clipEnd, clipLength, effectiveLanes, keepsLanding, landingBar, lastBar,
@@ -43,9 +43,9 @@ export const audioExtensions = new Set(['mp3', 'wav', 'wave', 'aif', 'aiff', 'ai
 export interface PendingTrack { id: string; url: string; name: string; stage?: string; fraction?: number }
 export type ExportPhase = { kind: 'idle' } | { kind: 'rendering'; progress: number } | { kind: 'done'; path: string } | { kind: 'failed'; message: string };
 export type InspectorTab = 'transition' | 'deck' | 'fx' | 'mixer';
-export type AddDestination = { kind: 'library' } | { kind: 'mix'; index: number | null };
+export type AddDestination = { kind: 'library'; folder?: string | null } | { kind: 'mix'; index: number | null };
 
-export interface Snapshot { clips: Clip[]; library: Clip[]; masterBPM: number; gridOffset: number }
+export interface Snapshot { clips: Clip[]; library: Clip[]; masterBPM: number; gridOffset: number; libraryFolders?: LibraryFolder[] }
 
 const settingsFile = () => dataDir('settings.json');
 function loadSettings(): Record<string, unknown> {
@@ -56,6 +56,8 @@ export class MixStore {
   // MARK: Document
   clips: Clip[] = [];
   library: Clip[] = [];
+  /** Folders of the library (saved with the mix). */
+  libraryFolders: LibraryFolder[] = [];
   masterBPM = 124;
   gridOffset = 0;
   snap: SnapUnit = 'phrase';
@@ -246,7 +248,7 @@ export class MixStore {
   // MARK: Undo
 
   snapshot(): Snapshot {
-    return structuredClone({ clips: this.clips, library: this.library, masterBPM: this.masterBPM, gridOffset: this.gridOffset });
+    return structuredClone({ clips: this.clips, library: this.library, masterBPM: this.masterBPM, gridOffset: this.gridOffset, libraryFolders: this.libraryFolders });
   }
 
   pushUndo() {
@@ -276,6 +278,7 @@ export class MixStore {
   restore(s: Snapshot) {
     this.clips = s.clips;
     this.library = s.library;
+    this.libraryFolders = s.libraryFolders ?? this.libraryFolders;
     this.masterBPM = s.masterBPM;
     this.gridOffset = s.gridOffset;
     if (this.selectedClipID && !this.clip(this.selectedClipID)) this.selectedClipID = null;
@@ -473,7 +476,7 @@ export class MixStore {
         this.fingerprints.set(item.url, fp);
         this.pcmPaths.set(item.url, pcm);
         const clip = this.makeClip(analysis, item.url);
-        if (destination.kind === 'library') this.library = [...this.library, clip];
+        if (destination.kind === 'library') this.library = [...this.library, destination.folder ? { ...clip, folder: destination.folder } : clip];
         else {
           const at = this.placeInMix(clip, Math.min(position ?? this.clips.length, this.clips.length));
           position = at + 1;
@@ -1508,7 +1511,7 @@ export class MixStore {
     if (!(await this.confirmDiscard())) return;
     this.pause();
     this.projectID = uuid();
-    this.clips = []; this.library = [];
+    this.clips = []; this.library = []; this.libraryFolders = [];
     this.notes = ''; this.loudnessMode = 'off';
     this.masterBPM = 124; this.gridOffset = 0;
     this.documentPath = null;
@@ -1578,6 +1581,7 @@ export class MixStore {
       }
       this.clips = clips;
       this.library = library;
+      this.libraryFolders = f.libraryFolders ?? [];
       if (unpackFailed) this.alertMessage = L(`${unpackFailed}曲の音声をファイルから取り出せませんでした。`, `Could not unpack the audio of ${unpackFailed} track(s).`);
       this.applyLayout();
       this.notes = f.notes ?? '';
@@ -1671,7 +1675,7 @@ export class MixStore {
       ui: { playhead: this.playhead, pixelsPerSecond: this.pixelsPerSecond, scrollTime: this.visibleRange[0], selectedClipID: this.selectedClipID, showDecks: this.showDecks, showMixer: this.showMixer, showInspector: this.showInspector },
       customTransitions: used, masterBPM: this.masterBPM, gridOffset: this.gridOffset,
       defaultTransitionBars: this.defaultTransitionBars, defaultTransitionStyle: this.defaultTransitionStyle,
-      library: this.library.map(withRel), snap: this.snap, clips: this.clips.map(withRel), projectID: this.projectID,
+      library: this.library.map(withRel), libraryFolders: this.libraryFolders.length ? this.libraryFolders : null, snap: this.snap, clips: this.clips.map(withRel), projectID: this.projectID,
       loudnessMode: this.loudnessMode, analyses: this.macAnalyses,
       profiles: (TrackProfiles.blobs([...this.clips, ...this.library].map(c => c.url)) as Record<string, unknown> | null) ?? this.macProfiles,
     };

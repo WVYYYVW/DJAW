@@ -8,9 +8,29 @@ import { useStore } from '../hooks';
 import { store } from '../store/store';
 import { Fmt, clipColor } from '../format';
 import { droppedPaths } from '../dropped';
-import { showContextMenu } from './ContextMenu';
+import { MenuItem, showContextMenu } from './ContextMenu';
+import { ArtworkThumb } from './TrackProfileSheet';
+import type { LibraryRow } from '../store/libraryFolders';
 
-function TrackRow({ clip, index, inMix }: { clip: Clip; index: number; inMix: boolean }) {
+const DRAG_TRACKS = 'text/djaw-track';
+const DRAG_FOLDER = 'text/djaw-folder';
+
+/** "Move to folder ▸" items for these tracks. */
+function folderMenu(ids: string[]): MenuItem[] {
+  const s = store;
+  const walk = (parent: string | null, depth: number): MenuItem[] => s.libraryFolders
+    .filter(f => (f.parent ?? null) === parent)
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+    .flatMap(f => [{ label: `${'　'.repeat(depth)}📁 ${f.name}`, action: () => s.moveTracksToFolder(ids, f.id) }, ...walk(f.id, depth + 1)]);
+  return [
+    ...walk(null, 0),
+    ...(s.libraryFolders.length ? [{ separator: true } as MenuItem] : []),
+    { label: L('フォルダの外（いちばん上）', 'Out of folders (top level)'), action: () => s.moveTracksToFolder(ids, null) },
+    { label: L('新しいフォルダを作って入れる…', 'New Folder with These…'), action: () => { const id = s.createFolder(null); s.moveTracksToFolder(ids, id); } },
+  ];
+}
+
+function TrackRow({ clip, index, inMix, depth = 0, order }: { clip: Clip; index: number; inMix: boolean; depth?: number; order?: Clip[] }) {
   const s = useStore();
   const selected = s.selectedClipID === clip.id || s.librarySelection.has(clip.id);
   const key = s.structures.get(clip.url)?.key;
@@ -22,8 +42,10 @@ function TrackRow({ clip, index, inMix }: { clip: Clip; index: number; inMix: bo
       s.librarySelection = set;
       s.selectedClipID = clip.id;
     } else if (!inMix && e.shiftKey && s.selectedClipID && s.libraryIndex(s.selectedClipID) != null) {
-      const a = s.libraryIndex(s.selectedClipID)!, b = index;
-      s.librarySelection = new Set(s.library.slice(Math.min(a, b), Math.max(a, b) + 1).map(c => c.id));
+      // In the order shown (folders, search).
+      const list = order ?? s.library;
+      const a = list.findIndex(c => c.id === s.selectedClipID), b = list.findIndex(c => c.id === clip.id);
+      if (a >= 0 && b >= 0) s.librarySelection = new Set(list.slice(Math.min(a, b), Math.max(a, b) + 1).map(c => c.id));
     } else {
       s.librarySelection = new Set();
       s.selectedClipID = clip.id;
@@ -50,6 +72,7 @@ function TrackRow({ clip, index, inMix }: { clip: Clip; index: number; inMix: bo
       const ids = s.librarySelection.size > 1 ? [...s.librarySelection] : [clip.id];
       showContextMenu(e, ids.length > 1 ? [
         { label: L(`${ids.length}曲をミックスの末尾に入れる`, `Add ${ids.length} Tracks to End of Mix`), action: () => s.addToMixMany(ids, s.clips.length) },
+        { label: L(`${ids.length}曲をフォルダへ移動`, `Move ${ids.length} Tracks to Folder`), submenu: folderMenu(ids) },
         { label: L(`${ids.length}曲でおまかせミックス（曲順も）…`, `Auto-Arrange ${ids.length} Tracks (Order Too)…`), action: () => s.autoArrangePreselecting(ids) },
         { label: L(`${ids.length}曲をライブラリから削除`, `Remove ${ids.length} Tracks from Library`), action: () => s.removeFromLibrary(ids) },
       ] : [
@@ -57,6 +80,7 @@ function TrackRow({ clip, index, inMix }: { clip: Clip; index: number; inMix: bo
         { label: L('曲の情報（ジャケット・アーティスト）を編集…', 'Edit Track Info (Artwork, Artist)…'), action: () => s.openProfileEditor(clip.id) },
         { label: L('ミックスの末尾に入れる', 'Add to End of Mix'), action: () => s.addToMix(clip.id, s.clips.length) },
         { label: L('選択中の曲の後に入れる', 'Add After Selected Track'), action: () => s.addToMix(clip.id) },
+        { label: L('フォルダへ移動', 'Move to Folder'), submenu: folderMenu([clip.id]) },
         { separator: true },
         { label: L('エクスプローラーで表示', 'Show in Explorer'), action: () => s.revealInFolder(clip.id) },
         { label: L('ライブラリから削除', 'Remove from Library'), action: () => s.removeFromLibrary([clip.id]) },
@@ -78,8 +102,14 @@ function TrackRow({ clip, index, inMix }: { clip: Clip; index: number; inMix: bo
         </div>
       )}
       <div className={'track-row' + (selected ? ' sel' : '')} onMouseDown={select} onDoubleClick={() => s.openCueEditor(clip.id)} onContextMenu={menu}
-        draggable onDragStart={e => { e.dataTransfer.setData('text/djaw-track', JSON.stringify({ id: clip.id, inMix, index })); }}>
+        style={depth ? { paddingLeft: 8 + depth * 14 } : undefined}
+        draggable onDragStart={e => {
+          // Dragging one of several selected library tracks drags them all.
+          const ids = !inMix && s.librarySelection.size > 1 && s.librarySelection.has(clip.id) ? [...s.librarySelection] : [clip.id];
+          e.dataTransfer.setData(DRAG_TRACKS, JSON.stringify({ id: clip.id, ids, inMix, index }));
+        }}>
         <span className="swatch" style={{ background: clipColor(clip.colorIndex) }} />
+        <ArtworkThumb url={clip.url} colorIndex={clip.colorIndex} size={34} />
         <div className="track-text">
           <div className="track-title">{inMix ? `${index + 1}. ` : ''}{clip.title}{clip.cueDone ? ' ✓' : ''}</div>
           <div className="track-sub">
@@ -97,7 +127,7 @@ export function Sidebar() {
   const [dropAt, setDropAt] = useState<number | null>(null);
   const p = s.progressSummary;
   const onDragOverMix = (e: React.DragEvent, k: number) => {
-    if (!e.dataTransfer.types.includes('text/djaw-track') && !e.dataTransfer.types.includes('Files')) return;
+    if (!e.dataTransfer.types.includes(DRAG_TRACKS) && !e.dataTransfer.types.includes('Files')) return;
     e.preventDefault();
     setDropAt(k);
   };
@@ -106,10 +136,12 @@ export function Sidebar() {
     setDropAt(null);
     const files = droppedPaths(e.dataTransfer);
     if (files.length) { s.addFiles(files, { kind: 'mix', index: k }); return; }
-    const raw = e.dataTransfer.getData('text/djaw-track');
+    const raw = e.dataTransfer.getData(DRAG_TRACKS);
     if (!raw) return;
-    const d = JSON.parse(raw) as { id: string; inMix: boolean; index: number };
-    if (d.inMix) s.moveClips([d.index], k); else s.addToMix(d.id, k);
+    const d = JSON.parse(raw) as { id: string; ids?: string[]; inMix: boolean; index: number };
+    if (d.inMix) s.moveClips([d.index], k);
+    else if (d.ids && d.ids.length > 1) s.addToMixMany(d.ids, k);
+    else s.addToMix(d.id, k);
   };
   return (
     <div className="sidebar"
@@ -139,34 +171,119 @@ export function Sidebar() {
           </div>
         </div>
       </div>
-      <div className="side-section grow">
-        <div className="side-head">
-          <span>{L('ライブラリ（未配置）', 'Library (not in mix)')}</span>
-          <button className="link" title={L('iTunes／ミュージックのライブラリから追加（Ctrl+Alt+Shift+I）', 'Add from the iTunes / Music library (Ctrl+Alt+Shift+I)')} onClick={() => { s.showMusicLibrary = true; s.changed(); }}>♫ {L('ミュージック', 'Music')}</button>
-          {s.library.length > 1 && (
-            <button className="link" onClick={() => { s.librarySelection = s.librarySelection.size > 1 ? new Set() : new Set(s.library.map(c => c.id)); s.changed(); }}>
-              {s.librarySelection.size > 1 ? L('選択解除', 'Deselect') : L('全選択', 'Select All')}
-            </button>
-          )}
+      <LibrarySection />
+    </div>
+  );
+}
+
+/** A folder line: open / close, rename in place, drop tracks or folders onto it. */
+function FolderRow({ row, onDrop }: { row: Extract<LibraryRow, { kind: 'folder' }>; onDrop: (e: React.DragEvent, folder: string | null) => void }) {
+  const s = useStore();
+  const f = row.folder;
+  const [over, setOver] = useState(false);
+  const renaming = s.renamingFolder === f.id;
+  const menu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const inside = s.tracksInFolder(f.id).map(c => c.id);
+    showContextMenu(e, [
+      { label: L('名前を変更', 'Rename'), action: () => { s.renamingFolder = f.id; s.changed(); } },
+      { label: L('この中にフォルダを作る', 'New Folder Inside'), action: () => s.createFolder(f.id) },
+      { separator: true },
+      { label: L(`中の曲をすべて選択（${inside.length}曲）`, `Select All Tracks Inside (${inside.length})`), enabled: inside.length > 0, action: () => { s.librarySelection = new Set(inside); s.selectedClipID = inside[0] ?? null; s.changed(); } },
+      { label: L(`中の曲をミックスの末尾に入れる（${inside.length}曲）`, `Add Tracks Inside to End of Mix (${inside.length})`), enabled: inside.length > 0, action: () => s.addToMixMany(inside, s.clips.length) },
+      { label: L(`中の曲でおまかせミックス…`, `Auto-Arrange Tracks Inside…`), enabled: inside.length > 1, action: () => s.autoArrangePreselecting(inside) },
+      { separator: true },
+      ...(f.parent ? [{ label: L('いちばん上に出す', 'Move to Top Level'), action: () => s.moveFolder(f.id, null) }] : []),
+      { label: L('フォルダを削除（中の曲は残す）', 'Delete Folder (keep its tracks)'), action: () => s.deleteFolder(f.id) },
+    ]);
+  };
+  return (
+    <div className={'folder-row' + (over ? ' drop-into' : '')} style={{ paddingLeft: 6 + row.depth * 14 }}
+      onClick={() => !renaming && s.toggleFolder(f.id)} onDoubleClick={e => { e.stopPropagation(); s.renamingFolder = f.id; s.changed(); }} onContextMenu={menu}
+      draggable={!renaming} onDragStart={e => e.dataTransfer.setData(DRAG_FOLDER, f.id)}
+      onDragOver={e => { if ([DRAG_TRACKS, DRAG_FOLDER, 'Files'].some(t => e.dataTransfer.types.includes(t))) { e.preventDefault(); e.stopPropagation(); setOver(true); } }}
+      onDragLeave={() => setOver(false)}
+      onDrop={e => { setOver(false); onDrop(e, f.id); }}>
+      <span className="folder-arrow">{f.collapsed && !s.libraryQuery ? '▸' : '▾'}</span>
+      <span className="folder-icon">📁</span>
+      {renaming ? (
+        <input className="folder-name-input" autoFocus defaultValue={f.name} onClick={e => e.stopPropagation()}
+          onFocus={e => e.currentTarget.select()}
+          onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') s.renameFolder(f.id, e.currentTarget.value); if (e.key === 'Escape') { s.renamingFolder = null; s.changed(); } }}
+          onBlur={e => s.renameFolder(f.id, e.currentTarget.value)} />
+      ) : <span className="folder-name">{f.name}</span>}
+      <span className="folder-count">{row.count}</span>
+    </div>
+  );
+}
+
+function LibrarySection() {
+  const s = useStore();
+  const [overTop, setOverTop] = useState(false);
+  const rows = s.libraryRows();
+  const order = rows.flatMap(r => (r.kind === 'track' ? [r.clip] : []));
+  /** Tracks, folders or files dropped into a folder (null = top level). */
+  const drop = (e: React.DragEvent, folder: string | null) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const files = droppedPaths(e.dataTransfer);
+    if (files.length) { s.addFiles(files, { kind: 'library', folder }); return; }
+    const fid = e.dataTransfer.getData(DRAG_FOLDER);
+    if (fid) { s.moveFolder(fid, folder); return; }
+    const raw = e.dataTransfer.getData(DRAG_TRACKS);
+    if (!raw) return;
+    const d = JSON.parse(raw) as { id: string; ids?: string[] };
+    s.moveTracksToFolder(d.ids ?? [d.id], folder);
+  };
+  const visibleIDs = order.map(c => c.id);
+  const allSelected = visibleIDs.length > 1 && visibleIDs.every(id => s.librarySelection.has(id));
+  return (
+    <div className="side-section grow">
+      <div className="side-head">
+        <span className="side-title" title={L('ミックスに入れる前の曲', 'Tracks not in the mix yet')}>{L('ライブラリ', 'Library')}</span>
+        <div className="spacer" />
+        <button className="link icon" title={L('新しいフォルダ（ドラッグで曲やフォルダを入れられます）', 'New folder (drag tracks or folders into it)')} onClick={() => s.createFolder(null)}>📁＋</button>
+        <button className="link icon" title={L('iTunes／ミュージックのライブラリから追加（Ctrl+Alt+Shift+I）', 'Add from the iTunes / Music library (Ctrl+Alt+Shift+I)')} onClick={() => { s.showMusicLibrary = true; s.changed(); }}>♫</button>
+        {visibleIDs.length > 1 && (
+          <button className="link" onClick={() => { s.librarySelection = allSelected ? new Set() : new Set(visibleIDs); s.changed(); }}>
+            {allSelected ? L('選択解除', 'Deselect') : L('全選択', 'Select All')}
+          </button>
+        )}
+        {s.libraryFolders.length > 0 && (
+          <button className="link icon" title={L('フォルダをすべて開く／閉じる', 'Open / close all folders')} onClick={() => s.setAllFoldersCollapsed(!s.libraryFolders.every(f => f.collapsed))}>
+            {s.libraryFolders.every(f => f.collapsed) ? '▾▾' : '▸▸'}
+          </button>
+        )}
+      </div>
+      {(s.library.length > 6 || s.libraryQuery) && (
+        <div className="library-search">
+          <input type="search" placeholder={L('曲名・アーティスト・BPM・キー・フォルダで絞り込み', 'Filter by title, artist, BPM, key, folder')} value={s.libraryQuery}
+            onChange={e => { s.libraryQuery = e.target.value; s.changed(); }} onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') { s.libraryQuery = ''; s.changed(); } }} />
         </div>
-        <div className="track-list">
-          {s.library.map((c, i) => <TrackRow key={c.id} clip={c} index={i} inMix={false} />)}
-          {s.pending.map(p => (
-            <div key={p.id} className="track-row pending">
-              <span className="spinner" />
-              <div className="track-text">
-                <div className="track-title">{p.name}</div>
-                <div className="track-sub">{p.stage === 'decode' ? L('読み込み中…', 'Reading…') : p.stage === 'beats' ? L(`拍を解析中 ${Math.round((p.fraction ?? 0) * 100)}%`, `Finding beats ${Math.round((p.fraction ?? 0) * 100)}%`) : L(`解析中 ${Math.round((p.fraction ?? 0) * 100)}%`, `Analysing ${Math.round((p.fraction ?? 0) * 100)}%`)}</div>
-              </div>
+      )}
+      <div className={'track-list' + (overTop ? ' drop-into' : '')}
+        onDragOver={e => { if ([DRAG_TRACKS, DRAG_FOLDER].some(t => e.dataTransfer.types.includes(t))) { e.preventDefault(); setOverTop(true); } }}
+        onDragLeave={e => { if (e.currentTarget === e.target) setOverTop(false); }}
+        onDrop={e => { setOverTop(false); if (e.dataTransfer.types.includes(DRAG_TRACKS) || e.dataTransfer.types.includes(DRAG_FOLDER)) drop(e, null); }}>
+        {rows.map(r => r.kind === 'folder'
+          ? <FolderRow key={'f' + r.folder.id} row={r} onDrop={drop} />
+          : <TrackRow key={r.clip.id} clip={r.clip} index={s.libraryIndex(r.clip.id) ?? 0} inMix={false} depth={r.depth} order={order} />)}
+        {s.libraryQuery && !rows.length && <div className="empty">{L('見つかりません', 'No matches')}</div>}
+        {s.pending.map(p => (
+          <div key={p.id} className="track-row pending">
+            <span className="spinner" />
+            <div className="track-text">
+              <div className="track-title">{p.name}</div>
+              <div className="track-sub">{p.stage === 'decode' ? L('読み込み中…', 'Reading…') : p.stage === 'beats' ? L(`拍を解析中 ${Math.round((p.fraction ?? 0) * 100)}%`, `Finding beats ${Math.round((p.fraction ?? 0) * 100)}%`) : L(`解析中 ${Math.round((p.fraction ?? 0) * 100)}%`, `Analysing ${Math.round((p.fraction ?? 0) * 100)}%`)}</div>
             </div>
-          ))}
-          {!s.library.length && !s.pending.length && (
-            <div className="empty">
-              {L('ここに音声ファイルをドロップすると、ミックスに入れる前の曲として準備できます', 'Drop audio files here to prepare tracks before they go into the mix')}
-              <div><button className="tbtn" onClick={() => s.presentAddFiles()}>{L('曲を追加…', 'Add Tracks…')}</button> {process.platform !== 'darwin' && <button className="tbtn" onClick={() => s.presentAddFiles(true)}>{L('フォルダから追加…', 'Add Folder…')}</button>} <button className="tbtn" onClick={() => { s.showMusicLibrary = true; s.changed(); }}>{L('ミュージックから追加…', 'Add from Music…')}</button></div>
-            </div>
-          )}
-        </div>
+          </div>
+        ))}
+        {!s.library.length && !s.pending.length && (
+          <div className="empty">
+            {L('ここに音声ファイルをドロップすると、ミックスに入れる前の曲として準備できます。曲が増えたら「＋📁」でフォルダに分けられます', 'Drop audio files here to prepare tracks before they go into the mix. Use “＋📁” to sort them into folders')}
+            <div><button className="tbtn" onClick={() => s.presentAddFiles()}>{L('曲を追加…', 'Add Tracks…')}</button> {process.platform !== 'darwin' && <button className="tbtn" onClick={() => s.presentAddFiles(true)}>{L('フォルダから追加…', 'Add Folder…')}</button>} <button className="tbtn" onClick={() => { s.showMusicLibrary = true; s.changed(); }}>{L('ミュージックから追加…', 'Add from Music…')}</button></div>
+          </div>
+        )}
       </div>
     </div>
   );

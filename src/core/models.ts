@@ -202,6 +202,8 @@ export interface Clip {
   shape?: TransitionShape | null;
   lanes?: TransitionLanes | null;
   relativePath?: string | null;
+  /** Library folder (LibraryFolder.id) the track is filed in while it is not in the mix. */
+  folder?: string | null;
   cueDone?: boolean | null;
   transitionDone?: boolean | null;
   autoNote?: AutoMixNote | null;
@@ -1017,8 +1019,18 @@ export interface ProjectFile {
   analysesJS?: Record<string, string> | null;
   loudnessMode?: LoudnessMode | null;
   profiles?: Record<string, unknown> | null;
+  /** Folders the library (tracks not in the mix) is organised in. */
+  libraryFolders?: LibraryFolder[] | null;
   /** Which computer saved it last (for mixes shared through a cloud folder). */
   savedOn?: string | null;
+}
+
+export interface LibraryFolder {
+  id: string;
+  name: string;
+  /** Folder this one is inside (null = top level). */
+  parent?: string | null;
+  collapsed?: boolean;
 }
 
 export const projectFormatID = 'DJAW-Mix';
