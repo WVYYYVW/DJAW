@@ -17,23 +17,48 @@ on:
         description: 'Also run the update test'
         type: boolean
         default: false
+      probe_only:
+        description: 'Only the quick ONNX probe (no packaging)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
-  e2e:
+  # The analysis process with the models, run like the app runs it (quick: no packaging).
+  probe:
     strategy:
       fail-fast: false
       matrix:
         os: ${{ fromJSON(inputs.systems == 'mac' && '["macos-latest"]' || inputs.systems == 'windows' && '["windows-latest"]' || '["macos-latest","windows-latest"]') }}
-        include:
-          - os: macos-latest
-            pack: npx electron-builder --mac --arm64 --dir --publish never
-            app: dist/mac-arm64/DJAW.app/Contents/MacOS/DJAW
-          - os: windows-latest
-            pack: npx electron-builder --win --x64 --dir --publish never
-            app: dist/win-unpacked/DJAW.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node scripts/build.mjs
+      - name: ONNX probe (default settings)
+        shell: bash
+        run: node tests/e2e/onnx-probe.cjs "$(node -p "require('electron')")" build models
+      - name: ONNX probe (memory arena on)
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        shell: bash
+        env:
+          DJAW_ORT_ARENA: '1'
+        run: node tests/e2e/onnx-probe.cjs "$(node -p "require('electron')")" build models
+
+  e2e:
+    if: ${{ !inputs.probe_only }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.systems == 'mac' && '["macos-latest"]' || inputs.systems == 'windows' && '["windows-latest"]' || '["macos-latest","windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
@@ -47,11 +72,12 @@ jobs:
       - run: npm test
       - run: node scripts/build.mjs
       - name: Package
-        run: ${{ matrix.pack }}
+        shell: bash
+        run: npx electron-builder ${{ matrix.os == 'macos-latest' && '--mac --arm64' || '--win --x64' }} --dir --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Smoke test (packaged app)
-        run: node tests/e2e/smoke.cjs ${{ matrix.app }}
+        run: node tests/e2e/smoke.cjs ${{ matrix.os == 'macos-latest' && 'dist/mac-arm64/DJAW.app/Contents/MacOS/DJAW' || 'dist/win-unpacked/DJAW.exe' }}
       - name: Mac crash reports (when something crashed)
         if: failure() && runner.os == 'macOS'
         shell: bash
@@ -86,7 +112,7 @@ jobs:
 
   # The app updating itself: an installed older build finds 9.9.9 (a local test feed), downloads, installs and restarts.
   update:
-    if: ${{ inputs.update_test }}
+    if: ${{ inputs.update_test && !inputs.probe_only }}
     strategy:
       fail-fast: false
       matrix:

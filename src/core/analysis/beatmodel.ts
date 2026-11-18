@@ -9,8 +9,13 @@ type Ort = typeof import('onnxruntime-node');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const ort = (): Ort => require('onnxruntime-node') as Ort;
 
+// On the Mac, Electron's allocator (PartitionAlloc, which serves malloc there) stops the process when onnxruntime's
+// memory arena asks it for one very large aligned block; without the arena every tensor is allocated by itself.
+// DJAW_ORT_ARENA=1 / 0 overrides (for testing).
+const arena = process.env.DJAW_ORT_ARENA ? process.env.DJAW_ORT_ARENA === '1' : process.platform !== 'darwin';
+
 async function session(file: string) {
-  return ort().InferenceSession.create(file, { graphOptimizationLevel: 'all' });
+  return ort().InferenceSession.create(file, { graphOptimizationLevel: 'all', enableCpuMemArena: arena, enableMemPattern: arena });
 }
 
 const floats = (file: string) => {
