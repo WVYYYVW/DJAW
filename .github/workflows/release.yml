@@ -8,12 +8,18 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build and check only (no release)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
   prepare:
+    if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.v.outputs.tag }}
@@ -34,6 +40,7 @@ jobs:
 
   build:
     needs: prepare
+    if: ${{ always() && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped') }}
     strategy:
       fail-fast: false
       matrix:
@@ -58,9 +65,25 @@ jobs:
       - name: Package
         run: ${{ matrix.command }}
         env:
-          # No Apple / Windows signing certificate: the Mac app is signed ad hoc (see package.json "mac").
+          # No Apple / Windows signing certificate: the Mac app is signed ad hoc (scripts/after-pack.cjs).
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Check the Mac app (signature, icon, the disk image)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -e
+          app=dist/mac-arm64/DJAW.app
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1 | grep -E 'Signature=adhoc|Identifier='
+          test -f "$app/Contents/Resources/icon.icns"
+          # The app inside the disk image, as a user gets it.
+          dmg=$(ls dist/*.dmg | head -1)
+          mnt=$(mktemp -d)
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mnt"
+          codesign --verify --deep --strict --verbose=2 "$mnt/DJAW.app"
+          hdiutil detach "$mnt"
       - uses: softprops/action-gh-release@v2
+        if: ${{ !inputs.dry_run }}
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           files: ${{ matrix.files }}

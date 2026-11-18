@@ -149,6 +149,8 @@ function createWindow(fileToOpen?: string) {
   win = new BrowserWindow({
     width: 1440, height: 900, minWidth: 1000, minHeight: 640,
     backgroundColor: '#121316', title: 'DJAW', show: false,
+    // The DJAW icon (the installed app has it built in; this also shows it when started from the source).
+    icon: path.join(__dirname, '..', 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -211,5 +213,8 @@ app.on('second-instance', (_e, argv) => {
   if (f) send('openFile', f);
   if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
 });
-app.whenReady().then(() => createWindow(fileArg));
+app.whenReady().then(() => {
+  if (process.platform === 'darwin' && !app.isPackaged) app.dock?.setIcon(path.join(__dirname, '..', 'assets', 'icon.png'));
+  createWindow(fileArg);
+});
 app.on('window-all-closed', () => app.quit());
