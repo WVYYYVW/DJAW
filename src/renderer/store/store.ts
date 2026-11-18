@@ -36,6 +36,7 @@ import { TrackProfiles } from '../services/trackProfiles';
 import type { GenreResult } from '../../core/genre';
 import type { MixStyle, SetArc } from '../../core/automixer';
 import type { TrackUse } from '../../core/models';
+import type { Sample, SampleHit } from '../../core/sampler';
 import type { MixPattern, TransitionVariation } from './automix';
 
 export const audioExtensions = new Set(['mp3', 'wav', 'wave', 'aif', 'aiff', 'aifc', 'm4a', 'aac', 'flac', 'caf', 'mp4', 'ogg', 'opus']);
@@ -45,7 +46,7 @@ export type ExportPhase = { kind: 'idle' } | { kind: 'rendering'; progress: numb
 export type InspectorTab = 'transition' | 'deck' | 'fx' | 'mixer';
 export type AddDestination = { kind: 'library'; folder?: string | null } | { kind: 'mix'; index: number | null };
 
-export interface Snapshot { clips: Clip[]; library: Clip[]; masterBPM: number; gridOffset: number; libraryFolders?: LibraryFolder[] }
+export interface Snapshot { clips: Clip[]; library: Clip[]; masterBPM: number; gridOffset: number; libraryFolders?: LibraryFolder[]; samples?: Sample[]; sampleHits?: SampleHit[] }
 
 const settingsFile = () => dataDir('settings.json');
 function loadSettings(): Record<string, unknown> {
@@ -58,6 +59,9 @@ export class MixStore {
   library: Clip[] = [];
   /** Folders of the library (saved with the mix). */
   libraryFolders: LibraryFolder[] = [];
+  /** The sampler's pads and the hits placed on the mix (store/sampler.ts). */
+  samples: Sample[] = [];
+  sampleHits: SampleHit[] = [];
   masterBPM = 124;
   gridOffset = 0;
   snap: SnapUnit = 'phrase';
@@ -248,7 +252,7 @@ export class MixStore {
   // MARK: Undo
 
   snapshot(): Snapshot {
-    return structuredClone({ clips: this.clips, library: this.library, masterBPM: this.masterBPM, gridOffset: this.gridOffset, libraryFolders: this.libraryFolders });
+    return structuredClone({ clips: this.clips, library: this.library, masterBPM: this.masterBPM, gridOffset: this.gridOffset, libraryFolders: this.libraryFolders, samples: this.samples, sampleHits: this.sampleHits });
   }
 
   pushUndo() {
@@ -279,6 +283,8 @@ export class MixStore {
     this.clips = s.clips;
     this.library = s.library;
     this.libraryFolders = s.libraryFolders ?? this.libraryFolders;
+    this.samples = s.samples ?? this.samples;
+    this.sampleHits = s.sampleHits ?? this.sampleHits;
     this.masterBPM = s.masterBPM;
     this.gridOffset = s.gridOffset;
     if (this.selectedClipID && !this.clip(this.selectedClipID)) this.selectedClipID = null;
@@ -599,6 +605,7 @@ export class MixStore {
   }
 
   deleteSelected() {
+    if (this.selectedHit) { this.removeHit(this.selectedHit); return; }
     if (this.librarySelection.size > 1) { this.removeFromLibrary([...this.librarySelection]); return; }
     const i = this.selectedIndex;
     if (i != null) {
@@ -1252,7 +1259,7 @@ export class MixStore {
     const paths: Record<string, string> = {};
     for (const c of clips) { const p = this.pcmPaths.get(c.url); if (p) paths[c.url] = p; }
     const stems = this.stemPaths(clips);
-    return { clips, master: this.masterBPM, tempo: { reference: tempo.reference, points: tempo.points }, gridOffset: this.gridOffset, paths, stems };
+    return { clips, master: this.masterBPM, tempo: { reference: tempo.reference, points: tempo.points }, gridOffset: this.gridOffset, paths, stems, sampler: this.samplerMessage() };
   }
 
   playableClips() { return this.clips.filter(c => !this.missingFiles.has(c.url) && this.pcmPaths.has(c.url)); }
@@ -1374,7 +1381,7 @@ export class MixStore {
   }
 
   private mixSignature() {
-    return JSON.stringify([this.masterBPM, this.gridOffset, this.stemSignature(), this.playableClips().map(c => ({ ...c, takes: null, colorIndex: 0, cues: null, cueDone: null, transitionDone: null, autoNote: null, title: null, artist: null }))]);
+    return JSON.stringify([this.masterBPM, this.gridOffset, this.stemSignature(), this.samplerKey(), this.playableClips().map(c => ({ ...c, takes: null, colorIndex: 0, cues: null, cueDone: null, transitionDone: null, autoNote: null, title: null, artist: null }))]);
   }
 
   private setRendering(sig: string | null) {
@@ -1415,7 +1422,8 @@ export class MixStore {
     const inputs: MixWaveformInputs = { clips, master: mix.master, tempo: new TempoMap(mix.tempo.reference, mix.tempo.points), gridOffset: mix.gridOffset, sampleRate: 44100, stems: this.stemSignature() };
     // Only part of the mix changed: re-render that stretch and move the rest along.
     const old = this.mixPeaks, before = this.mixPeaksInputs;
-    if (old && before && !this.mixPeaksPartial) {
+    // (Sampler hits stay on the grid when tracks move, so with any placed the whole mix is drawn again.)
+    if (old && before && !this.mixPeaksPartial && !this.sampleHits.length) {
       const ch = mixWaveformChange(before, inputs);
       const prov = ch && provisionalPeaks(ch, old, inputs);
       if (ch && prov) { this.renderChangedPart(ch, prov, inputs, mix, sig); return; }
@@ -1511,7 +1519,7 @@ export class MixStore {
     if (!(await this.confirmDiscard())) return;
     this.pause();
     this.projectID = uuid();
-    this.clips = []; this.library = []; this.libraryFolders = [];
+    this.clips = []; this.library = []; this.libraryFolders = []; this.samples = []; this.sampleHits = [];
     this.notes = ''; this.loudnessMode = 'off';
     this.masterBPM = 124; this.gridOffset = 0;
     this.documentPath = null;
@@ -1537,7 +1545,7 @@ export class MixStore {
 
   async openRecent(p: string) { if (await this.confirmDiscard()) await this.load(p); }
 
-  private static relink(c: Clip, projectFile: string | null): Clip {
+  private static relink<T extends { url: string; relativePath?: string | null }>(c: T, projectFile: string | null): T {
     if (fs.existsSync(c.url) || !c.relativePath || !projectFile) return c;
     const candidate = resolveRelative(path.dirname(projectFile), c.relativePath);
     return candidate ? { ...c, url: candidate } : c;
@@ -1559,7 +1567,7 @@ export class MixStore {
       const media = new Map((f.media ?? []).map(m => [m.id, m]));
       let unpackFailed = 0;
       const extracting: Promise<void>[] = [];
-      const unpack = (clip: Clip): Clip => {
+      const unpack = <T extends { url: string; relativePath?: string | null; mediaID?: string | null }>(clip: T): T => {
         const c = MixStore.relink(clip, base);
         if (fs.existsSync(c.url) || opened.blobStart == null || !c.mediaID) return c;
         const m = media.get(c.mediaID);
@@ -1570,6 +1578,7 @@ export class MixStore {
       };
       const clips = f.clips.map(unpack);
       const library = (f.library ?? []).map(unpack);
+      const samples = (f.samples ?? []).map(unpack);
       if (extracting.length) {
         // Unpacking the audio of a large mix takes a while: show the tracks as "reading" meanwhile.
         const names = [...clips, ...library].map(c => ({ id: uuid(), url: c.url, name: path.basename(c.url, path.extname(c.url)), stage: 'decode' as const }));
@@ -1582,6 +1591,10 @@ export class MixStore {
       this.clips = clips;
       this.library = library;
       this.libraryFolders = f.libraryFolders ?? [];
+      this.samples = samples;
+      this.sampleHits = (f.sampleHits ?? []).filter(h => samples.some(x => x.id === h.sample));
+      this.samplePcm.clear();
+      void this.prepareSamples();
       if (unpackFailed) this.alertMessage = L(`${unpackFailed}曲の音声をファイルから取り出せませんでした。`, `Could not unpack the audio of ${unpackFailed} track(s).`);
       this.applyLayout();
       this.notes = f.notes ?? '';
@@ -1667,7 +1680,7 @@ export class MixStore {
 
   makeProjectFile(file: string | null, originalPath: string | null = null): ProjectFile {
     const dir = file ? path.dirname(file) : null;
-    const withRel = (c: Clip) => (dir ? { ...c, relativePath: MixStore.relativePath(dir, c.url) } : c);
+    const withRel = <T extends { url: string }>(c: T): T => (dir ? { ...c, relativePath: MixStore.relativePath(dir, c.url) } : c);
     const used = this.customTransitions.filter(p => this.clips.some(c => c.transition === 'custom' && JSON.stringify(c.lanes) === JSON.stringify(p.lanes)));
     return {
       format: projectFormatID, version: projectVersion, savedAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z'), appVersion: 'win-0.1',
@@ -1675,7 +1688,8 @@ export class MixStore {
       ui: { playhead: this.playhead, pixelsPerSecond: this.pixelsPerSecond, scrollTime: this.visibleRange[0], selectedClipID: this.selectedClipID, showDecks: this.showDecks, showMixer: this.showMixer, showInspector: this.showInspector },
       customTransitions: used, masterBPM: this.masterBPM, gridOffset: this.gridOffset,
       defaultTransitionBars: this.defaultTransitionBars, defaultTransitionStyle: this.defaultTransitionStyle,
-      library: this.library.map(withRel), libraryFolders: this.libraryFolders.length ? this.libraryFolders : null, snap: this.snap, clips: this.clips.map(withRel), projectID: this.projectID,
+      library: this.library.map(withRel), libraryFolders: this.libraryFolders.length ? this.libraryFolders : null,
+      samples: this.samples.length ? this.samples.map(withRel) : null, sampleHits: this.sampleHits.length ? this.sampleHits : null, snap: this.snap, clips: this.clips.map(withRel), projectID: this.projectID,
       loudnessMode: this.loudnessMode, analyses: this.macAnalyses,
       profiles: (TrackProfiles.blobs([...this.clips, ...this.library].map(c => c.url)) as Record<string, unknown> | null) ?? this.macProfiles,
     };
@@ -1697,14 +1711,15 @@ export class MixStore {
     try {
       if (this.embedMedia) {
         const ids = new Map<string, string>();
-        for (const c of [...this.clips, ...this.library]) if (c.mediaID) ids.set(c.url, c.mediaID);
-        const assign = (c: Clip): Clip => {
+        for (const c of [...this.clips, ...this.library, ...this.samples]) if (c.mediaID) ids.set(c.url, c.mediaID);
+        const assign = <T extends { url: string; mediaID?: string | null }>(c: T): T => {
           let id = ids.get(c.url);
           if (!id) { id = uuid().slice(0, 8); ids.set(c.url, id); }
           return c.mediaID === id ? c : { ...c, mediaID: id };
         };
         this.clips = this.clips.map(assign);
         this.library = this.library.map(assign);
+        this.samples = this.samples.map(assign);
         const media = [...ids.entries()].filter(([u]) => fs.existsSync(u)).map(([u, id]) => ({ id, file: u })).sort((a, b) => a.id.localeCompare(b.id));
         // Writing into the file the media is read from: copy those out of the old package first.
         await writeProjectAsync(this.makeProjectFile(target!), media, target!);

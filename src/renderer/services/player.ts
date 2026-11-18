@@ -64,7 +64,7 @@ export class Player {
   }
 
   update(mix: MixMessage) {
-    if (this.running) this.worker?.postMessage({ type: 'update', clips: mix.clips, master: mix.master });
+    if (this.running) this.worker?.postMessage({ type: 'update', clips: mix.clips, master: mix.master, sampler: mix.sampler ?? null });
   }
 
   stop() {

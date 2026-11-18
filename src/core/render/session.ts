@@ -12,6 +12,7 @@ import { FXKernel } from './fxkernel';
 import { AudioSource } from './source';
 import { MAX_BLOCK, StretchPool, Stretcher } from './stretch';
 import { turntableBuffer } from './turntable';
+import { SamplerInput, SamplerVoice } from '../sampler';
 
 export const CHUNK = 512;
 /** A track's four separated stems (vocals, drums, bass, melody), in the order of STEM_NAMES. */
@@ -287,6 +288,8 @@ export interface SessionOptions {
   open: (clip: Clip) => AudioSource | null;
   /** Opens a track's separated stems (null when there are none). */
   openStems?: (clip: Clip) => StemSources | null;
+  /** Sampler plays and how to open a sample's audio (left out when rendering single tracks). */
+  sampler?: { input: SamplerInput; open: (sample: string) => AudioSource | null } | null;
   pool: StretchPool;
 }
 
@@ -302,6 +305,8 @@ export class RenderSession {
   private readonly openStems: SessionOptions['openStems'];
   private readonly pool: StretchPool;
   private stemSources = new Map<number, StemSources | null>();
+  private samplerOpen: ((sample: string) => AudioSource | null) | null = null;
+  private sampler: SamplerVoice | null = null;
   private voices: Voice[] = [];
   private sources = new Map<number, AudioSource>();
   private waiting: { index: number; frame: number }[] = [];
@@ -320,6 +325,10 @@ export class RenderSession {
     this.fixed = o.fixed ?? new Map();
     this.open = o.open;
     this.openStems = o.openStems;
+    if (o.sampler && !o.indices) {
+      this.samplerOpen = o.sampler.open;
+      this.sampler = new SamplerVoice(o.sampler.input, o.tempo, o.sampleRate, o.sampler.open);
+    }
     this.pool = o.pool;
     this.ends = o.clips.map(c => clipEnd(c, o.master));
     this.ownKey = RenderSession.structureKey(o.clips, o.master);
@@ -392,6 +401,16 @@ export class RenderSession {
     this.sources.clear();
     for (const s of this.stemSources.values()) for (const src of s ?? []) src.close();
     this.stemSources.clear();
+    this.sampler?.close();
+    this.sampler = null;
+  }
+
+  /** New sampler plays while playing (pads hit live, hits moved): taken over without starting again. */
+  updateSampler(input: SamplerInput) {
+    if (!this.samplerOpen) return;
+    const old = this.sampler;
+    this.sampler = new SamplerVoice(input, this.tempo, this.sampleRate, this.samplerOpen);
+    old?.close();
   }
 
   /** Timeline (reference) time of the next frame. */
@@ -428,6 +447,7 @@ export class RenderSession {
       const s = this.fixed.get(v.index) ?? Automation.state(this.clips, v.index, t, this.master, this.ends);
       v.render(n, s, bpm, beat, 0.02, this.L, this.R);
     }
+    this.sampler?.render(this.absoluteFrame, n, this.L, this.R);
     this.absoluteFrame += n;
     return n;
   }

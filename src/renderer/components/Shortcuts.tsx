@@ -55,6 +55,12 @@ export function Shortcuts() {
       ['Ctrl+Alt+C', L('曲リストをコピー（SoundCloud 用）', 'Copy the track list (for SoundCloud)')],
       ['Ctrl+Shift+P', L('演奏手順と曲リスト', 'How to play & track list')],
     ]],
+    [L('サンプラー', 'Sampler'), [
+      ['Ctrl+Shift+B', L('サンプラーの表示切替', 'Show / hide the sampler')],
+      ['Q W E R T Y U I', L('パッドを鳴らす（録音中は再生位置に置く）', 'Play a pad (placed while recording)')],
+      ['Delete', L('選択した置いた音を削除', 'Delete the selected placed sound')],
+      [L('レーンでダブルクリック', 'Double-click the lane'), L('選んだパッドの音を置く', 'Place the chosen pad’s sound')],
+    ]],
     [L('CUE エディタ', 'CUE editor'), [
       ['I / L / O', L('入口 / 切替完了 / 出口をセット', 'Set IN / switch / OUT')],
       ['M', L('メモCUE', 'Memo cue')],

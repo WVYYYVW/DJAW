@@ -141,6 +141,7 @@ export interface ClipFX {
 
 export type { MixGenre } from './genre';
 import type { MixGenre } from './genre';
+import type { Sample, SampleHit } from './sampler';
 
 /** Why the auto-mix chose a transition (AutoMixer.swift). Kept as data. */
 export interface AutoMixNote {
@@ -1021,6 +1022,9 @@ export interface ProjectFile {
   profiles?: Record<string, unknown> | null;
   /** Folders the library (tracks not in the mix) is organised in. */
   libraryFolders?: LibraryFolder[] | null;
+  /** The sampler's pads and hits (core/sampler.ts). */
+  samples?: Sample[] | null;
+  sampleHits?: SampleHit[] | null;
   /** Which computer saved it last (for mixes shared through a cloud folder). */
   savedOn?: string | null;
 }

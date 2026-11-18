@@ -23,6 +23,7 @@ export interface MixInput {
   sampleRate: number;
   open: SessionOptions['open'];
   openStems?: SessionOptions['openStems'];
+  sampler?: SessionOptions['sampler'];
   pool: SessionOptions['pool'];
 }
 

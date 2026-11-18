@@ -8,6 +8,7 @@ import { RenderSession } from '../core/render/session';
 import { CancelFlag, Cancelled, exportWav, renderPeakRange, renderPeaks } from '../core/render/offline';
 import { checkTransition } from '../core/render/check';
 import { exportVideo } from '../core/render/video';
+import type { SamplerInput } from '../core/sampler';
 import { STEM_NAMES, StemFiles } from '../core/analysis/stems';
 import type { StemSources } from '../core/render/session';
 
@@ -23,7 +24,13 @@ export interface MixMessage {
   paths: Record<string, string>;
   /** Clip url → its separated stems, for tracks whose transitions use them. */
   stems?: Record<string, StemFiles>;
+  /** Sampler plays, and sample id → the file the engine reads. */
+  sampler?: { input: SamplerInput; paths: Record<string, string> } | null;
 }
+
+/** Sample files the preview can open: new pads loaded while playing are added by 'update'. */
+const samplerPaths = new WeakMap<object, Record<string, string>>();
+let previewSampler: object | null = null;
 
 const mixInput = (m: MixMessage) => ({
   clips: m.clips, master: m.master, tempo: new TempoMap(m.tempo.reference, m.tempo.points), gridOffset: m.gridOffset,
@@ -36,7 +43,10 @@ const mixInput = (m: MixMessage) => ({
     for (const x of srcs) x?.close();
     return null;
   },
-
+  sampler: m.sampler ? {
+    input: m.sampler.input,
+    open: (id: string) => { const p = (samplerPaths.get(m.sampler!) ?? m.sampler!.paths)[id]; const src = p ? openPcmFile(p) : null; if (src && src.sampleRate !== SR) { src.close(); return null; } return src; },
+  } : null,
 });
 
 // MARK: Preview
@@ -53,6 +63,8 @@ async function startPreview(m: MixMessage & { from: number; gen: number }) {
   stopPreview();
   gen = m.gen;
   const my = gen;
+  previewSampler = m.sampler ?? null;
+  if (m.sampler) samplerPaths.set(m.sampler, { ...m.sampler.paths });
   const s = await RenderSession.create({ ...mixInput(m), from: m.from });
   if (my !== gen) { s.stop(); return; }
   session = s;
@@ -109,6 +121,10 @@ self.onmessage = async (e: MessageEvent) => {
       case 'play': await startPreview(m); break;
       case 'update':
         if (session && !session.update(m.clips, m.master)) postMessage({ type: 'restart' });
+        else if (session && m.sampler) {
+          if (previewSampler) samplerPaths.set(previewSampler, { ...(samplerPaths.get(previewSampler) ?? {}), ...m.sampler.paths });
+          session.updateSampler(m.sampler.input);
+        }
         break;
       case 'stop': stopPreview(); break;
       case 'tap': tap = !!m.on; break;

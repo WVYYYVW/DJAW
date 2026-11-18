@@ -1,5 +1,6 @@
 // How to play the current set live (decks, mixer moves step by step) and the track list for SoundCloud
 // (mac/DJAW/Views/PerformanceGuideView.swift).
+import { Sampler } from '../../core/sampler';
 import React, { useEffect, useMemo, useState } from 'react';
 import fs from 'node:fs';
 import { clipboard, ipcRenderer } from 'electron';
@@ -12,7 +13,7 @@ export function PerformanceGuideSheet() {
   const [tab, setTab] = useState(0);
   const [numbered, setNumbered] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
-  const guide = useMemo(() => PerformanceGuide.build(s.clips, s.masterBPM, s.tempoMap), [s.revision]);
+  const guide = useMemo(() => PerformanceGuide.build(s.clips, s.masterBPM, s.tempoMap, s.sampleHits.flatMap(h => { const x = s.samples.find(y => y.id === h.sample); return x ? [{ name: x.name, time: Sampler.timeOfBeat(h.beat, s.masterBPM, s.gridOffset), repeats: Math.round(h.repeats ?? 0), every: h.every ?? 1 }] : []; })), [s.revision]);
   const list = useMemo(() => PerformanceGuide.trackList(s.clips, s.masterBPM, s.tempoMap, numbered), [s.revision, numbered]);
   const close = () => { s.showPerformanceGuide = false; s.changed(); };
   useEffect(() => {

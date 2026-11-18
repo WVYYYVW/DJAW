@@ -24,6 +24,8 @@ import { VisualPreviewWindow } from './components/VisualPreview';
 import { MusicLibrarySheet } from './components/MusicLibrarySheet';
 import { CloudBar, CloudSheet } from './components/CloudSheet';
 import { TrackProfileSheet } from './components/TrackProfileSheet';
+import { SamplerPanel } from './components/SamplerPanel';
+import { padKeys } from '../core/sampler';
 
 function readLanguage(): AppLanguage {
   try { return (JSON.parse(fs.readFileSync(dataDir('settings.json'), 'utf8')).language as AppLanguage) ?? 'system'; } catch { return 'system'; }
@@ -117,6 +119,7 @@ export function App() {
         case 'toggleDecks': s.toggle('showDecks'); break;
         case 'toggleMixer': s.toggle('showMixer'); break;
         case 'toggleMixWaveform': s.toggle('showMixWaveform'); break;
+        case 'toggleSampler': s.showSampler = !s.showSampler; s.changed(); break;
         case 'shortcuts': s.showShortcuts = true; s.changed(); break;
         case 'language': {
           const l = arg as AppLanguage;
@@ -171,7 +174,7 @@ export function App() {
       switch (e.key) {
         case ' ': s.togglePlay(); break;
         case 'Delete': case 'Backspace':
-          if (!s.selectedClipID && !s.librarySelection.size) return;
+          if (!s.selectedHit && !s.selectedClipID && !s.librarySelection.size) return;
           s.deleteSelected(); break;
         case 'Home': s.seek(0); s.requestScroll(0); break;
         case 'End': s.seek(s.mixDuration); s.requestScroll(s.mixDuration); break;
@@ -181,7 +184,13 @@ export function App() {
           s.applyPresetNumber(Number(e.key));
           break;
         }
-        default: return;
+        case 'Escape': if (!s.selectedHit) return; s.selectedHit = null; s.changed(); break;
+        default: {
+          // Sampler pads (while the sampler is shown).
+          const pad = s.showSampler && !e.repeat ? padKeys.indexOf(e.key.toUpperCase()) : -1;
+          if (pad < 0 || e.shiftKey) return;
+          s.triggerPad(pad);
+        }
       }
       e.preventDefault();
     };
@@ -199,7 +208,7 @@ export function App() {
     return () => { window.removeEventListener('dragover', prevent); window.removeEventListener('drop', prevent); };
   }, []);
 
-  const available = mainSize.height - 56;
+  const available = mainSize.height - 56 - (s.showSampler ? 93 : 0);
   return (
     <div className="app" key={lang}>
       <Toolbar />
@@ -208,6 +217,7 @@ export function App() {
         <Sidebar />
         <div className="main" ref={mainRef}>
           <div className="timeline-area"><Timeline /></div>
+          {s.showSampler && <div className="sampler-area"><SamplerPanel /></div>}
           {s.showDecks && mainSize.height > 0 && <div className="deck-area" style={{ height: deckHeight(available, s.showMixer) }}><DeckPanel /></div>}
           <div className="overview-area"><Overview /></div>
         </div>

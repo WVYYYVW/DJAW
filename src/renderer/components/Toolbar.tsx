@@ -85,6 +85,7 @@ export function Toolbar() {
       </div>
       <Toggle on={s.showDecks} onClick={() => s.toggle('showDecks')} title={L('ターンテーブルとミキサーの表示', 'Show turntables and mixer')}>{L('デッキ', 'Decks')}</Toggle>
       <Toggle on={s.showMixer} disabled={!s.showDecks} onClick={() => s.toggle('showMixer')} title={L('デッキの間のミキサーの表示 / 非表示', 'Show or hide the mixer')}>{L('ミキサー', 'Mixer')}</Toggle>
+      <Toggle on={s.showSampler} onClick={() => { s.showSampler = !s.showSampler; s.changed(); }} title={L('サンプラー：短い音（ホーン・声ネタ・サイレンなど）を8つのパッドに入れて、ミックスの拍に置く（Ctrl+Shift+B）。パッドは Q〜I キーでも鳴らせます', 'Sampler: put short sounds (horns, vocal shots, sirens …) on 8 pads and place them on the mix’s beats (Ctrl+Shift+B). Keys Q–I play the pads')}>◼ {L('サンプラー', 'Sampler')}</Toggle>
       <Toggle on={s.followPlayhead} onClick={() => s.toggle('followPlayhead')} title={L('再生中に表示を再生位置に追従させる', 'Keep the playhead in view while playing')}>{L('追従', 'Follow')}</Toggle>
       <button className="tbtn" onClick={() => { s.showVisualPreview = true; s.changed(); }} title={L('映像プレビュー：書き出す映像を、再生に合わせてその場で確認（Ctrl+Alt+V）', 'Visuals preview: see the video visuals live with playback (Ctrl+Alt+V)')}>✦ {L('映像', 'Visuals')}</button>
       <button className="tbtn" onClick={() => { s.showCloud = true; s.changed(); }} title={L('クラウド（MEGA）：Windows と Mac でミックスを共有（Ctrl+Shift+O）', 'Cloud (MEGA): share mixes between Windows and Mac (Ctrl+Shift+O)')}>☁ {L('クラウド', 'Cloud')}</button>

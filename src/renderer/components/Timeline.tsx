@@ -16,13 +16,16 @@ import { store, MixStore } from '../store/store';
 import { Fmt, Theme, clipColor, hsb } from '../format';
 import { droppedPaths } from '../dropped';
 import { showContextMenu, MenuItem } from './ContextMenu';
+import { Sampler, SampleHit } from '../../core/sampler';
+import { hitMenu } from './SamplerPanel';
 
-const INSET = 24, RULER = 34, LANE_GAP = 18, HEADER = 20, TEMPO_STRIP = 16, MIX_LANE = 64;
+const INSET = 24, RULER = 34, LANE_GAP = 18, HEADER = 20, TEMPO_STRIP = 16, MIX_LANE = 64, SAMPLER_LANE = 30;
 const LANES_TOP = RULER + TEMPO_STRIP + 6;
 const ORANGE = 'rgb(255,159,10)', GREEN = 'rgb(48,209,88)', PURPLE = 'rgb(191,90,242)', TEAL = 'rgb(64,200,224)', RED = 'rgb(255,69,58)', PINK = 'rgb(255,55,95)', YELLOW = 'rgb(255,214,10)';
 
 type Part = 'body' | 'trimLeft' | 'trimRight' | 'fadeIn' | 'fadeOut';
-type Hit = { kind: 'none' } | { kind: 'ruler' } | { kind: 'emptyLane' } | { kind: 'clip'; id: string; part: Part } | { kind: 'transition'; id: string };
+type Hit = { kind: 'none' } | { kind: 'ruler' } | { kind: 'emptyLane' } | { kind: 'clip'; id: string; part: Part } | { kind: 'transition'; id: string }
+  | { kind: 'sampleHit'; id: string } | { kind: 'samplerLane' };
 
 interface Drag {
   hit: Hit; startX: number; startTime: number; original: Clip | null; originalValue: number;
@@ -37,6 +40,8 @@ class TimelineView {
   pps = store.pixelsPerSecond;
   leadShift = 0;
   drag: Drag | null = null;
+  /** The sampler pad placed last (double-clicking the sampler lane places it again). */
+  lastSample: string | null = null;
   hoverClip: string | null = null;
   dropTime: number | null = null;
   dropIndex = 0;
@@ -59,7 +64,11 @@ class TimelineView {
   // MARK: Geometry
   get scrollX() { return this.scroller.scrollLeft; }
   get mixLaneSpace() { return store.showMixWaveform ? MIX_LANE + 10 : 0; }
-  get laneHeight() { return Math.max(64, (this.height - LANES_TOP - LANE_GAP - 14 - this.mixLaneSpace) / 2); }
+  /** The sampler lane: shown with the sampler panel, or whenever sounds are placed. */
+  get showsSamplerLane() { return store.showSampler || store.sampleHits.length > 0; }
+  get samplerLaneSpace() { return this.showsSamplerLane ? SAMPLER_LANE + 8 : 0; }
+  get samplerLaneTop() { return this.lanesBottom + 8 + this.mixLaneSpace; }
+  get laneHeight() { return Math.max(64, (this.height - LANES_TOP - LANE_GAP - 14 - this.mixLaneSpace - this.samplerLaneSpace) / 2); }
   laneTop(lane: number) { return LANES_TOP + lane * (this.laneHeight + LANE_GAP); }
   get lanesBottom() { return this.laneTop(1) + this.laneHeight; }
   get mixLaneTop() { return this.lanesBottom + 8; }
@@ -166,6 +175,7 @@ class TimelineView {
     });
     this.drawTransitions(ctx, area);
     if (store.showMixWaveform) this.drawMixLane(ctx, area);
+    if (this.showsSamplerLane) this.drawSamplerLane(ctx, area);
     if (!store.clips.length) this.drawEmptyState(ctx);
     this.drawRuler(ctx, area);
     this.drawTempoStrip(ctx, area);
@@ -682,6 +692,57 @@ class TimelineView {
     this.text(ctx, text, this.scrollX + 6, top + 3, '600 10px system-ui', `rgba(255,255,255,${rendering ? 0.55 : 0.4})`);
   }
 
+  /** Where a placed sound is drawn: its start, and how long it sounds (timeline seconds). */
+  hitRect(h: SampleHit) {
+    const t = Sampler.timeOfBeat(h.beat, store.masterBPM, store.gridOffset);
+    const len = store.samplePcm.get(h.sample)?.seconds ?? 0.5;
+    const end = this.tempo.referenceAtReal(this.tempo.real(t) + len);
+    return { x: this.x(t), y: this.samplerLaneTop + 3, w: Math.max(8, (end - t) * this.pps), h: SAMPLER_LANE - 6 };
+  }
+
+  drawSamplerLane(ctx: CanvasRenderingContext2D, area: { x: number; w: number }) {
+    const top = this.samplerLaneTop;
+    ctx.fillStyle = Theme.laneBG;
+    ctx.fillRect(area.x, top, area.w, SAMPLER_LANE);
+    const samples = new Map(store.samples.map(x => [x.id, x]));
+    const beatPx = this.pps * 60 / store.masterBPM;
+    for (const h of store.sampleHits) {
+      const sample = samples.get(h.sample);
+      if (!sample) continue;
+      const r = this.hitRect(h);
+      const n = 1 + Math.max(0, Math.round(h.repeats ?? 0));
+      const span = (n - 1) * (h.every ?? 1) * beatPx;
+      if (r.x + r.w + span < area.x || r.x > area.x + area.w) continue;
+      const sel = store.selectedHit === h.id;
+      // The repeats of a roll: thin marks after the first play.
+      for (let k = 1; k < n; k++) {
+        const x = r.x + k * (h.every ?? 1) * beatPx;
+        ctx.fillStyle = clipColor(sample.colorIndex, 0.75);
+        ctx.fillRect(x, r.y + 4, 2, r.h - 8);
+        ctx.fillStyle = clipColor(sample.colorIndex, 0.16);
+        ctx.fillRect(x + 2, r.y + 4, Math.min(r.w, (h.every ?? 1) * beatPx) - 3, r.h - 8);
+      }
+      this.roundRect(ctx, r.x, r.y, r.w, r.h, 4);
+      ctx.fillStyle = clipColor(sample.colorIndex, sel ? 0.75 : 0.45);
+      ctx.fill();
+      ctx.strokeStyle = sel ? '#fff' : clipColor(sample.colorIndex, 0.95);
+      ctx.lineWidth = sel ? 1.5 : 1;
+      ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(r.x, r.y, 1.5, r.h);
+      if (r.w > 26) {
+        ctx.save();
+        ctx.beginPath(); ctx.rect(r.x + 3, r.y, r.w - 5, r.h); ctx.clip();
+        this.text(ctx, sample.name + (n > 1 ? ` ×${n}` : ''), r.x + 5, r.y + 6, '600 10px system-ui', 'rgba(255,255,255,0.92)');
+        ctx.restore();
+      }
+    }
+    if (!store.sampleHits.length) {
+      this.text(ctx, L('サンプラー — パッドの ＋ で再生位置に置く／ここをダブルクリックで置く', 'SAMPLER — ＋ on a pad places it at the playhead; double-click here to place'),
+        this.scrollX + 6, top + 9, '600 10px system-ui', 'rgba(255,255,255,0.32)');
+    } else this.text(ctx, L('サンプラー', 'SAMPLER'), this.scrollX + 6, top - 1, '600 9px system-ui', 'rgba(255,255,255,0.3)');
+  }
+
   drawEmptyState(ctx: CanvasRenderingContext2D) {
     const a = { x: this.scrollX + 24, y: LANES_TOP + 4, w: this.width - 48, h: this.lanesBottom - LANES_TOP - 8 };
     const highlight = this.dropTime != null;
@@ -740,6 +801,13 @@ class TimelineView {
       return { kind: 'clip', id: c.id, part: 'body' };
     }
     if (py >= LANES_TOP && py <= this.lanesBottom) return { kind: 'emptyLane' };
+    if (this.showsSamplerLane && py >= this.samplerLaneTop && py <= this.samplerLaneTop + SAMPLER_LANE) {
+      for (let k = store.sampleHits.length - 1; k >= 0; k--) {
+        const h = store.sampleHits[k], r = this.hitRect(h);
+        if (px >= r.x - 2 && px <= r.x + r.w) return { kind: 'sampleHit', id: h.id };
+      }
+      return { kind: 'samplerLane' };
+    }
     return { kind: 'none' };
   }
 
@@ -753,6 +821,7 @@ class TimelineView {
       hover = h.id;
       cursor = h.part === 'trimLeft' || h.part === 'trimRight' ? 'ew-resize' : h.part === 'body' ? (store.index(h.id) === 0 ? 'default' : 'grab') : 'pointer';
     } else if (h.kind === 'transition') cursor = 'pointer';
+    else if (h.kind === 'sampleHit') cursor = 'grab';
     this.overlay.style.cursor = cursor;
     if (hover !== this.hoverClip) { this.hoverClip = hover; this.requestDraw(); }
   }
@@ -766,7 +835,21 @@ class TimelineView {
       store.showInspector = true;
       hit = { kind: 'clip', id: hit.id, part: 'body' };
     }
-    if (hit.kind === 'ruler') {
+    const selectedSample = store.sampleHits.find(x => x.id === store.selectedHit)?.sample ?? null;
+    if (hit.kind !== 'sampleHit' && store.selectedHit) store.selectedHit = null;
+    if (hit.kind === 'sampleHit') {
+      const h = store.sampleHits.find(x => x.id === hit.id);
+      store.selectedHit = hit.id;
+      if (h && e.detail >= 2) store.auditionSample(h.sample);
+      if (h) this.drag = { hit, startX: px, startTime: t, original: null, originalValue: h.beat, moved: false, originalPrev: null, slip: false };
+    } else if (hit.kind === 'samplerLane') {
+      if (e.detail >= 2) {
+        // Places the pad last used (the selected sound's, or the first).
+        const sample = store.samples.find(x => x.id === selectedSample) ?? store.samples.find(x => x.id === this.lastSample) ?? store.samples[0];
+        if (sample) store.placeHit(sample.id, store.snapBeat(Sampler.beatOfTime(t, store.masterBPM, store.gridOffset)));
+        else store.showSampler = true;
+      } else store.seek(t);
+    } else if (hit.kind === 'ruler') {
       this.followSuspendedUntil = 0;
       store.beginScrub();
       store.scrub(t);
@@ -802,6 +885,22 @@ class TimelineView {
     const t = this.time(px);
     const fine = e.altKey;
     if (d.hit.kind === 'ruler') { store.scrub(t); return; }
+    if (d.hit.kind === 'sampleHit') {
+      if (!d.moved) {
+        if (Math.abs(px - d.startX) < 3) return;
+        d.moved = true;
+        store.pushUndo();
+        this.overlay.style.cursor = 'grabbing';
+      }
+      const delta = Sampler.beatOfTime(t, store.masterBPM, 0) - Sampler.beatOfTime(d.startTime, store.masterBPM, 0);
+      const unit = fine ? 1 / 16 : store.samplerSnap;
+      const beat = Math.round((d.originalValue + delta) / unit) * unit;
+      store.moveHit(d.hit.id, beat, false);
+      const pos = store.grid.position(Sampler.timeOfBeat(beat, store.masterBPM, store.gridOffset));
+      this.dragLabel = { text: L(`小節 ${pos.bar}.${pos.beat}`, `Bar ${pos.bar}.${pos.beat}`) + (fine ? '' : L('（Alt でスナップなし）', ' (Alt: no snap)')), x: px, y: py };
+      this.requestDraw();
+      return;
+    }
     if (d.hit.kind !== 'clip' || !d.original) return;
     const id = d.hit.id, part = d.hit.part, orig = d.original;
     const i = store.index(id);
@@ -871,6 +970,7 @@ class TimelineView {
     if (!d) return;
     store.isInteracting = false;
     if (d.hit.kind === 'ruler') store.endScrub(this.time(px));
+    else if (d.hit.kind === 'sampleHit') { const h = store.sampleHits.find(x => x.id === (d.hit as { id: string }).id); if (h) this.lastSample = h.sample; }
     else if (d.hit.kind === 'clip') {
       if (this.leadShift !== 0) {
         const shiftX = this.leadShift * this.pps;
@@ -889,6 +989,20 @@ class TimelineView {
     const h = this.region(px, py);
     const items: MenuItem[] = [];
     const clip = h.kind === 'clip' ? store.clip(h.id) : null;
+    if (h.kind === 'sampleHit') {
+      store.selectedHit = h.id;
+      store.changed();
+      showContextMenu(e, hitMenu(store, h.id));
+      return;
+    }
+    if (h.kind === 'samplerLane') {
+      const beat = store.snapBeat(Sampler.beatOfTime(t, store.masterBPM, store.gridOffset));
+      items.push({ label: L('ここに置く', 'Place Here'), enabled: store.samples.length > 0, submenu: store.samples.map(x => ({ label: x.name, action: () => { this.lastSample = x.id; store.placeHit(x.id, beat); } })) });
+      items.push({ label: L('サンプラーに音を読み込む…', 'Load Sounds into the Sampler…'), action: () => store.chooseSamples() });
+      items.push({ label: store.showSampler ? L('サンプラーのパッドを隠す', 'Hide the Sampler Pads') : L('サンプラーのパッドを表示', 'Show the Sampler Pads'), action: () => { store.showSampler = !store.showSampler; store.changed(); } });
+      showContextMenu(e, items);
+      return;
+    }
     if (h.kind === 'clip' && clip) {
       const id = h.id;
       store.selectedClipID = id;

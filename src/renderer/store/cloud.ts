@@ -140,18 +140,19 @@ P.saveCloud = async function (target, quiet, force = false) {
   this.changed();
   try {
     const all = [...this.clips, ...this.library];
-    const map = await copyTracksIntoCloud(all.map(c => c.url), root, (done, total, name) => {
+    const map = await copyTracksIntoCloud([...all.map(c => c.url), ...this.samples.map(x => x.url)], root, (done, total, name) => {
       this.cloudCopy = total && done < total ? { done, total, name } : null;
       this.changed();
     });
     const pf = this.makeProjectFile(target);
     const dir = path.dirname(target);
-    const fix = (c: Clip): Clip => {
+    const fix = <T extends { url: string; relativePath?: string | null; mediaID?: string | null }>(c: T): T => {
       const u = map.get(c.url) ?? c.url;
       return { ...c, url: u, relativePath: path.relative(dir, u).split(path.sep).join('/'), mediaID: undefined };
     };
     pf.clips = pf.clips.map(fix);
     pf.library = (pf.library ?? []).map(fix);
+    if (pf.samples) pf.samples = pf.samples.map(fix);
     pf.media = null;
     pf.originalPath = null;
     pf.savedOn = deviceName();

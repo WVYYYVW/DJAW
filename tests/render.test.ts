@@ -6,6 +6,7 @@ import { TempoMap } from '../src/core/tempo';
 import { MemorySource } from '../src/core/render/source';
 import { StretchPool } from '../src/core/render/stretch';
 import { RenderSession, type StemSources } from '../src/core/render/session';
+import { Sampler } from '../src/core/sampler';
 import { CancelFlag, renderPeakRange, renderPeaks } from '../src/core/render/offline';
 import { mixWaveformChange, provisionalPeaks, splicePeaks } from '../src/core/render/mixWaveform';
 
@@ -202,4 +203,34 @@ test('mix waveform: re-rendering only the changed stretch matches a full render'
   let off = 0;
   for (let k = 0; k < n; k++) if (Math.abs(exact.maxs[k] - spliced.maxs[k]) > 0.05) off++;
   assert.ok(off < n * 0.01, `bins that differ: ${off} of ${n}`);
+});
+
+test('sampler hits land on their beat, the same from the start or the middle', async () => {
+  const shot = Float32Array.from({ length: 2000 }, (_, i) => (i < 4 ? 0.9 : 0));   // a click
+  const c = clip('a', 120, 30);
+  const { clips, gridOffset } = layout([c], 120, 0);
+  const tempo = TempoMap.build(clips, 120);
+  const samples = [Sampler.newSample('shot.wav', 'shot', 0)];
+  const hits = [{ ...Sampler.newHit(samples[0].id, 8), repeats: 3, every: 0.5 }, Sampler.newHit(samples[0].id, 20)];
+  const input = Sampler.expand(samples, hits, 120, gridOffset);
+  const render = async (from: number) => {
+    const session = await RenderSession.create({
+      clips, master: 120, tempo, gridOffset, sampleRate: sr, from,
+      open: () => new MemorySource(sr, new Float32Array(30 * sr)), pool: new StretchPool(sr),
+      sampler: { input, open: () => new MemorySource(sr, shot) },
+    });
+    const start = session.absoluteFrame;
+    const out = new Float32Array(Math.round(14 * sr) - start);
+    let p = 0;
+    while (p < out.length) { const k = session.renderNext(); out.set(session.L.subarray(0, Math.min(k, out.length - p)), p); p += k; }
+    session.stop();
+    return { start, out };
+  };
+  const a = await render(0);
+  const clicks: number[] = [];
+  for (let i = 0; i < a.out.length; i++) if (a.out[i] > 0.5 && (i === 0 || a.out[i - 1] < 0.5)) clicks.push(a.start + i);
+  const expect = [8, 8.5, 9, 9.5, 20].map(b => Math.round(tempo.real(Sampler.timeOfBeat(b, 120, gridOffset)) * sr));
+  assert.deepEqual(clicks, expect, 'every play on its exact frame');
+  const b = await render(Sampler.timeOfBeat(9, 120, gridOffset) - 0.01);
+  for (let i = 0; i < b.out.length; i++) assert.equal(b.out[i], a.out[b.start - a.start + i], `frame ${b.start + i} differs`);
 });

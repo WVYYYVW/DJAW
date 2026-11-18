@@ -120,6 +120,7 @@ function buildMenu() {
         item(L('デッキ（切替）', 'Decks (toggle)'), 'toggleDecks', 'CmdOrCtrl+Shift+D'),
         item(L('ミキサー（切替）', 'Mixer (toggle)'), 'toggleMixer', 'CmdOrCtrl+Shift+X'),
         item(L('ミックス波形（切替）', 'Mix Waveform (toggle)'), 'toggleMixWaveform'),
+        item(L('サンプラー（切替）', 'Sampler (toggle)'), 'toggleSampler', 'CmdOrCtrl+Shift+B'),
         sep,
         {
           label: L('言語', 'Language'),

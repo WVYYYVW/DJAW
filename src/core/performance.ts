@@ -58,14 +58,24 @@ export const PerformanceGuide = {
     return `${bar + 1}.${Math.min(4, beat)}`;
   },
 
-  build(clips: Clip[], master: number, tempo: TempoMap): Guide {
+  /** `sampler`: the sounds placed with the sampler (timeline time), played from a sampler / pad on the gear. */
+  build(clips: Clip[], master: number, tempo: TempoMap, sampler: { name: string; time: number; repeats: number; every: number }[] = []): Guide {
     const tracks = clips.map((_, i) => track(i, clips, master, tempo));
+    for (const h of sampler) {
+      let k = -1;
+      clips.forEach((c, i) => { if (c.start <= h.time + 1e-6) k = i; });
+      if (k < 0) continue;
+      const roll = h.repeats > 0 ? L(`（${h.every >= 1 ? `${h.every}拍` : `1/${Math.round(1 / h.every)}拍`}ごとに${h.repeats + 1}回）`, ` (${h.repeats + 1}× every ${h.every >= 1 ? `${h.every} beat${h.every > 1 ? 's' : ''}` : `1/${Math.round(1 / h.every)} beat`})`) : '';
+      tracks[k].steps.push({ time: tempo.real(h.time), position: pos(clips[k], deck(k), h.time, master), deck: null, text: L(`サンプラー：「${h.name}」${roll}`, `Sampler: “${h.name}”${roll}`) });
+      tracks[k].steps.sort((a, b) => a.time - b.time);
+    }
     const e = Math.max(0, ...clips.map(c => tempo.real(end(c, master))));
     const overview = [
       L(`曲数：${clips.length}曲　長さ：${F.duration(e)}　デッキ：2台（A・B を交互に使用）＋ミキサー`, `${clips.length} tracks · ${F.duration(e)} · two decks (A and B in turn) and a mixer`),
       L('位置は「デッキ 小節.拍」（例：A 57.1 = デッキAの曲の57小節目の1拍目）。小節は DJAW のグリッドの番号です。', 'Positions are “deck bar.beat” (A 57.1 = bar 57, beat 1 of the track on deck A), numbered as on DJAW’s grid.'),
       L('EQ は「12時 = 0 dB」「絞り切り = カット」。フェーダーはチャンネルフェーダー（クロスフェーダーは中央のまま）。', 'EQ: “12 o’clock” = 0 dB, “off” = fully cut. Faders are the channel faders (leave the crossfader in the middle).'),
     ];
+    if (sampler.length) overview.push(L(`サンプラーの音を${new Set(sampler.map(h => h.name)).size}種類使います。機材のサンプラー（またはパッド）に読み込んでおいてください。`, `Uses ${new Set(sampler.map(h => h.name)).size} sampler sound(s): load them into the gear’s sampler (or pads) beforehand.`));
     if (tempo.points.length > 1 || clips.some(c => c.tempo != null)) {
       overview.push(L('途中で BPM が変わります。ピッチ（テンポ）フェーダーを手順どおりに動かしてください。', 'The tempo changes during the set: move the pitch faders as described.'));
     }
