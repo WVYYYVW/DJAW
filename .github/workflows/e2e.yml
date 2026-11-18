@@ -52,6 +52,25 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Smoke test (packaged app)
         run: node tests/e2e/smoke.cjs ${{ matrix.app }}
+      - name: Mac crash reports (when something crashed)
+        if: failure() && runner.os == 'macOS'
+        shell: bash
+        run: |
+          for f in $(ls -t ~/Library/Logs/DiagnosticReports/*.ips 2>/dev/null | head -3); do
+            echo "=== $f"
+            python3 - "$f" <<'PY'
+          import json, sys
+          raw = open(sys.argv[1]).read().split('\n', 1)
+          head = json.loads(raw[0]); body = json.loads(raw[1])
+          print(head.get('app_name'), head.get('name'), body.get('exception'), body.get('termination'))
+          th = body['threads'][body.get('faultingThread', 0)]
+          imgs = body.get('usedImages', [])
+          for fr in th.get('frames', [])[:25]:
+              img = imgs[fr['imageIndex']] if fr.get('imageIndex') is not None and fr['imageIndex'] < len(imgs) else {}
+              print('  ', img.get('name', '?'), fr.get('symbol', ''), fr.get('imageOffset'))
+          print('asi', json.dumps(body.get('asi', {}))[:1500])
+          PY
+          done
       - name: Keep the screenshots (a draft release "e2e-results", visible only to the repository's owner)
         if: always()
         shell: bash
