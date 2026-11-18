@@ -23,6 +23,8 @@ declare module './store' {
     changeEdit(id: string, editID: string, patch: Partial<Pick<ClipEdit, 'bar' | 'bars' | 'repeats'>>, undoable?: boolean): boolean;
     /** Plays the mix from a little before this bar of the track. */
     previewBar(id: string, bar: number, leadBars?: number): void;
+    /** Moves the playhead to this bar of a track in the mix (without starting playback). */
+    seekToTrackBar(id: string, bar: number): void;
   }
 }
 
@@ -76,10 +78,14 @@ P.changeEdit = function (id, editID, patch, undoable = true) {
 };
 
 P.previewBar = function (id, bar, leadBars = 1) {
+  this.seekToTrackBar(id, bar - leadBars);
+  if (!this.isPlaying && this.clips.some(x => x.id === id)) void this.play();
+};
+
+P.seekToTrackBar = function (id, bar) {
   const c = this.clips.find(x => x.id === id);
   if (!c) return;
-  const t = timelineTimeOfBar(c, bar - leadBars, this.masterBPM);
+  const t = timelineTimeOfBar(c, bar, this.masterBPM);
   this.seek(Math.max(c.start, Math.min(t, this.mixDuration - 0.1)));
   this.requestScroll(this.playhead);
-  if (!this.isPlaying) void this.play();
 };

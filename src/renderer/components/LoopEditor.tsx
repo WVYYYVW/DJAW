@@ -221,7 +221,7 @@ function LoopEditorBody({ clip }: { clip: Clip }) {
       if (d.kind === 'select' && !d.moved) {
         // A click: nothing selected, and the mix jumps there (to listen from it).
         setSel(null); selectEdit(null);
-        if (inMix) { const b = barAt(ev.clientX); s.previewBar(clip.id, b, 0); if (!s.isPlaying) s.pause(); }
+        if (inMix) s.seekToTrackBar(clip.id, barAt(ev.clientX));
       }
     };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
@@ -232,7 +232,8 @@ function LoopEditorBody({ clip }: { clip: Clip }) {
     setHover(h?.id ?? null);
     (e.currentTarget as HTMLElement).style.cursor = !h ? 'crosshair' : h.part === 'move' ? 'grab' : 'ew-resize';
   };
-  const wheel = (e: React.WheelEvent) => {
+  const wheel = (e: WheelEvent) => {
+    e.preventDefault();
     if (e.ctrlKey || e.metaKey) {
       const k = zooms.indexOf(viewBars);
       const next = zooms[Math.max(0, Math.min(zooms.length - 1, k + (e.deltaY > 0 ? 1 : -1)))];
@@ -257,6 +258,17 @@ function LoopEditorBody({ clip }: { clip: Clip }) {
     { separator: true },
     { label: L('削除', 'Delete'), action: () => removeEdit(ed.id) },
   ]);
+
+  // The wheel pans / zooms (a native listener: React's is passive and cannot stop the page from zooming).
+  const wheelRef = useRef(wheel);
+  wheelRef.current = wheel;
+  useEffect(() => {
+    const c = ref.current;
+    if (!c) return;
+    const f = (e: WheelEvent) => wheelRef.current(e);
+    c.addEventListener('wheel', f, { passive: false });
+    return () => c.removeEventListener('wheel', f);
+  }, []);
 
   // Keys (while the panel has the focus).
   useEffect(() => {
@@ -298,7 +310,7 @@ function LoopEditorBody({ clip }: { clip: Clip }) {
           {loop && <span className="loop-pass">⟲ {loop.pass}/{loop.of}</span>}
           <button className="btn small" disabled={!inMix} onClick={() => s.togglePlay()} title={L('ミックスを再生 / 停止（Space）', 'Play / pause the mix (Space)')}>{s.isPlaying ? '⏸' : '▶'}</button>
         </div>
-        <canvas ref={ref} className="loop-canvas" onPointerDown={down} onPointerMove={hoverMove} onPointerLeave={() => setHover(null)} onWheel={wheel}
+        <canvas ref={ref} className="loop-canvas" onPointerDown={down} onPointerMove={hoverMove} onPointerLeave={() => setHover(null)}
           onContextMenu={e => { e.preventDefault(); const h = hit(e.clientX); const ed = h && clip.edits!.find(x => x.id === h.id); if (ed) { selectEdit(ed.id); editMenu(e, ed); } else if (sel) showContextMenu(e, [{ label: L('ループにする', 'Make a Loop'), action: makeLoop }, { label: L('ジャンプにする（この範囲を飛ばす）', 'Make a Jump (skip this range)'), action: makeJump }]); }} />
         <div className="loop-hint caption">{L('波形の上をドラッグして範囲を選ぶ → L でループ、J でジャンプ。ループはドラッグで移動、端をドラッグで長さを変更（Alt で細かく）。[ ] で長さを半分／2倍、↑↓ でくり返し回数、← → で移動、Delete で削除。ホイールで左右に移動。', 'Drag across the waveform to choose a range → L makes a loop, J a jump. Drag a loop to move it, its edges to resize (Alt: fine). [ ] halve / double, ↑↓ repeats, ← → move, Delete removes. Scroll to pan.')}</div>
       </div>

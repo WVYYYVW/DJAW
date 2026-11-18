@@ -20,15 +20,15 @@ export function usePlayhead(throttleMs = 0) {
 
 /** Element size (ResizeObserver). */
 export function useSize<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
+  // A callback ref, so a new element (the window's content is rebuilt when the language changes) is measured too.
+  const [el, setEl] = useState<T | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   useEffect(() => {
-    const el = ref.current;
     if (!el) return;
     const ro = new ResizeObserver(() => setSize({ width: el.clientWidth, height: el.clientHeight }));
     ro.observe(el);
     setSize({ width: el.clientWidth, height: el.clientHeight });
     return () => ro.disconnect();
-  }, []);
-  return [ref, size] as const;
+  }, [el]);
+  return [setEl, size] as const;
 }

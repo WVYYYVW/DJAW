@@ -168,6 +168,8 @@ export function App() {
         case ' ': s.togglePlay(); break;
         case 'Delete': case 'Backspace':
           if (!s.selectedHit && !s.selectedClipID && !s.librarySelection.size) return;
+          // In the detail panel, Delete never removes the track being edited there.
+          if (s.focusArea === 'panel' && !s.selectedHit) return;
           s.deleteSelected(); break;
         case 'Home': s.seek(0); s.requestScroll(0); break;
         case 'End': s.seek(s.mixDuration); s.requestScroll(s.mixDuration); break;
@@ -195,7 +197,12 @@ export function App() {
     document.documentElement.lang = isEnglish() ? 'en' : 'ja';
     s.offerRecoveryIfNeeded();
     // Which part of the window has the keys: the detail panel's editors, or the rest.
-    const focus = (e: PointerEvent) => { s.focusArea = (e.target as HTMLElement)?.closest?.('.detail-panel') ? 'panel' : 'main'; };
+    const focus = (e: PointerEvent) => {
+      const el = e.target as HTMLElement;
+      // Menus and sheets opened from the panel leave the keys where they were.
+      if (el?.closest?.('.cm-backdrop, .sheet-backdrop')) return;
+      s.focusArea = el?.closest?.('.detail-panel') ? 'panel' : 'main';
+    };
     window.addEventListener('pointerdown', focus, true);
     // Files dropped anywhere else must not navigate the window away.
     const prevent = (e: DragEvent) => { if (e.dataTransfer?.types.includes('Files')) e.preventDefault(); };
