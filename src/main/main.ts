@@ -3,6 +3,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, MenuItemConstructorOptions, 
 import fs from 'node:fs';
 import path from 'node:path';
 import { Updater } from './updater';
+import { setUpAnalysisHost } from './analysisHost';
 const isMac = process.platform === 'darwin';
 
 app.setName('DJAW');
@@ -251,6 +252,7 @@ app.on('open-file', (e, f) => {
   if (win) send('openFile', f); else fileArg = f;
 });
 app.on('will-quit', () => updater.installOnQuit());
+setUpAnalysisHost();
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', (_e, argv) => {
   const f = argv.find(a => a.toLowerCase().endsWith('.djaw'));

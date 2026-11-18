@@ -1,5 +1,7 @@
-// Analysis process: a child Node process (Electron run as Node), because onnxruntime-node cannot run inside a
-// renderer Web Worker. One message at a time: track analysis (waveform, tempo, Beat This! grid, structure),
+// Analysis process: a Node child process (this app run as Node) started by the main process (main/analysisHost.ts),
+// which relays its messages to and from the renderer — onnxruntime-node cannot run inside a renderer Web Worker, and
+// a child started from the renderer crashes on the Mac. (Started as an Electron utility process, it would use the
+// port it is given instead.) One message at a time: track analysis (waveform, tempo, Beat This! grid, structure),
 // loudness, stem separation (in a second process of its own) and resampling WAV / AIFF files that are not at 44.1 kHz.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -17,7 +19,9 @@ let model: Promise<BeatModel | null> | null = null;
 let cueModel: Promise<CueAssets | null> | null = null;
 let genreModel: Promise<GenreAssets | null> | null = null;
 let stemModel: Promise<StemModel | null> | null = null;
-const send = (m: unknown) => { if (process.connected) process.send!(m); };
+type Port = { postMessage(m: unknown): void; on(ev: 'message', f: (e: { data: unknown }) => void): void; start(): void };
+let port: Port | null = null;
+const send = (m: unknown) => { if (port) port.postMessage(m); else if (process.connected) process.send!(m); };
 
 async function handle(m: any) {
   if (m.type === 'analyze') {
@@ -76,9 +80,21 @@ async function handle(m: any) {
 }
 
 let chain: Promise<unknown> = Promise.resolve();
-// Tells the app the process is up (it gives up on a process that never says so).
-send({ type: 'ready' });
-process.on('message', (m: any) => {
+const receive = (m: any) => {
   chain = chain.then(() => handle(m)).catch(err => send({ type: 'error', id: m.id, message: (err as Error)?.message ?? String(err) }));
-});
-process.on('disconnect', () => process.exit(0));
+};
+const parentPort = (process as unknown as { parentPort?: { once(ev: 'message', f: (e: { data: unknown; ports: Port[] }) => void): void } }).parentPort;
+if (parentPort) {
+  // Utility process: the first message from the main process brings the port to the renderer.
+  parentPort.once('message', e => {
+    port = e.ports[0];
+    port.on('message', ev => receive(ev.data));
+    port.start();
+    // Tells the app the process is up (it gives up on a process that never says so).
+    send({ type: 'ready' });
+  });
+} else {
+  send({ type: 'ready' });
+  process.on('message', receive);
+  process.on('disconnect', () => process.exit(0));
+}
