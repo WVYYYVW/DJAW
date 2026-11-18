@@ -23,7 +23,8 @@ const version = () => {
       const app = path.resolve(exe, '..', '..', '..');
       return execFileSync('plutil', ['-extract', 'CFBundleShortVersionString', 'raw', path.join(app, 'Contents', 'Info.plist')]).toString().trim();
     }
-    return execFileSync('powershell', ['-NoProfile', '-Command', `(Get-Item '${exe}').VersionInfo.ProductVersion`]).toString().trim();
+    // Windows file versions have four parts (9.9.9.0).
+    return execFileSync('powershell', ['-NoProfile', '-Command', `(Get-Item '${exe}' -ErrorAction Stop).VersionInfo.ProductVersion`], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim().replace(/^(\d+\.\d+\.\d+)\.0$/, '$1');
   } catch { return null; }
 };
 const running = () => {
