@@ -8,6 +8,8 @@ import { RenderSession } from '../core/render/session';
 import { CancelFlag, Cancelled, exportWav, renderPeakRange, renderPeaks } from '../core/render/offline';
 import { checkTransition } from '../core/render/check';
 import { exportVideo } from '../core/render/video';
+import { STEM_NAMES, StemFiles } from '../core/analysis/stems';
+import type { StemSources } from '../core/render/session';
 
 const SR = 44100;
 const pool = new StretchPool(SR);
@@ -20,7 +22,7 @@ export interface MixMessage {
   /** Clip url → the file the engine reads (a decoded PCM cache for compressed files). */
   paths: Record<string, string>;
   /** Clip url → its separated stems, for tracks whose transitions use them. */
-  stems?: Record<string, { vocals: string; instrumental: string }>;
+  stems?: Record<string, StemFiles>;
 }
 
 const mixInput = (m: MixMessage) => ({
@@ -29,11 +31,12 @@ const mixInput = (m: MixMessage) => ({
   openStems: (c: Clip) => {
     const f = m.stems?.[c.url];
     if (!f) return null;
-    const vocals = openPcmFile(f.vocals), instrumental = openPcmFile(f.instrumental);
-    if (vocals && instrumental && vocals.sampleRate === SR && instrumental.sampleRate === SR) return { vocals, instrumental };
-    vocals?.close(); instrumental?.close();
+    const srcs = STEM_NAMES.map(n => openPcmFile(f[n]));
+    if (srcs.every(x => x && x.sampleRate === SR)) return srcs as unknown as StemSources;
+    for (const x of srcs) x?.close();
     return null;
   },
+
 });
 
 // MARK: Preview

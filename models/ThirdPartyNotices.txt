@@ -46,7 +46,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 Also in the Windows / Electron version:
 
-4) Spleeter 2stems — vocal / accompaniment separation (models/vocalsplit.onnx)
+4) Spleeter 4stems — separation into vocals, drums, bass and other (models/stem_vocals.onnx, stem_drums.onnx, stem_bass.onnx, stem_other.onnx)
    R. Hennequin, A. Khlif, F. Voituret, M. Moussallam, "Spleeter: a fast and efficient music source separation tool
    with pre-trained models", Journal of Open Source Software 5(50), 2020. https://github.com/deezer/spleeter
    MIT License, Copyright (c) 2019 Deezer

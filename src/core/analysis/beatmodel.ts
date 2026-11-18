@@ -75,15 +75,24 @@ export async function loadGenreModel(dir: string): Promise<GenreAssets | null> {
 }
 
 /** Spleeter vocal mask: magnitude (1 × 2 × 512 × 1024) → vocal ratio mask (same shape). */
-export type VocalModel = (magnitude: Float32Array) => Promise<Float32Array>;
 
-export async function loadVocalModel(dir: string): Promise<VocalModel | null> {
+/** Spleeter 4-stems: magnitude [1, 2, 512, 1024] → the four stems' magnitude estimates (vocals, drums, bass, other). */
+export type StemModel = (magnitude: Float32Array) => Promise<Float32Array[]>;
+
+export async function loadStemModel(dir: string): Promise<StemModel | null> {
   try {
-    const s = await session(path.join(dir, 'vocalsplit.onnx'));
-    const input = s.inputNames[0], output = s.outputNames[0];
-    return async mag => (await s.run({ [input]: new (ort().Tensor)('float32', mag, [1, 2, 512, 1024]) }))[output].data as Float32Array;
+    const sessions: Awaited<ReturnType<typeof session>>[] = [];
+    for (const s of ['vocals', 'drums', 'bass', 'other']) sessions.push(await session(path.join(dir, `stem_${s}.onnx`)));
+    return async mag => {
+      const out: Float32Array[] = [];
+      for (const s of sessions) {
+        const t = new (ort().Tensor)('float32', mag, [1, 2, 512, 1024]);
+        out.push((await s.run({ [s.inputNames[0]]: t }))[s.outputNames[0]].data as Float32Array);
+      }
+      return out;
+    };
   } catch (e) {
-    console.warn('[DJAW] vocal model unavailable:', (e as Error).message);
+    console.warn('[DJAW] stem model unavailable:', (e as Error).message);
     return null;
   }
 }

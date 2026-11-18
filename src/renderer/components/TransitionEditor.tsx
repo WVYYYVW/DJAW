@@ -317,7 +317,7 @@ export function TransitionEditor() {
         ) : <>
           <div className="te-toolbar">
             <div className="segmented">
-              {[L('フェーダー・EQ', 'Fader / EQ'), 'FX', L('ボーカル', 'Vocals')].map((t, k) => <button key={k} className={page === k ? 'on' : ''} onClick={() => { setPage(k); if (k !== 0 && target === 'mirror') setTarget('outgoing'); }}>{t}</button>)}
+              {[L('フェーダー・EQ', 'Fader / EQ'), 'FX', L('ステム（歌・ドラム・ベース・メロディ）', 'Stems (vocals · drums · bass · melody)')].map((t, k) => <button key={k} className={page === k ? 'on' : ''} onClick={() => { setPage(k); if (k !== 0 && target === 'mirror') setTarget('outgoing'); }}>{t}</button>)}
             </div>
             <span className="dim">{L('描く線', 'Edit')}</span>
             <div className="segmented">
@@ -359,7 +359,7 @@ export function TransitionEditor() {
                     { label: L('この線をリセット', 'Reset this lane'), action: () => s.setLanes(id, (Lane.isEffect(kind) || Lane.isStem(kind)) ? Lanes.clear(lanes, kind) : Lanes.applyTemplate(lanes, 'linear', kind)) },
                   ])}>{L('形', 'Shape')} ▾</button>
                 </div>
-                <LaneCanvas kind={kind} lanes={lanes} totalBeats={totalBeats} colorOut={colorA} colorIn={colorB} target={target} sel={sel} setSel={setSel} range={range} height={kind === 'volume' ? 150 : 110} />
+                <LaneCanvas kind={kind} lanes={lanes} totalBeats={totalBeats} colorOut={colorA} colorIn={colorB} target={target} sel={sel} setSel={setSel} range={range} height={kind === 'volume' ? 150 : page === 2 ? 76 : 110} />
               </div>
             ))}
           </div>
@@ -389,9 +389,9 @@ function StemStatus({ id }: { id: string }) {
   const s = useStore();
   const i = s.index(id);
   return (
-    <div className="caption stem-note stem-status" title={L('ボーカルと伴奏の分離は1曲につき1回（数十秒）だけ行い、保存して使い回します。線を描くと自動で始まります。', 'Vocals and instrumental are separated once per track (tens of seconds) and kept. Drawing a line starts it automatically.')}>
+    <div className="caption stem-note stem-status" title={L('ボーカル・ドラム・ベース・メロディへの分離は1曲につき1回（4分の曲で30秒ほど）だけ行い、保存して使い回します。線を描くと自動で始まります。「伴奏」の線は、ドラム・ベース・メロディをまとめて上げ下げします。', 'Separation into vocals, drums, bass and melody runs once per track (about 30 s for 4 minutes) and is kept. Drawing a line starts it. The Instrumental lane turns drums, bass and melody up and down together.')}>
       <span>🎤</span>
-      {!s.stemsAvailable() ? <span>{L('ボーカル分離のモデルが入っていないため、この版では使えません。', 'The vocal separation model is not installed in this build.')}</span>
+      {!s.stemsAvailable() ? <span>{L('ステム分離のモデルが入っていないため、この版では使えません。', 'The stem separation model is not installed in this build.')}</span>
         : i != null && i > 0 ? [s.clips[i - 1], s.clips[i]].map(c => {
           const p = s.stemProgress.get(c.url);
           if (p != null) return <span key={c.id} className="stem-item"><progress value={p} max={1} />{L(`「${c.title}」を分離中…`, `Separating “${c.title}”…`)}</span>;

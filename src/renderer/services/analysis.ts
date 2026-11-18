@@ -8,7 +8,7 @@ import { TrackAnalysis } from '../../core/analysis/analyzer';
 import { GENRE_VERSION } from '../../core/genre';
 import { buildDir, dataDir, modelPath } from './env';
 import { ensurePcm } from './decode';
-import { stemFiles } from '../../core/analysis/stems';
+import { STEM_NAMES, StemFiles, stemFiles } from '../../core/analysis/stems';
 
 export const analysisStore = new AnalysisStore(dataDir('Analysis'));
 
@@ -104,34 +104,37 @@ export async function loudness(file: string): Promise<Float32Array | null> {
   return seg;
 }
 
-// MARK: Vocal separation (StemSeparator)
+// MARK: Stem separation (vocals / drums / bass / melody)
 
 const stemDir = () => dataDir('Stems');
+const STEM_MODELS = ['vocals', 'drums', 'bass', 'other'].map(s => `stem_${s}.onnx`);
 
 /** The separated stems of a track, if they exist. */
-export function stemsFor(file: string): { vocals: string; instrumental: string } | null {
+export function stemsFor(file: string): StemFiles | null {
   const fp = fingerprint(file);
   if (!fp) return null;
   const f = stemFiles(stemDir(), fp);
-  return fs.existsSync(f.vocals) && fs.existsSync(f.instrumental) ? f : null;
+  return STEM_NAMES.every(s => fs.existsSync(f[s])) ? f : null;
 }
 
-export const stemsAvailable = () => fs.existsSync(modelPath('vocalsplit.onnx'));
+export const stemsAvailable = () => STEM_MODELS.every(m => fs.existsSync(modelPath(m)));
 
 /** Separates a track (if not done yet) in the stems process. */
-export async function separateStems(file: string, progress?: (p: number) => void): Promise<{ vocals: string; instrumental: string }> {
+export async function separateStems(file: string, progress?: (p: number) => void): Promise<StemFiles> {
   const done = stemsFor(file);
   if (done) return done;
   const fp = fingerprint(file);
   if (!fp) throw new Error('unreadable');
   const pcm = await ensurePcm(file, fp);
-  const out = stemFiles(stemDir(), fp);
-  await request({ type: 'stems', pcm, modelDir: path.dirname(modelPath('vocalsplit.onnx')), ...out }, (_s, f) => progress?.(f), 'stems');
-  return out;
+  const files = stemFiles(stemDir(), fp);
+  await request({ type: 'stems', pcm, modelDir: path.dirname(modelPath(STEM_MODELS[0])), files }, (_s, f) => progress?.(f), 'stems');
+  // Two-stem files of the earlier version are no longer used.
+  try { for (const n of fs.readdirSync(stemDir())) if (n.startsWith(fp + '.v1.')) fs.rmSync(path.join(stemDir(), n), { force: true }); } catch { /* ignore */ }
+  return files;
 }
 
 /** Forgets a track's stems (they are made again when needed). */
 export function removeStems(file: string) {
   const f = stemsFor(file);
-  if (f) for (const p of [f.vocals, f.instrumental]) try { fs.rmSync(p, { force: true }); } catch { /* ignore */ }
+  if (f) for (const s of STEM_NAMES) try { fs.rmSync(f[s], { force: true }); } catch { /* ignore */ }
 }

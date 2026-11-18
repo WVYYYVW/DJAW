@@ -5,7 +5,7 @@ import { layout } from '../src/core/layout';
 import { TempoMap } from '../src/core/tempo';
 import { MemorySource } from '../src/core/render/source';
 import { StretchPool } from '../src/core/render/stretch';
-import { RenderSession } from '../src/core/render/session';
+import { RenderSession, type StemSources } from '../src/core/render/session';
 import { CancelFlag, renderPeakRange, renderPeaks } from '../src/core/render/offline';
 import { mixWaveformChange, provisionalPeaks, splicePeaks } from '../src/core/render/mixWaveform';
 
@@ -126,17 +126,20 @@ function tone(x: Float32Array, hz: number, a: number, b: number) {
   return Math.sqrt(Math.max(0, s1 * s1 + s2 * s2 - k * s1 * s2)) / (b - a);
 }
 
-test('vocal lanes turn the separated vocals down (stems)', async () => {
+test('stem lanes turn the separated stems down (vocals, drums, bass, melody)', async () => {
   const sine = (hz: number, n: number, amp = 0.3) => Float32Array.from({ length: n }, (_, i) => amp * Math.sin(2 * Math.PI * hz * i / sr));
   const n = 30 * sr;
-  const vocals = sine(440, n), inst = sine(1000, n), mixed = vocals.map((v, i) => v + inst[i]);
+  // vocals 440 Hz, drums 1000 Hz, bass 110 Hz, melody 2500 Hz.
+  const parts = [sine(440, n), sine(1000, n), sine(110, n), sine(2500, n)];
+  const mixed = parts[0].map((_, i) => parts[0][i] + parts[1][i] + parts[2][i] + parts[3][i]);
   const ca = clip('a', 120, 30), cb = clip('b', 120, 30);
   ca.mixOutBar = 8;
   cb.mixInBar = 0;
   cb.transition = 'custom';
   cb.transitionBars = 8;
-  const lanes = Lanes.sampled('bassSwap', Shape.defaults('bassSwap'));
+  let lanes = Lanes.sampled('bassSwap', Shape.defaults('bassSwap'));
   lanes.inVocal = [pt(0, 0), pt(1, 0)];
+  lanes.inBass = [pt(0, 0), pt(1, 0)];
   cb.lanes = lanes;
   const run = async (withStems: boolean) => {
     const { clips: laid, gridOffset } = layout([ca, cb], 120, 0);
@@ -144,21 +147,26 @@ test('vocal lanes turn the separated vocals down (stems)', async () => {
     const session = await RenderSession.create({
       clips: laid, master: 120, tempo, gridOffset, sampleRate: sr,
       open: c => new MemorySource(sr, c.url === 'a' ? new Float32Array(n) : mixed), pool: new StretchPool(sr),
-      openStems: withStems ? c => (c.url === 'b' ? { vocals: new MemorySource(sr, vocals), instrumental: new MemorySource(sr, inst) } : null) : undefined,
+      openStems: withStems ? c => (c.url === 'b' ? parts.map(p => new MemorySource(sr, p)) as unknown as StemSources : null) : undefined,
     });
     const out = new Float32Array(Math.round(42 * sr));
     let p = 0;
     while (p < out.length) { const k = session.renderNext(); out.set(session.L.subarray(0, Math.min(k, out.length - p)), p); p += k; }
     session.stop();
-    // The middle of the transition (bars 2…6 of 8 after b comes in) and well after it.
     const s = tempo.real(laid[1].start);
-    return { mid: [tone(out, 440, Math.round((s + 6) * sr), Math.round((s + 10) * sr)), tone(out, 1000, Math.round((s + 6) * sr), Math.round((s + 10) * sr))], after: tone(out, 440, Math.round((s + 18) * sr), Math.round((s + 21) * sr)) };
+    const a = Math.round((s + 6) * sr), b = Math.round((s + 10) * sr);
+    return { mid: [440, 1000, 110, 2500].map(hz => tone(out, hz, a, b)), after: tone(out, 440, Math.round((s + 18) * sr), Math.round((s + 21) * sr)) };
   };
   const plain = await run(false), stems = await run(true);
   assert.ok(plain.mid[0] > 0.02, `without stems the vocals are heard: ${plain.mid[0]}`);
   assert.ok(stems.mid[0] < plain.mid[0] * 0.05, `vocals turned down: ${stems.mid[0]} vs ${plain.mid[0]}`);
-  assert.ok(stems.mid[1] > plain.mid[1] * 0.8, `instrumental kept: ${stems.mid[1]} vs ${plain.mid[1]}`);
+  assert.ok(stems.mid[2] < plain.mid[2] * 0.05, `bass turned down: ${stems.mid[2]} vs ${plain.mid[2]}`);
+  assert.ok(stems.mid[1] > plain.mid[1] * 0.8, `drums kept: ${stems.mid[1]} vs ${plain.mid[1]}`);
+  assert.ok(stems.mid[3] > plain.mid[3] * 0.8, `melody kept: ${stems.mid[3]} vs ${plain.mid[3]}`);
   assert.ok(stems.after > plain.mid[0] * 0.5, `vocals back after the transition: ${stems.after}`);
+  // Presets that keep one stem draw the others too.
+  lanes = Lanes.applyEffectPreset(Lanes.sampled('bassSwap', Shape.defaults('bassSwap')), Lanes.effectPresets('drums')[0], 'drums');
+  assert.ok(Lanes.isActive(lanes, 'melody', true) && Lanes.isActive(lanes, 'bass', true) && !Lanes.isActive(lanes, 'drums', true));
 });
 
 test('mix waveform: re-rendering only the changed stretch matches a full render', async () => {

@@ -34,12 +34,12 @@ P.simplification = function (i) {
   const headQuiet = (x: number) => {
     const o = Automation.outgoingCurve(c, x), inc = Automation.incomingCurve(c, x);
     return inc.volume <= SILENT && o.volume >= 1 - REST && o.lowKill <= REST && o.midKill <= REST && o.highKill <= REST && o.echo === 0
-      && Math.abs(o.filter) <= REST && o.fxEcho <= REST && o.fxReverb <= REST && o.vocal >= 1 - REST && o.instrumental >= 1 - REST;
+      && Math.abs(o.filter) <= REST && o.fxEcho <= REST && o.fxReverb <= REST && o.vocal >= 1 - REST && o.instrumental >= 1 - REST && o.drums >= 1 - REST && o.bass >= 1 - REST && o.melody >= 1 - REST;
   };
   const tailQuiet = (x: number) => {
     const o = Automation.outgoingCurve(c, x), inc = Automation.incomingCurve(c, x);
     return o.volume <= SILENT && inc.volume >= 1 - REST && inc.lowKill <= REST && inc.midKill <= REST && inc.highKill <= REST
-      && Math.abs(inc.filter) <= REST && inc.fxEcho <= REST && inc.fxReverb <= REST && inc.vocal >= 1 - REST && inc.instrumental >= 1 - REST;
+      && Math.abs(inc.filter) <= REST && inc.fxEcho <= REST && inc.fxReverb <= REST && inc.vocal >= 1 - REST && inc.instrumental >= 1 - REST && inc.drums >= 1 - REST && inc.bass >= 1 - REST && inc.melody >= 1 - REST;
   };
   let firstLoudHead = n + 1;
   for (let k = 0; k <= n; k++) if (!headQuiet(k / n)) { firstLoudHead = k; break; }

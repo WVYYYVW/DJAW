@@ -129,13 +129,13 @@ function track(i: number, clips: Clip[], master: number, tempo: TempoMap): Guide
   return { number: i + 1, deck: d, title: PerformanceGuide.displayName(c), setup, steps };
 }
 
-type Control = 'volume' | 'low' | 'mid' | 'high' | 'filter' | 'echo' | 'reverb' | 'vocal' | 'instrumental';
-const controls: Control[] = ['volume', 'low', 'mid', 'high', 'filter', 'echo', 'reverb', 'vocal', 'instrumental'];
-const controlName = (k: Control) => ({ volume: L('フェーダー', 'fader'), low: 'LOW', mid: 'MID', high: 'HIGH', filter: L('フィルター', 'FILTER'), echo: L('エコー', 'ECHO'), reverb: L('リバーブ', 'REVERB'), vocal: L('STEMS ボーカル', 'STEMS vocals'), instrumental: L('STEMS 伴奏', 'STEMS instrumental') })[k];
-const value = (cv: Curve, k: Control) => ({ volume: cv.volume, low: 1 - cv.lowKill, mid: 1 - cv.midKill, high: 1 - cv.highKill, filter: cv.filter, echo: cv.fxEcho, reverb: cv.fxReverb, vocal: cv.vocal, instrumental: cv.instrumental })[k];
+type Control = 'volume' | 'low' | 'mid' | 'high' | 'filter' | 'echo' | 'reverb' | 'vocal' | 'instrumental' | 'drums' | 'bass' | 'melody';
+const controls: Control[] = ['volume', 'low', 'mid', 'high', 'filter', 'echo', 'reverb', 'vocal', 'instrumental', 'drums', 'bass', 'melody'];
+const controlName = (k: Control) => ({ volume: L('フェーダー', 'fader'), low: 'LOW', mid: 'MID', high: 'HIGH', filter: L('フィルター', 'FILTER'), echo: L('エコー', 'ECHO'), reverb: L('リバーブ', 'REVERB'), vocal: L('STEMS ボーカル', 'STEMS vocals'), instrumental: L('STEMS 伴奏', 'STEMS instrumental'), drums: L('STEMS ドラム', 'STEMS drums'), bass: L('STEMS ベース', 'STEMS bass'), melody: L('STEMS メロディ', 'STEMS melody') })[k];
+const value = (cv: Curve, k: Control) => ({ volume: cv.volume, low: 1 - cv.lowKill, mid: 1 - cv.midKill, high: 1 - cv.highKill, filter: cv.filter, echo: cv.fxEcho, reverb: cv.fxReverb, vocal: cv.vocal, instrumental: cv.instrumental, drums: cv.drums, bass: cv.bass, melody: cv.melody })[k];
 function level(k: Control, v: number) {
   switch (k) {
-    case 'volume': case 'echo': case 'reverb': case 'vocal': case 'instrumental':
+    case 'volume': case 'echo': case 'reverb': case 'vocal': case 'instrumental': case 'drums': case 'bass': case 'melody':
       if ((k === 'echo' || k === 'reverb') && v <= 0.01) return 'OFF';
       return `${Math.round(v * 100)}%`;
     case 'filter':

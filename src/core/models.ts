@@ -556,7 +556,7 @@ export const AutoPt = {
   },
 };
 
-export type LaneKind = 'volume' | 'high' | 'mid' | 'low' | 'filter' | 'echo' | 'reverb' | 'vocal' | 'instrumental';
+export type LaneKind = 'volume' | 'high' | 'mid' | 'low' | 'filter' | 'echo' | 'reverb' | 'vocal' | 'instrumental' | 'drums' | 'bass' | 'melody';
 export const Lane = {
   title(k: LaneKind) {
     switch (k) {
@@ -569,6 +569,9 @@ export const Lane = {
       case 'reverb': return L('リバーブ', 'Reverb');
       case 'vocal': return L('ボーカル', 'Vocals');
       case 'instrumental': return L('伴奏', 'Instrumental');
+      case 'drums': return L('ドラム', 'Drums');
+      case 'bass': return L('ベース', 'Bass');
+      case 'melody': return L('メロディ', 'Melody');
     }
   },
   legend(k: LaneKind) {
@@ -579,6 +582,9 @@ export const Lane = {
       case 'echo': case 'reverb': return L('上＝強い\n下＝なし', 'Top full\nBottom off');
       case 'vocal': return L('上＝そのまま\n下＝ボーカルを消す', 'Top as is\nBottom vocals cut');
       case 'instrumental': return L('上＝そのまま\n下＝伴奏を消す\n（アカペラ）', 'Top as is\nBottom cut\n(a cappella)');
+      case 'drums': return L('上＝そのまま\n下＝ドラムを消す', 'Top as is\nBottom drums cut');
+      case 'bass': return L('上＝そのまま\n下＝ベースを消す', 'Top as is\nBottom bass cut');
+      case 'melody': return L('上＝そのまま\n下＝メロディを消す\n（ドラムとベースと歌以外）', 'Top as is\nBottom cut\n(all but drums, bass, vocals)');
     }
   },
   neutral(k: LaneKind) {
@@ -587,10 +593,11 @@ export const Lane = {
     return 1;
   },
   isEffect: (k: LaneKind) => k === 'filter' || k === 'echo' || k === 'reverb',
-  isStem: (k: LaneKind) => k === 'vocal' || k === 'instrumental',
+  isStem: (k: LaneKind) => k === 'vocal' || k === 'instrumental' || k === 'drums' || k === 'bass' || k === 'melody',
   mixer: ['volume', 'high', 'mid', 'low'] as LaneKind[],
   effects: ['filter', 'echo', 'reverb'] as LaneKind[],
-  stems: ['vocal', 'instrumental'] as LaneKind[],
+  /** Instrumental scales drums, bass and melody together (the Mac app's two-stem lanes stay valid). */
+  stems: ['vocal', 'instrumental', 'drums', 'bass', 'melody'] as LaneKind[],
 };
 
 export interface TransitionLanes {
@@ -601,6 +608,9 @@ export interface TransitionLanes {
   outReverb?: AutoPoint[] | null; inReverb?: AutoPoint[] | null;
   outVocal?: AutoPoint[] | null; inVocal?: AutoPoint[] | null;
   outInstrumental?: AutoPoint[] | null; inInstrumental?: AutoPoint[] | null;
+  outDrums?: AutoPoint[] | null; inDrums?: AutoPoint[] | null;
+  outBass?: AutoPoint[] | null; inBass?: AutoPoint[] | null;
+  outMelody?: AutoPoint[] | null; inMelody?: AutoPoint[] | null;
 }
 
 const laneKey = (kind: LaneKind, incoming: boolean) =>
@@ -756,24 +766,48 @@ export const Lanes = {
         { id: 'inAcapella', title: L('この曲のボーカルだけ（アカペラ）を先に重ねる', 'Lay this track’s a cappella over first'), incoming: p([[0, 0], [0.74, 0], [0.75, 1], [1, 1]]), outgoing: null },
         { id: 'outAcapella', title: L('前の曲はボーカルだけ残して抜ける', 'Leave the previous track’s a cappella at the end'), incoming: null, outgoing: p([[0, 1], [0.5, 1], [0.6, 0], [1, 0]]) },
       ];
+      case 'drums': return [
+        { id: 'inDrumsFirst', title: L('この曲はドラムから入り、後半で全部を入れる', 'This track comes in on its drums; everything else in the second half'), incoming: null, outgoing: null, others: { inMelody: p([[0, 0], [0.49, 0], [0.5, 1], [1, 1]]), inBass: p([[0, 0], [0.49, 0], [0.5, 1], [1, 1]]), inVocal: p([[0, 0], [0.49, 0], [0.5, 1], [1, 1]]) } },
+        { id: 'swap', title: L('ドラムを入れ替える（真ん中）', 'Swap the drums in the middle'), incoming: p([[0, 0], [0.49, 0], [0.5, 1], [1, 1]]), outgoing: p([[0, 1], [0.49, 1], [0.5, 0], [1, 0]]) },
+        { id: 'outKeepDrums', title: L('前の曲はドラムだけ残して抜ける', 'Leave only the previous track’s drums at the end'), incoming: null, outgoing: null, others: { outMelody: p([[0, 1], [0.5, 1], [0.6, 0], [1, 0]]), outBass: p([[0, 1], [0.5, 1], [0.6, 0], [1, 0]]), outVocal: p([[0, 1], [0.5, 1], [0.6, 0], [1, 0]]) } },
+      ];
+      case 'bass': return [
+        { id: 'swap', title: L('ベースを入れ替える（真ん中・ベーススワップ）', 'Swap the bass in the middle (bass swap)'), incoming: p([[0, 0], [0.49, 0], [0.5, 1], [1, 1]]), outgoing: p([[0, 1], [0.49, 1], [0.5, 0], [1, 0]]) },
+        { id: 'inLater', title: L('この曲のベースは最後に入れる', 'Bring this track’s bass in at the end'), incoming: p([[0, 0], [0.74, 0], [0.75, 1], [1, 1]]), outgoing: null },
+      ];
+      case 'melody': return [
+        { id: 'inMelodyFirst', title: L('この曲はメロディだけ先に重ねる', 'Lay this track’s melody over first'), incoming: null, outgoing: null, others: { inDrums: p([[0, 0], [0.74, 0], [0.75, 1], [1, 1]]), inBass: p([[0, 0], [0.74, 0], [0.75, 1], [1, 1]]), inVocal: p([[0, 0], [0.74, 0], [0.75, 1], [1, 1]]) } },
+        { id: 'swap', title: L('メロディを入れ替える（真ん中）', 'Swap the melodies in the middle'), incoming: p([[0, 0], [0.49, 0], [0.5, 1], [1, 1]]), outgoing: p([[0, 1], [0.49, 1], [0.5, 0], [1, 0]]) },
+      ];
       default: return [];
     }
   },
   applyEffectPreset(l: TransitionLanes, preset: EffectPreset, kind: LaneKind): TransitionLanes {
     l = Lanes.setPoints(l, kind, true, preset.incoming ?? Lanes.flat(kind));
-    return Lanes.setPoints(l, kind, false, preset.outgoing ?? Lanes.flat(kind));
+    l = Lanes.setPoints(l, kind, false, preset.outgoing ?? Lanes.flat(kind));
+    // Presets that keep one stem by turning the others down.
+    for (const [key, pts] of Object.entries(preset.others ?? {})) {
+      const incoming = key.startsWith('in');
+      const k = (key.slice(incoming ? 2 : 3, incoming ? 3 : 4).toLowerCase() + key.slice(incoming ? 3 : 4)) as LaneKind;
+      l = Lanes.setPoints(l, k, incoming, pts);
+    }
+    return l;
   },
   clear(l: TransitionLanes, kind: LaneKind): TransitionLanes {
     l = Lanes.setPoints(l, kind, true, Lanes.flat(kind));
     return Lanes.setPoints(l, kind, false, Lanes.flat(kind));
   },
-  usesStemsOutgoing: (l: TransitionLanes): boolean => Lanes.isActive(l, 'vocal', false) || Lanes.isActive(l, 'instrumental', false),
-  usesStemsIncoming: (l: TransitionLanes): boolean => Lanes.isActive(l, 'vocal', true) || Lanes.isActive(l, 'instrumental', true),
+  usesStemsOutgoing: (l: TransitionLanes): boolean => Lane.stems.some(k => Lanes.isActive(l, k, false)),
+  usesStemsIncoming: (l: TransitionLanes): boolean => Lane.stems.some(k => Lanes.isActive(l, k, true)),
   usesReverb: (l: TransitionLanes): boolean => Lanes.isActive(l, 'reverb', true) || Lanes.isActive(l, 'reverb', false),
 };
 
 
-export interface EffectPreset { id: string; title: string; incoming: AutoPoint[] | null; outgoing: AutoPoint[] | null }
+export interface EffectPreset {
+  id: string; title: string; incoming: AutoPoint[] | null; outgoing: AutoPoint[] | null;
+  /** Other stem lanes the preset draws too (keys as in TransitionLanes: 'inBass', 'outVocal', …). */
+  others?: Partial<Record<keyof TransitionLanes, AutoPoint[]>>;
+}
 
 /** The lanes this transition is (or would be) drawn with. */
 export function effectiveLanes(c: Clip): TransitionLanes {

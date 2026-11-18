@@ -14,6 +14,8 @@ import { MAX_BLOCK, StretchPool, Stretcher } from './stretch';
 import { turntableBuffer } from './turntable';
 
 export const CHUNK = 512;
+/** A track's four separated stems (vocals, drums, bass, melody), in the order of STEM_NAMES. */
+export type StemSources = [AudioSource, AudioSource, AudioSource, AudioSource];
 /** A track's voice keeps running this long after the track ends (echo / reverb tails). */
 export const TAIL = 8;
 
@@ -134,10 +136,10 @@ class Voice {
   readonly echo: Echo;
   readonly reverb: Reverb | null;
   private readonly stream: ClipStream;
-  /** With stems: the vocals (the main stream then plays the instrumental). */
-  private readonly vocals: ClipStream | null;
-  private vocalGain = 1;
-  private instrumentalGain = 1;
+  /** With stems: drums, bass and melody (the main stream then plays the vocals), mixed at their lane levels. */
+  private readonly others: ClipStream[] = [];
+  /** Levels of vocals, drums, bass, melody. */
+  private stemGains = [1, 1, 1, 1];
   private vL = new Float32Array(0);
   private vR = new Float32Array(0);
   private pos: number;
@@ -158,12 +160,12 @@ class Voice {
     src: AudioSource,
     readonly stretcher: Stretcher,
     usesReverb: boolean,
-    stems: { vocals: AudioSource; instrumental: AudioSource } | null = null,
+    stems: StemSources | null = null,
   ) {
     const out = outro(clip, next), cutOut = next?.transition === 'cut';
-    this.stream = stems ? new ClipStream(stems.instrumental, clip, out, e0, cutOut, clip.url + '|inst')
+    this.stream = stems ? new ClipStream(stems[0], clip, out, e0, cutOut, clip.url + '|vocals')
       : new ClipStream(src, clip, out, e0, cutOut, clip.url);
-    this.vocals = stems ? new ClipStream(stems.vocals, clip, out, e0, cutOut, clip.url + '|vocals') : null;
+    if (stems) for (const [k, name] of [[1, 'drums'], [2, 'bass'], [3, 'melody']] as const) this.others.push(new ClipStream(stems[k], clip, out, e0, cutOut, `${clip.url}|${name}`));
     this.eq = new DJEQ(sr);
     this.fx = new FXKernel(sr, MAX_BLOCK);
     this.echo = new Echo(sr);
@@ -184,17 +186,22 @@ class Voice {
     }
   }
 
-  get isEmpty() { return this.stream.isEmpty && (!this.vocals || this.vocals.isEmpty); }
+  get isEmpty() { return this.stream.isEmpty && this.others.every(o => o.isEmpty); }
 
-  /** Stream frames [i0, i0 + n): the track, or its instrumental and vocals at their lane levels. */
+  /** Stream frames [i0, i0 + n): the track, or its four stems at their lane levels. */
   private read(i0: number, n: number, L: Float32Array, R: Float32Array) {
     this.stream.read(i0, n, L, R);
-    const v = this.vocals;
-    if (!v) return;
+    if (!this.others.length) return;
+    const g = this.stemGains;
+    if (g[0] !== 1) for (let i = 0; i < n; i++) { L[i] *= g[0]; R[i] *= g[0]; }
     if (this.vL.length < n) { this.vL = new Float32Array(n * 2); this.vR = new Float32Array(n * 2); }
-    v.read(i0, n, this.vL, this.vR);
-    const gi = this.instrumentalGain, gv = this.vocalGain;
-    for (let i = 0; i < n; i++) { L[i] = L[i] * gi + this.vL[i] * gv; R[i] = R[i] * gi + this.vR[i] * gv; }
+    const vL = this.vL, vR = this.vR;
+    this.others.forEach((o, k) => {
+      o.read(i0, n, vL, vR);
+      const gk = g[k + 1];
+      if (gk === 0) return;
+      for (let i = 0; i < n; i++) { L[i] += vL[i] * gk; R[i] += vR[i] * gk; }
+    });
   }
 
   /** Stretched audio for n output frames into this.L / this.R. */
@@ -213,7 +220,10 @@ class Voice {
     const c = this.clip;
     const r = stretchRate(rate(c, tempo));
     this.stretcher.setPitch(Math.min(24, Math.max(-24, pitchCents(c, tempo) / 100)));
-    if (this.vocals) { this.instrumentalGain = Math.max(0, s.instrumental); this.vocalGain = Math.max(0, s.vocal); }
+    if (this.others.length) {
+      const inst = Math.max(0, s.instrumental);
+      this.stemGains = [Math.max(0, s.vocal), inst * Math.max(0, s.drums), inst * Math.max(0, s.bass), inst * Math.max(0, s.melody)];
+    }
     this.pull(n, r);
     const L = this.L, R = this.R;
 
@@ -276,7 +286,7 @@ export interface SessionOptions {
   /** Opens a track's audio (null when it cannot be read). */
   open: (clip: Clip) => AudioSource | null;
   /** Opens a track's separated stems (null when there are none). */
-  openStems?: (clip: Clip) => { vocals: AudioSource; instrumental: AudioSource } | null;
+  openStems?: (clip: Clip) => StemSources | null;
   pool: StretchPool;
 }
 
@@ -291,7 +301,7 @@ export class RenderSession {
   private readonly open: (clip: Clip) => AudioSource | null;
   private readonly openStems: SessionOptions['openStems'];
   private readonly pool: StretchPool;
-  private stemSources = new Map<number, { vocals: AudioSource; instrumental: AudioSource } | null>();
+  private stemSources = new Map<number, StemSources | null>();
   private voices: Voice[] = [];
   private sources = new Map<number, AudioSource>();
   private waiting: { index: number; frame: number }[] = [];
@@ -365,7 +375,7 @@ export class RenderSession {
     const laneReverb = (c.transition === 'custom' && !!c.lanes && Lanes.usesReverb(c.lanes))
       || (!!next && next.transition === 'custom' && !!next.lanes && Lanes.usesReverb(next.lanes));
     const usesReverb = laneReverb || (c.fx ?? []).some(f => f.kind === 'reverb');
-    let stems: { vocals: AudioSource; instrumental: AudioSource } | null = null;
+    let stems: StemSources | null = null;
     if (this.openStems && RenderSession.usesStems(c, next)) {
       if (!this.stemSources.has(i)) this.stemSources.set(i, this.openStems(c));
       stems = this.stemSources.get(i) ?? null;
@@ -380,7 +390,7 @@ export class RenderSession {
     this.voices = [];
     for (const s of this.sources.values()) s.close();
     this.sources.clear();
-    for (const s of this.stemSources.values()) { s?.vocals.close(); s?.instrumental.close(); }
+    for (const s of this.stemSources.values()) for (const src of s ?? []) src.close();
     this.stemSources.clear();
   }
 
@@ -430,7 +440,7 @@ export class RenderSession {
     return true;
   }
 
-  /** Whether a track's transitions turn its vocals / instrumental down (then it plays from stems). */
+  /** Whether a track's transitions use its stems (then it plays from its four stems). */
   static usesStems(c: Clip, next?: Clip) {
     return (c.transition === 'custom' && !!c.lanes && Lanes.usesStemsIncoming(c.lanes))
       || (!!next && next.transition === 'custom' && !!next.lanes && Lanes.usesStemsOutgoing(next.lanes));

@@ -22,6 +22,10 @@ export interface AutoState {
   fx: FXState;
   vocal: number;
   instrumental: number;
+  /** Separated stems (each also scaled by `instrumental`). */
+  drums: number;
+  bass: number;
+  melody: number;
 }
 
 export interface Curve {
@@ -36,10 +40,13 @@ export interface Curve {
   fxReverb: number;
   vocal: number;
   instrumental: number;
+  drums: number;
+  bass: number;
+  melody: number;
 }
 
 const curve = (volume: number, lowKill: number, midKill: number, extra: Partial<Curve> = {}): Curve => ({
-  volume, lowKill, midKill, highKill: 0, echo: 0, filter: 0, fxEcho: 0, fxReverb: 0, vocal: 1, instrumental: 1, ...extra,
+  volume, lowKill, midKill, highKill: 0, echo: 0, filter: 0, fxEcho: 0, fxReverb: 0, vocal: 1, instrumental: 1, drums: 1, bass: 1, melody: 1, ...extra,
 });
 
 const f32 = Math.fround;
@@ -56,6 +63,9 @@ function laneCurve(l: TransitionLanes, incoming: boolean, x: number): Curve {
     fxReverb: Lanes.valueOf(l, 'reverb', incoming, x),
     vocal: Lanes.valueOf(l, 'vocal', incoming, x),
     instrumental: Lanes.valueOf(l, 'instrumental', incoming, x),
+    drums: Lanes.valueOf(l, 'drums', incoming, x),
+    bass: Lanes.valueOf(l, 'bass', incoming, x),
+    melody: Lanes.valueOf(l, 'melody', incoming, x),
   };
 }
 
@@ -122,7 +132,7 @@ export const Automation = {
     if (c.transition === 'cut' || c.transition === 'brake' || c.transition === 'backspin' || c.transition === 'echoOut') return 0;
     const weight = (cv: Curve) => {
       const bands = 0.5 * (1 - cv.lowKill) + 0.3 * (1 - cv.midKill) + 0.2 * (1 - cv.highKill);
-      const stems = 0.5 * cv.vocal + 0.5 * cv.instrumental;
+      const stems = 0.5 * cv.vocal + 0.5 * cv.instrumental * (0.4 * cv.drums + 0.35 * cv.bass + 0.25 * cv.melody);
       return cv.volume * cv.volume * bands * stems;
     };
     const n = 256;
@@ -154,13 +164,16 @@ export const Automation = {
     const start = c.start;
     const end = endOf(i);
     let env = 1, lowK = 0, midK = 0, highK = 0, send = 1, wet = 0;
-    let laneFilter = 0, laneEcho = 0, laneReverb = 0, vocal = 1, instrumental = 1;
+    let laneFilter = 0, laneEcho = 0, laneReverb = 0, vocal = 1, instrumental = 1, drums = 1, bass = 1, melody = 1;
     const take = (cv: Curve) => {
       if (Math.abs(cv.filter) > Math.abs(laneFilter)) laneFilter = cv.filter;
       laneEcho = Math.max(laneEcho, cv.fxEcho);
       laneReverb = Math.max(laneReverb, cv.fxReverb);
       vocal *= cv.vocal;
       instrumental *= cv.instrumental;
+      drums *= cv.drums;
+      bass *= cv.bass;
+      melody *= cv.melody;
     };
 
     if (t < start || t > end) env = 0;
@@ -223,7 +236,7 @@ export const Automation = {
       volume: f32(gain * env), envelope: env,
       low: f32(lowDB), mid: f32(midDB), high: f32(highDB),
       lowKilled: lowK > 0.5, send: f32(send), echoWet: f32(wet), fx,
-      vocal: f32(vocal), instrumental: f32(instrumental),
+      vocal: f32(vocal), instrumental: f32(instrumental), drums: f32(drums), bass: f32(bass), melody: f32(melody),
     };
   },
 };

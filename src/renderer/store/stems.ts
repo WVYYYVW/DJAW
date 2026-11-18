@@ -1,9 +1,10 @@
-// Separating tracks into vocals / instrumental when a transition's vocal lanes need it (mac/DJAW/Store/MixStore+Stems.swift).
+// Separating tracks into vocals / drums / bass / melody when a transition's stem lanes need it (mac/DJAW/Store/MixStore+Stems.swift).
 import path from 'node:path';
 import { L } from '../../core/i18n';
 import { Clip } from '../../core/models';
 import { RenderSession } from '../../core/render/session';
 import { separateStems, stemsAvailable, stemsFor } from '../services/analysis';
+import type { StemFiles } from '../../core/analysis/stems';
 import { MixStore } from './store';
 
 declare module './store' {
@@ -18,11 +19,11 @@ declare module './store' {
     /** Before an export: separates the tracks that need it and waits for them (failures are left out). */
     ensureStemsForExport(): Promise<void>;
     /** The stem files of these clips, for those that use them and have them. */
-    stemPaths(clips: Clip[]): Record<string, { vocals: string; instrumental: string }>;
+    stemPaths(clips: Clip[]): Record<string, StemFiles>;
     /** Which of the needed stems exist (part of what the mix waveform depends on). */
     stemSignature(): string;
     stemsAvailable(): boolean;
-    stemsFor(url: string): { vocals: string; instrumental: string } | null;
+    stemsFor(url: string): StemFiles | null;
   }
 }
 
@@ -65,7 +66,7 @@ P.prepareStems = function (urls) {
     }).then(() => true, e => { console.warn('[DJAW] stems:', (e as Error).message); return (e as Error).message; }).then(ok => {
       this.stemProgress.delete(url);
       this.stemRevision++;
-      if (ok !== true) this.alertMessage = L(`ボーカルと伴奏を分離できませんでした（${path.basename(url)}）\n${ok}`, `Could not separate the vocals (${path.basename(url)})\n${ok}`);
+      if (ok !== true) this.alertMessage = L(`ステムに分離できませんでした（${path.basename(url)}）\n${ok}`, `Could not separate the stems (${path.basename(url)})\n${ok}`);
       // The tracks now play from their stems: render again.
       this.mixInputsChanged();
       this.changed();
@@ -83,7 +84,7 @@ P.ensureStemsForExport = async function () {
 };
 
 P.stemPaths = function (clips) {
-  const out: Record<string, { vocals: string; instrumental: string }> = {};
+  const out: Record<string, StemFiles> = {};
   clips.forEach((c, i) => {
     if (!RenderSession.usesStems(c, clips[i + 1])) return;
     const f = stemsFor(c.url);

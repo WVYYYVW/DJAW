@@ -1,11 +1,11 @@
 // Analysis process: a child Node process (Electron run as Node), because onnxruntime-node cannot run inside a
 // renderer Web Worker. One message at a time: track analysis (waveform, tempo, Beat This! grid, structure),
-// loudness, vocal separation (in a second process of its own) and resampling WAV / AIFF files that are not at 44.1 kHz.
+// loudness, stem separation (in a second process of its own) and resampling WAV / AIFF files that are not at 44.1 kHz.
 import fs from 'node:fs';
 import path from 'node:path';
 import { openPcmFile } from '../core/render/source';
 import { analyzeAudio } from '../core/analysis/analyzer';
-import { VocalModel, loadBeatModel, loadCueModel, loadGenreModel, loadVocalModel } from '../core/analysis/beatmodel';
+import { StemModel, loadBeatModel, loadCueModel, loadGenreModel, loadStemModel } from '../core/analysis/beatmodel';
 import { separateStems } from '../core/analysis/stems';
 import { CueAssets } from '../core/analysis/neural';
 import { GenreAssets } from '../core/analysis/genreModel';
@@ -16,7 +16,7 @@ import { WavWriter } from '../core/render/wav';
 let model: Promise<BeatModel | null> | null = null;
 let cueModel: Promise<CueAssets | null> | null = null;
 let genreModel: Promise<GenreAssets | null> | null = null;
-let vocalModel: Promise<VocalModel | null> | null = null;
+let stemModel: Promise<StemModel | null> | null = null;
 const send = (m: unknown) => { if (process.connected) process.send!(m); };
 
 async function handle(m: any) {
@@ -39,13 +39,13 @@ async function handle(m: any) {
       src.close();
     }
   } else if (m.type === 'stems') {
-    if (!vocalModel) vocalModel = loadVocalModel(m.modelDir);
-    const vm = await vocalModel;
-    if (!vm) throw new Error('vocal model unavailable');
+    if (!stemModel) stemModel = loadStemModel(m.modelDir);
+    const vm = await stemModel;
+    if (!vm) throw new Error('stem model unavailable');
     const src = openPcmFile(m.pcm);
     if (!src) throw new Error('unreadable');
     try {
-      const stats = await separateStems(src, vm, { vocals: m.vocals, instrumental: m.instrumental },
+      const stats = await separateStems(src, vm, m.files,
         p => send({ type: 'progress', id: m.id, stage: 'stems', fraction: p }));
       send({ type: 'done', id: m.id, stats });
     } finally {

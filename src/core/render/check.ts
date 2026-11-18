@@ -6,7 +6,7 @@ import { Clip, clipEnd, timelineTimeOfBar } from '../models';
 import { TempoMap } from '../tempo';
 import { stft } from '../analysis/fft';
 import { AudioSource } from './source';
-import { RenderSession } from './session';
+import { RenderSession, type StemSources } from './session';
 import { StretchPool } from './stretch';
 
 /** Rendered at the engine rate and averaged down 2:1 (the check works at 22.05 kHz like the Mac version). */
@@ -19,7 +19,7 @@ export interface CheckInput {
   tempo: TempoMap;
   gridOffset: number;
   open: (c: Clip) => AudioSource | null;
-  openStems?: (c: Clip) => { vocals: AudioSource; instrumental: AudioSource } | null;
+  openStems?: (c: Clip) => StemSources | null;
   pool: StretchPool;
   engineRate: number;
 }
