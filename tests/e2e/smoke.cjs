@@ -194,6 +194,26 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
     check('export WAV', exported && phase.kind === 'done' && st && Math.abs(st.seconds - dur) < 0.5 && st.rms > 0.02 && st.peak <= 1.0, { phase, dur, st });
     await ev(() => { window.djaw.exportPhase = { kind: 'idle' }; window.djaw.showExport = false; window.djaw.changed(); });
 
+    // M4A (AAC, through the system's encoder) and a video, on Windows and the Mac.
+    if (process.platform !== 'linux') {
+      const runExport = async (file, start) => {
+        await app.evaluate(({ ipcMain }, f) => { ipcMain.removeHandler('dialog:save'); ipcMain.handle('dialog:save', () => f); }, file);
+        const t0 = Date.now();
+        await ev(start);
+        await until(() => window.djaw.exportPhase.kind === 'done' || window.djaw.exportPhase.kind === 'failed', 900000);
+        const ph = await ev(() => window.djaw.exportPhase);
+        await ev(() => { window.djaw.exportPhase = { kind: 'idle' }; window.djaw.changed(); });
+        const head = fs.existsSync(file) ? fs.readFileSync(file).subarray(4, 8).toString('latin1') : '';
+        return { phase: ph.kind, message: ph.message, bytes: fs.existsSync(file) ? fs.statSync(file).size : 0, head, seconds: Math.round((Date.now() - t0) / 1000) };
+      };
+      const m4a = await runExport(path.join(work, 'export.m4a'), () => { window.djaw.exportFormat = 'aac256'; window.djaw.startExport(true); });
+      check('export M4A (AAC)', m4a.phase === 'done' && m4a.head === 'ftyp' && m4a.bytes > 1e6, m4a);
+      await ev(() => { window.djaw.exportFormat = 'wav24'; window.djaw.videoSize = '1280x720'; });
+      const mp4 = await runExport(path.join(work, 'export.mp4'), () => window.djaw.startVideoExport());
+      const stats = await ev(() => window.djaw.lastVideoStats);
+      check('export video (MP4)', mp4.phase === 'done' && mp4.head === 'ftyp' && mp4.bytes > 1e6, { ...mp4, stats });
+    }
+
     // Save, reopen, compare.
     const doc = path.join(work, 'e2e.djaw');
     const before = await ev(() => JSON.stringify(window.djaw.clips.map(c => [c.title, Math.round(c.start * 1000), c.edits?.length ?? 0])));

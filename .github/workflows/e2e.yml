@@ -3,10 +3,20 @@
 # toolbar layout, screenshots). The screenshots and report are kept for a few days.
 name: E2E
 
+# Started by hand (macOS minutes are costly on a private repository): choose the systems and whether to run the
+# update test too.
 on:
   workflow_dispatch:
-  push:
-    branches-ignore: [main]
+    inputs:
+      systems:
+        description: 'Systems'
+        type: choice
+        options: [both, mac, windows]
+        default: both
+      update_test:
+        description: 'Also run the update test'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -16,6 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        os: ${{ fromJSON(inputs.systems == 'mac' && '["macos-latest"]' || inputs.systems == 'windows' && '["windows-latest"]' || '["macos-latest","windows-latest"]') }}
         include:
           - os: macos-latest
             pack: npx electron-builder --mac --arm64 --dir --publish never
@@ -73,10 +84,11 @@ jobs:
 
   # The app updating itself: an installed older build finds 9.9.9 (a local test feed), downloads, installs and restarts.
   update:
+    if: ${{ inputs.update_test }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: ${{ fromJSON(inputs.systems == 'mac' && '["macos-latest"]' || inputs.systems == 'windows' && '["windows-latest"]' || '["macos-latest","windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
