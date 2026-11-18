@@ -247,6 +247,33 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
   } finally {
     await win.evaluate(() => { if (window.djaw) window.djaw.isDirty = false; }).catch(() => {});
     await app.close().catch(() => {});
+    // Started with a .djaw as its argument (a file opened from the Explorer / Finder), with a fresh data folder:
+    // the mix opens and plays while its tracks are still being analysed.
+    const doc = path.join(work, 'e2e.djaw');
+    if (fs.existsSync(doc)) {
+      try {
+        const env2 = { ...env, DJAW_USER_DATA: path.join(work, 'userdata2') };
+        const app2 = await _electron.launch({ ...launch, args: [...launch.args, doc], env: env2, timeout: 120000 });
+        const w2 = await app2.firstWindow();
+        const errs2 = [];
+        w2.on('console', m => { if (m.type() === 'error') errs2.push(m.text()); });
+        const t0 = Date.now();
+        while (Date.now() - t0 < 120000 && !(await w2.evaluate(() => !!window.djaw && window.djaw.clips.length === 3 && window.djaw.clips.every(c => window.djaw.pcmPaths.has(c.url))).catch(() => false))) await w2.waitForTimeout(500);
+        const r = await w2.evaluate(async () => {
+          const s = window.djaw;
+          let sum = 0, count = 0;
+          s.player.onTap = mono => { for (let i = 0; i < mono.length; i += 4) { sum += mono[i] * mono[i]; count++; } };
+          await s.player.setTap(true);
+          s.seek(s.clips[1].start + 3); await s.play();
+          await new Promise(res => setTimeout(res, 2000));
+          const playing = s.isPlaying; s.pause();
+          return { clips: s.clips.length, playing, rms: Math.sqrt(sum / Math.max(1, count)), pending: s.pending.length, title: s.documentTitle };
+        }).catch(e => ({ error: e.message }));
+        check('open a .djaw given at start, play before the analysis ends', r.clips === 3 && r.playing && r.rms > 0.02 && !errs2.length, { ...r, seconds: (Date.now() - t0) / 1000, errors: errs2.slice(0, 3) });
+        await w2.evaluate(() => { window.djaw.isDirty = false; }).catch(() => {});
+        await app2.close().catch(() => {});
+      } catch (e) { check('open a .djaw given at start', false, e.message); }
+    }
     fs.writeFileSync(path.join(out, 'report.json'), JSON.stringify(results, null, 1));
     try { fs.rmSync(work, { recursive: true, force: true }); } catch { /* ignore */ }
     const failed = results.filter(r => !r.ok);
