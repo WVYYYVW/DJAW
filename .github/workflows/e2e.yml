@@ -53,3 +53,49 @@ jobs:
           cd e2e-out
           for f in *; do mv "$f" "${{ runner.os }}-$f"; done
           gh release upload e2e-results * --clobber
+
+  # The app updating itself: an installed older build finds 9.9.9 (a local test feed), downloads, installs and restarts.
+  update:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node scripts/build.mjs
+      - name: Mac — the installed app, then 9.9.9 as a disk image
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          set -e
+          npx electron-builder --mac --arm64 --dir --publish never
+          mkdir -p "$RUNNER_TEMP/apps" && ditto dist/mac-arm64/DJAW.app "$RUNNER_TEMP/apps/DJAW.app"
+          rm -rf dist
+          npm version 9.9.9 --no-git-tag-version
+          npx electron-builder --mac dmg --arm64 --publish never
+          node tests/e2e/update.cjs "$RUNNER_TEMP/apps/DJAW.app/Contents/MacOS/DJAW" dist/DJAW-9.9.9-mac-arm64.dmg
+      - name: Windows — install, then 9.9.9 as an installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npx electron-builder --win nsis --x64 --publish never
+          $setup = Get-ChildItem dist\DJAW-Setup-*.exe | Select-Object -First 1
+          Start-Process -Wait -FilePath $setup.FullName -ArgumentList '/S'
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\DJAW\DJAW.exe'
+          if (-not (Test-Path $exe)) { Get-ChildItem -Recurse "$env:LOCALAPPDATA\Programs" -Filter DJAW.exe | Select-Object -First 3 | Format-List FullName; throw "not installed at $exe" }
+          Remove-Item -Recurse -Force dist
+          npm version 9.9.9 --no-git-tag-version
+          npx electron-builder --win nsis --x64 --publish never
+          node tests/e2e/update.cjs $exe dist\DJAW-Setup-9.9.9.exe
