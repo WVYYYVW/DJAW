@@ -6,7 +6,7 @@ import { ChildProcess, fork } from 'node:child_process';
 import { AnalysisStore, fingerprint } from '../../core/analysis/cache';
 import { TrackAnalysis } from '../../core/analysis/analyzer';
 import { GENRE_VERSION } from '../../core/genre';
-import { buildDir, dataDir, modelPath } from './env';
+import { buildDir, dataDir, env, modelPath } from './env';
 import { ensurePcm } from './decode';
 import { STEM_NAMES, StemFiles, stemFiles } from '../../core/analysis/stems';
 
@@ -26,11 +26,17 @@ function getChild(lane: Lane = 'analysis') {
   const child = children.get(lane);
   if (child) return child;
   const c = fork(buildDir('analysis.child.js'), [], {
+    // Not process.execPath: on the Mac that is the renderer's helper app, which ignores ELECTRON_RUN_AS_NODE and
+    // would just hang (nothing ever got analysed there).
+    execPath: env.exe,
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
     serialization: 'advanced',
     stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
   });
+  // A process that does not start within 30 s is given up (its jobs fail with a message instead of waiting forever).
+  const startup = setTimeout(() => { console.error('[DJAW] analysis process did not start'); c.kill(); }, 30000);
   c.on('message', (m: any) => {
+    if (m.type === 'ready') { clearTimeout(startup); return; }
     if (m.type === 'log') { console.warn('[DJAW] analysis:', m.message); return; }
     const job = jobs.get(m.id);
     if (!job) return;
@@ -38,8 +44,10 @@ function getChild(lane: Lane = 'analysis') {
     jobs.delete(m.id);
     if (m.type === 'done') job.resolve(m); else job.reject(new Error(m.message));
   });
+  c.on('error', e => console.error('[DJAW] analysis process:', e.message));
   c.on('exit', code => {
-    children.delete(lane);
+    clearTimeout(startup);
+    if (children.get(lane) === c) children.delete(lane);
     for (const j of [...jobs.values()]) if (j.lane === lane) { jobs.delete(j.id); j.reject(new Error(`analysis process ended (${code})`)); }
   });
   children.set(lane, c);

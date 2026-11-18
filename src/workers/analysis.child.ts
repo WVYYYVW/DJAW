@@ -76,6 +76,8 @@ async function handle(m: any) {
 }
 
 let chain: Promise<unknown> = Promise.resolve();
+// Tells the app the process is up (it gives up on a process that never says so).
+send({ type: 'ready' });
 process.on('message', (m: any) => {
   chain = chain.then(() => handle(m)).catch(err => send({ type: 'error', id: m.id, message: (err as Error)?.message ?? String(err) }));
 });

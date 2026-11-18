@@ -656,3 +656,4 @@ select { height: 24px; border-radius: 5px; background: var(--raised); border: 1p
 .cue-embedded .cue-options .check { white-space: nowrap; }
 .cue-embedded .cue-transport { grid-template-columns: auto 1fr auto; gap: 10px; }
 .cue-embedded .cue-buttons { justify-self: center; }
+.update-chip { font-size: 11.5px; padding: 3px 9px; border-radius: 11px; background: var(--accent-soft); color: #a9cbff; white-space: nowrap; margin-right: 6px; }

@@ -8,6 +8,9 @@ on:
   push:
     branches-ignore: [main]
 
+permissions:
+  contents: write
+
 jobs:
   e2e:
     strategy:
@@ -38,9 +41,15 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Smoke test (packaged app)
         run: node tests/e2e/smoke.cjs ${{ matrix.app }}
-      - uses: actions/upload-artifact@v4
+      - name: Keep the screenshots (a draft release "e2e-results", visible only to the repository's owner)
         if: always()
-        with:
-          name: e2e-${{ matrix.os }}
-          path: e2e-out/
-          retention-days: 3
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -d e2e-out ] || exit 0
+          gh release view e2e-results >/dev/null 2>&1 || gh release create e2e-results --draft --title "E2E results" --notes "Screenshots of the automated tests (overwritten on every run)." || true
+          sleep 5
+          cd e2e-out
+          for f in *; do mv "$f" "${{ runner.os }}-$f"; done
+          gh release upload e2e-results * --clobber

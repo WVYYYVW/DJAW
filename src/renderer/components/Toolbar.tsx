@@ -87,6 +87,9 @@ export function Toolbar() {
         </select>
       </div>
       <div className="spacer" />
+      {s.updateStatus && <span className="update-chip" title={s.updateStatus.ready ? L('DJAW を終了するときに更新されます（メニューの「アップデートを確認…」から今すぐ再起動もできます）', 'Installs when DJAW quits (or restart now from “Check for Updates…”)') : ''}>
+        {s.updateStatus.ready ? L(`${s.updateStatus.version} を準備しました`, `${s.updateStatus.version} ready`) : L(`${s.updateStatus.version} をダウンロード中 ${Math.round(s.updateStatus.progress * 100)}%`, `Downloading ${s.updateStatus.version} ${Math.round(s.updateStatus.progress * 100)}%`)}
+      </span>}
       <div className="group">
         <Action icon="film" label={L('映像', 'Visuals')} title={L('映像プレビュー：書き出す映像を、再生に合わせてその場で確認（Ctrl+Alt+V）', 'Visuals preview: see the video visuals live with playback (Ctrl+Alt+V)')} onClick={() => { s.showVisualPreview = true; s.changed(); }} />
         <Action icon="cloud" label={L('クラウド', 'Cloud')} title={L('クラウド（MEGA）：Windows と Mac でミックスを共有（Ctrl+Shift+O）', 'Cloud (MEGA): share mixes between Windows and Mac (Ctrl+Shift+O)')} onClick={() => { s.showCloud = true; s.changed(); }} />

@@ -131,7 +131,10 @@ export function App() {
       }
     };
     ipcRenderer.on('menu', onMenu);
-    return () => { ipcRenderer.removeListener('menu', onMenu); };
+    // Progress of an update being downloaded (main/updater.ts), shown in the toolbar.
+    const onUpdate = (_e: unknown, u: { version: string; progress: number; ready?: boolean } | null) => { s.updateStatus = u; s.changed(); };
+    ipcRenderer.on('update:progress', onUpdate);
+    return () => { ipcRenderer.removeListener('menu', onMenu); ipcRenderer.removeListener('update:progress', onUpdate); };
   }, []);
 
   // Keys that are not menu items (MixStore.handleKey on the Mac).

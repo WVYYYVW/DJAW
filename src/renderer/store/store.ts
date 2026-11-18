@@ -133,6 +133,8 @@ export class MixStore {
   panelTab: PanelTab = 'transition';
   panelHeight = 330;
   showBrowser = true;
+  /** An update being downloaded or ready to install (main/updater.ts). */
+  updateStatus: { version: string; progress: number; ready?: boolean } | null = null;
   /** Where the user last clicked: the editors in the panel take the keys while it is 'panel'. */
   focusArea: 'main' | 'panel' = 'main';
   showDecks = true;

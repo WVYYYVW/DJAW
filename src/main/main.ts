@@ -2,6 +2,7 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, MenuItemConstructorOptions, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+import { Updater } from './updater';
 const isMac = process.platform === 'darwin';
 
 app.setName('DJAW');
@@ -21,6 +22,18 @@ let canClose = false;
 const L = (ja: string, en: string) => (lang === 'en' ? en : ja);
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
 
+// Updates (main/updater.ts). Its own small file, so the renderer's settings writes never overwrite it.
+const updateStatePath = () => path.join(app.getPath('userData'), 'update.json');
+const updater = new Updater(L, () => win, () => send('requestClose'), {
+  get: k => { try { return JSON.parse(fs.readFileSync(updateStatePath(), 'utf8'))[k]; } catch { return undefined; } },
+  set: (k, v) => {
+    let o: Record<string, unknown> = {};
+    try { o = JSON.parse(fs.readFileSync(updateStatePath(), 'utf8')); } catch { /* new */ }
+    o[k] = v;
+    try { fs.writeFileSync(updateStatePath(), JSON.stringify(o)); } catch { /* ignore */ }
+  },
+});
+
 function readLanguage() {
   try {
     const s = JSON.parse(fs.readFileSync(settingsPath(), 'utf8'));
@@ -39,7 +52,26 @@ function buildMenu() {
     ({ label, accelerator, click: () => send(command, arg) });
   const sep: MenuItemConstructorOptions = { type: 'separator' };
   const recent = app.isReady() ? (JSON.parse((() => { try { return fs.readFileSync(settingsPath(), 'utf8'); } catch { return '{}'; } })()).recentDocuments ?? []) as string[] : [];
+  const checkUpdates: MenuItemConstructorOptions = { label: L('アップデートを確認…', 'Check for Updates…'), click: () => void updater.check(true) };
   const template: MenuItemConstructorOptions[] = [
+    // The Mac's application menu (the first menu is always the app's own there).
+    ...(isMac ? [{
+      label: 'DJAW',
+      submenu: [
+        { role: 'about', label: L('DJAW について', 'About DJAW') },
+        checkUpdates,
+        sep,
+        item(L('キーボードショートカット', 'Keyboard Shortcuts'), 'shortcuts'),
+        sep,
+        { role: 'services', label: L('サービス', 'Services') },
+        sep,
+        { role: 'hide', label: L('DJAW を隠す', 'Hide DJAW') },
+        { role: 'hideOthers', label: L('ほかを隠す', 'Hide Others') },
+        { role: 'unhide', label: L('すべてを表示', 'Show All') },
+        sep,
+        { role: 'quit', label: L('DJAW を終了', 'Quit DJAW') },
+      ],
+    } as MenuItemConstructorOptions] : []),
     {
       label: L('ファイル', 'File'),
       submenu: [
@@ -63,8 +95,7 @@ function buildMenu() {
         item(L('書き出し…', 'Export…'), 'export', 'CmdOrCtrl+E'),
         item(L('曲リストをコピー（SoundCloud 用）', 'Copy Track List (for SoundCloud)'), 'copyTrackList', 'CmdOrCtrl+Alt+C'),
         item(L('演奏手順と曲リスト…', 'How to Play & Track List…'), 'performanceGuide', 'CmdOrCtrl+Shift+P'),
-        sep,
-        { role: 'quit', label: L('終了', 'Quit') },
+        ...(isMac ? [] : [sep, { role: 'quit', label: L('終了', 'Quit') } as MenuItemConstructorOptions]),
       ],
     },
     {
@@ -140,8 +171,9 @@ function buildMenu() {
     },
     {
       label: L('ヘルプ', 'Help'),
-      submenu: [item(L('キーボードショートカット', 'Keyboard Shortcuts'), 'shortcuts', 'CmdOrCtrl+/')],
+      submenu: [item(L('キーボードショートカット', 'Keyboard Shortcuts'), 'shortcuts', 'CmdOrCtrl+/'), ...(isMac ? [] : [sep, checkUpdates])],
     },
+    ...(isMac ? [{ role: 'windowMenu', label: L('ウインドウ', 'Window') } as MenuItemConstructorOptions] : []),
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -162,6 +194,8 @@ function createWindow(fileToOpen?: string) {
         `--djaw-user-data=${app.getPath('userData')}`,
         `--djaw-app-root=${app.getAppPath()}`,
         `--djaw-locale=${app.getLocale()}`,
+        // The app's own executable: on the Mac the renderer runs in a helper app that cannot start Node processes.
+        `--djaw-exe=${process.execPath}`,
       ],
     },
   });
@@ -169,6 +203,8 @@ function createWindow(fileToOpen?: string) {
   win.once('ready-to-show', () => {
     win?.show();
     if (fileToOpen) send('openFile', fileToOpen);
+    // Look for a new version a little after start (quietly unless there is one).
+    setTimeout(() => void updater.check(false), process.env.DJAW_UPDATE_TEST_DIR ? 1500 : 8000);
   });
   win.on('close', e => {
     if (canClose) return;
@@ -208,7 +244,13 @@ ipcMain.on('app:close', () => { canClose = true; win?.close(); });
 ipcMain.on('app:relaunchMenu', () => { lang = readLanguage(); buildMenu(); });
 ipcMain.on('shell:show', (_e, p: string) => shell.showItemInFolder(p));
 
-const fileArg = process.argv.find(a => a.toLowerCase().endsWith('.djaw'));
+let fileArg = process.argv.find(a => a.toLowerCase().endsWith('.djaw'));
+// Mac: a .djaw opened from the Finder (double-click, or dropped on the Dock icon).
+app.on('open-file', (e, f) => {
+  e.preventDefault();
+  if (win) send('openFile', f); else fileArg = f;
+});
+app.on('will-quit', () => updater.installOnQuit());
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', (_e, argv) => {
   const f = argv.find(a => a.toLowerCase().endsWith('.djaw'));

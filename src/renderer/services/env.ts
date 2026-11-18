@@ -8,6 +8,8 @@ export const env = {
   appRoot: arg('djaw-app-root') ?? process.cwd(),
   locale: arg('djaw-locale') ?? 'ja',
   platform: process.platform,
+  /** The main executable (DJAW.exe / DJAW.app/Contents/MacOS/DJAW), which can run Node with ELECTRON_RUN_AS_NODE. */
+  exe: arg('djaw-exe') ?? process.execPath,
 };
 
 export const dataDir = (...p: string[]) => path.join(env.userData, ...p);
