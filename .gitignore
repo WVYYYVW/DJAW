@@ -18,3 +18,4 @@ xcuserdata/
 src/vendor/stretch-core.mjs
 build/
 !models/*.onnx
+e2e-out/

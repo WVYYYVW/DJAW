@@ -5,6 +5,8 @@ import path from 'node:path';
 const isMac = process.platform === 'darwin';
 
 app.setName('DJAW');
+// A separate data folder (the automated tests start from a clean one).
+if (process.env.DJAW_USER_DATA) app.setPath('userData', process.env.DJAW_USER_DATA);
 // Use the GPU as much as possible: drawing the visuals (canvas), and video encoding through the system's hardware
 // encoder (NVIDIA / Intel / AMD on Windows, VideoToolbox on the Mac). Set DJAW_NO_GPU=1 to start without these.
 if (!process.env.DJAW_NO_GPU && (process.platform === 'win32' || isMac)) {

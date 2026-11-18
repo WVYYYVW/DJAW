@@ -112,7 +112,13 @@ export class MixStore {
 
   // MARK: UI
   pending: PendingTrack[] = [];
-  selectedClipID: string | null = null;
+  private _selectedClipID: string | null = null;
+  /** The selected track. Choosing a track deselects a placed sampler sound (so Delete acts on what was chosen last). */
+  get selectedClipID(): string | null { return this._selectedClipID; }
+  set selectedClipID(id: string | null) {
+    if (id && id !== this._selectedClipID) (this as { selectedHit?: string | null }).selectedHit = null;
+    this._selectedClipID = id;
+  }
   librarySelection = new Set<string>();
   playhead = 0;
   isPlaying = false;

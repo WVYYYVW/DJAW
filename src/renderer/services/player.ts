@@ -33,7 +33,9 @@ export class Player {
     const ctx = new AudioContext({ sampleRate: 44100, latencyHint: 'interactive' });
     await ctx.audioWorklet.addModule(pathToFileURL(buildDir('worklet.js')).href);
     const node = new AudioWorkletNode(ctx, 'djaw-player', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
-    node.connect(ctx.destination);
+    // DJAW_MUTE=1 (the automated tests): everything runs as usual, but nothing is heard.
+    if (process.env.DJAW_MUTE === '1') { const g = ctx.createGain(); g.gain.value = 0; node.connect(g).connect(ctx.destination); }
+    else node.connect(ctx.destination);
     const worker = new Worker(pathToFileURL(buildDir('render.worker.js')).href);
     const ch = new MessageChannel();
     node.port.postMessage({ type: 'port', port: ch.port1 }, [ch.port1]);

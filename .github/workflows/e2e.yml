@@ -1,0 +1,46 @@
+# Packages the app on GitHub's Mac and Windows machines and runs the end-to-end smoke test against the packaged app
+# (tests/e2e/smoke.cjs: analysis, muted playback with the audio measured, stems, sampler, loops, export, save / reopen,
+# toolbar layout, screenshots). The screenshots and report are kept for a few days.
+name: E2E
+
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore: [main]
+
+jobs:
+  e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            pack: npx electron-builder --mac --arm64 --dir --publish never
+            app: dist/mac-arm64/DJAW.app/Contents/MacOS/DJAW
+          - os: windows-latest
+            pack: npx electron-builder --win --x64 --dir --publish never
+            app: dist/win-unpacked/DJAW.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: node scripts/build.mjs
+      - name: Package
+        run: ${{ matrix.pack }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Smoke test (packaged app)
+        run: node tests/e2e/smoke.cjs ${{ matrix.app }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-${{ matrix.os }}
+          path: e2e-out/
+          retention-days: 3
