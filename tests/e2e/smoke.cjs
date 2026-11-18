@@ -89,6 +89,8 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
   if (process.platform === 'linux') launch.args.unshift('--no-sandbox');
   const app = await _electron.launch({ ...launch, timeout: 120000 });
   const errors = [];
+  // The app's own output (the main process and the analysis processes write there).
+  for (const [name, st] of [['stdout', app.process().stdout], ['stderr', app.process().stderr]]) st?.on('data', d => String(d).split('\n').filter(Boolean).forEach(l => { if (!/dbus\/bus\.cc/.test(l)) console.log(`[app ${name}]`, l); }));
   const win = await app.firstWindow();
   win.on('pageerror', e => { errors.push('pageerror: ' + e.message); console.log('[pageerror]', e.stack); });
   win.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') { const t = m.text(); console.log(`[${m.type()}]`, t); if (m.type() === 'error') errors.push(t); } });

@@ -14,7 +14,7 @@ export function TimeReadout() {
   return (
     <div className="readout" title={L('再生位置（時間 / ミックス全体の小節.拍）', 'Playhead (time / bar.beat of the mix)')}>
       <div className="readout-main">{Fmt.clock(s.tempoMap.real(t))}</div>
-      <div className="readout-sub">{`${p.bar}.${p.beat}`}</div>
+      <div className="readout-sub">{L(`小節 ${p.bar}.${p.beat}`, `Bar ${p.bar}.${p.beat}`)}</div>
     </div>
   );
 }

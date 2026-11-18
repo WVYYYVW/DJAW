@@ -510,8 +510,9 @@ export class MixStore {
         }
         added.push(clip.id);
         analyzed.push(clip.id);
-      } catch {
-        failed.push(item.name);
+      } catch (e) {
+        console.error('[DJAW] could not add', item.url, e);
+        failed.push(`${item.name}（${(e as Error).message}）`);
       }
       this.pending = this.pending.filter(p => p.id !== item.id);
       this.changed();
