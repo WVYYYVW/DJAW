@@ -125,6 +125,11 @@ Windows では WebCodecs（H.264）＋ mp4 マルチプレクサ、または ffm
 - 0.3.0（2026-11-18）で Mac 版より先に進んだ機能：ステム4分割（`stems.ts`、Spleeter 4stems を1ステム1ファイルの ONNX に。melody＝原音−他3つ）、ライブラリのフォルダ（`store/libraryFolders.ts`）、サンプラー（`core/sampler.ts`＝拍の位置に正確に鳴らす SamplerVoice、`store/sampler.ts`、`components/SamplerPanel.tsx`、タイムラインのサンプラーレーン）、ループタブ（`store/loops.ts`、`components/LoopEditor.tsx`）
 - 画面は Ableton 風（0.3.0〜）：上のツールバー・左のブラウザ・中央のアレンジ（`Timeline.tsx` はトラック見出しを別キャンバス `HEAD_W` で描く）・下の詳細パネル（`components/Panel.tsx`、タブ＝`store.panelTab`）。右インスペクタは廃止し、`Inspector.tsx` は各タブで使う部品の置き場。つなぎ／CUE／ループの各エディタはパネル内に埋め込み。エディタのキー操作は `store.focusArea === 'panel'`（最後にパネル内をクリックした）の時だけ効く
 - 作業の進め方（2026-11-18 ユーザーの指示）：大きな変更はブランチで進め、デバッグしてバグが無いことを確かめてから main に入れて push する
+- 解析用プロセス（0.3.2〜）：レンダラーからではなく**メインプロセスから** fork し（`src/main/analysisHost.ts`）、MessagePort で中継する。Mac ではレンダラー（ヘルパーアプリ）から起動すると落ちる。Electron の utilityProcess は起動引数にファイルがあると別のスクリプトを読むので使わない
+- Mac では onnxruntime のメモリアリーナを切る（`beatmodel.ts`。Electron の PartitionAlloc が大きなアライン確保で SIGTRAP を起こす）
+- 自動更新（`src/main/updater.ts`）：公開リポジトリ `WVYYYVW/DJAW-releases` の最新リリースを見る（本体リポジトリは非公開でアプリから読めないため）。Windows は NSIS を `/S --updated` で、Mac は dmg からアプリを取り出し codesign で検証して終了時に入れ替え。Release ワークフローは secret `RELEASES_TOKEN` があるときだけ DJAW-releases にも同じファイルを載せる
+- E2E テスト（`.github/workflows/e2e.yml`、手動起動。macOS の分数が高いので必要なときだけ）：`tests/e2e/smoke.cjs` が配布版を起動し、無音再生（`DJAW_MUTE=1`）で音が流れているか・解析・ステム・書き出し（WAV/M4A/映像）・保存・.djaw を引数で開く を確認。`tests/e2e/update.cjs` が 9.9.9 への自動更新、`tests/e2e/onnx-probe.cjs` が解析プロセス単体。スクリーンショットは下書きリリース `e2e-results` に上がる
+- リリースの前に E2E を Mac・Windows で通すこと（Linux のクラウドだけの確認で Mac 版が壊れていた前例あり）
 - まだ Windows 実機で確認していないもの：AAC（Media Foundation）での M4A／映像書き出し、映像プレビューの別ウィンドウ、iTunes XML の実データ
 
 ## 7. 参考：Mac 版の状態（2026-11-05）
