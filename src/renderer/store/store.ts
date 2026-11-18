@@ -1407,7 +1407,7 @@ export class MixStore {
   }
 
   private mixSignature() {
-    return JSON.stringify([this.masterBPM, this.gridOffset, this.stemSignature(), this.samplerKey(), this.playableClips().map(c => ({ ...c, takes: null, colorIndex: 0, cues: null, cueDone: null, transitionDone: null, autoNote: null, title: null, artist: null }))]);
+    return JSON.stringify([this.masterBPM, this.gridOffset, this.stemSignature(), this.samplerKey(), this.playableClips().map(c => this.pcmPaths.has(c.url)), this.playableClips().map(c => ({ ...c, takes: null, colorIndex: 0, cues: null, cueDone: null, transitionDone: null, autoNote: null, title: null, artist: null }))]);
   }
 
   private setRendering(sig: string | null) {
@@ -1673,6 +1673,13 @@ export class MixStore {
     const failed: string[] = [];
     await Promise.all(items.map(async item => {
       try {
+        // The audio first, so the mix plays while the (slower) analysis is still running.
+        const fp0 = fingerprint(item.url);
+        if (fp0 && !this.pcmPaths.has(item.url)) {
+          this.pcmPaths.set(item.url, await ensurePcm(item.url, fp0));
+          this.mixInputsChanged();
+          this.changed();
+        }
         const { analysis, pcm, fp } = await analyze(item.url, { progress: (stage, f) => { item.stage = stage; item.fraction = f; this.changed(); } });
         this.pcmPaths.set(item.url, pcm);
         this.fingerprints.set(item.url, fp);
@@ -1689,7 +1696,7 @@ export class MixStore {
         const fp = fingerprint(item.url);
         try {
           if (!fp) throw e;
-          this.pcmPaths.set(item.url, await ensurePcm(item.url, fp));
+          if (!this.pcmPaths.has(item.url)) { this.pcmPaths.set(item.url, await ensurePcm(item.url, fp)); this.mixInputsChanged(); }
           this.fingerprints.set(item.url, fp);
           failed.push(`${item.name}（${(e as Error).message}）`);
         } catch {
