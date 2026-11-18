@@ -96,8 +96,8 @@ function TrackRow({ clip, index, inMix, depth = 0, order }: { clip: Clip; index:
   return (
     <>
       {transition && (
-        <div className={'transition-row' + (selected ? ' sel' : '')} onClick={() => { s.selectedClipID = clip.id; s.inspectorTab = 'transition'; s.showInspector = true; s.changed(); }}
-          onDoubleClick={() => s.openTransitionEditor(clip.id)} title={L('クリックでつなぎを編集、ダブルクリックでつなぎエディタ', 'Click to edit the transition, double-click for the transition editor')}>
+        <div className={'transition-row' + (selected ? ' sel' : '')} onClick={() => { s.selectedClipID = clip.id; s.openPanel('transition'); }}
+          onDoubleClick={() => s.openTransitionEditor(clip.id)} title={L('クリックで、このつなぎを下のパネルで編集', 'Click to edit this transition in the panel below')}>
           {s.isLocked(index) ? '🔒 ' : '↘ '}{transition}{clip.transitionDone ? ' ✓' : ''}
         </div>
       )}

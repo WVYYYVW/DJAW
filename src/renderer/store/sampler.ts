@@ -95,7 +95,8 @@ P.addSamples = async function (files, pad) {
     }
     for (const s of added) if (pads.length < PADS) pads.push(s); else problems.push(L(`${s.name}（パッドが空いていません）`, `${s.name} (no free pad)`));
     this.samples = pads;
-    this.showSampler = true;
+    this.panelTab = 'sampler';
+    this.showPanel = true;
   }
   if (problems.length) this.alertMessage = L(`サンプラーに入れられなかったファイル：\n${problems.join('\n')}`, `Not added to the sampler:\n${problems.join('\n')}`);
   this.changed();

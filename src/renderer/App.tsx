@@ -8,13 +8,10 @@ import { AppLanguage, L, isEnglish, setLanguage } from '../core/i18n';
 import { useStore, useSize } from './hooks';
 import { store } from './store/store';
 import { dataDir, env } from './services/env';
-import { Toolbar, Overview } from './components/Toolbar';
+import { Toolbar, ArrangementBar } from './components/Toolbar';
 import { Sidebar } from './components/Sidebar';
 import { Timeline } from './components/Timeline';
-import { DeckPanel } from './components/DeckPanel';
-import { Inspector } from './components/Inspector';
-import { TransitionEditor } from './components/TransitionEditor';
-import { CueEditor } from './components/CueEditor';
+import { DetailPanel } from './components/Panel';
 import { ExportSheet } from './components/ExportSheet';
 import { Shortcuts } from './components/Shortcuts';
 import { ContextMenuHost } from './components/ContextMenu';
@@ -24,7 +21,6 @@ import { VisualPreviewWindow } from './components/VisualPreview';
 import { MusicLibrarySheet } from './components/MusicLibrarySheet';
 import { CloudBar, CloudSheet } from './components/CloudSheet';
 import { TrackProfileSheet } from './components/TrackProfileSheet';
-import { SamplerPanel } from './components/SamplerPanel';
 import { padKeys } from '../core/sampler';
 
 function readLanguage(): AppLanguage {
@@ -39,11 +35,6 @@ function writeLanguage(lang: AppLanguage) {
 }
 
 setLanguage(readLanguage(), env.locale);
-
-const deckHeight = (available: number, mixer: boolean) => {
-  if (!mixer) return Math.max(160, Math.min(Math.min(260, Math.max(160, available * 0.3)), available - 200));
-  return Math.max(230, Math.min(Math.min(330, Math.max(230, available * 0.42)), available - 200));
-};
 
 const isTextField = (t: EventTarget | null) => {
   const el = t as HTMLElement | null;
@@ -115,11 +106,14 @@ export function App() {
         case 'zoomIn': s.zoom(1.4); break;
         case 'zoomOut': s.zoom(1 / 1.4); break;
         case 'zoomFit': s.zoomToFit(); break;
-        case 'toggleInspector': s.toggle('showInspector'); break;
-        case 'toggleDecks': s.toggle('showDecks'); break;
+        case 'toggleInspector': s.toggle('showPanel'); break;
+        case 'toggleBrowser': s.toggle('showBrowser'); break;
+        case 'toggleDecks': if (s.showPanel && s.panelTab === 'deck') s.toggle('showPanel'); else s.openPanel('deck'); break;
+        case 'loopEditor': if (sel && s.index(sel) != null) s.openPanel('loop'); break;
+        case 'panelTab': s.openPanel(arg as never); break;
         case 'toggleMixer': s.toggle('showMixer'); break;
         case 'toggleMixWaveform': s.toggle('showMixWaveform'); break;
-        case 'toggleSampler': s.showSampler = !s.showSampler; s.changed(); break;
+        case 'toggleSampler': if (s.showPanel && s.panelTab === 'sampler') s.toggle('showPanel'); else s.openPanel('sampler'); break;
         case 'shortcuts': s.showShortcuts = true; s.changed(); break;
         case 'language': {
           const l = arg as AppLanguage;
@@ -145,14 +139,13 @@ export function App() {
     const key = (e: KeyboardEvent) => {
       if (e.defaultPrevented || isTextField(e.target)) return;
       if (s.showExport || s.alertMessage) return;
-      // Inside an editor the keys belong to it; only Space in the transition editor is shared.
-      if (s.cueEditorTarget || s.transitionEditorTarget || s.showShortcuts || s.showAutoArrange || s.showPerformanceGuide || s.profileEditorTarget || s.showMusicLibrary || s.showCloud) {
-        if (e.key !== ' ' || s.cueEditorTarget || !s.transitionEditorTarget) return;
-        const c = s.clip(s.transitionEditorTarget);
-        if (!c) return;
+      // Sheets take the keys while open.
+      if (s.showShortcuts || s.showAutoArrange || s.showPerformanceGuide || s.profileEditorTarget || s.showMusicLibrary || s.showCloud) return;
+      // Space in the Transition tab plays the transition (from a little before it, unless already near).
+      if (e.key === ' ' && s.focusArea === 'panel' && s.showPanel && s.panelTab === 'transition' && !s.isPlaying && s.selectedClipID && (s.index(s.selectedClipID) ?? 0) > 0) {
+        const c = s.clip(s.selectedClipID)!;
         e.preventDefault();
-        if (s.isPlaying) s.pause();
-        else if (s.playhead >= c.start - 4 * s.barLength && s.playhead < c.start + c.transitionBars * s.barLength + 2 * s.barLength) s.play();
+        if (s.playhead >= c.start - 4 * s.barLength && s.playhead < c.start + c.transitionBars * s.barLength + 2 * s.barLength) s.play();
         else s.previewTransition(c.id);
         return;
       }
@@ -187,7 +180,7 @@ export function App() {
         case 'Escape': if (!s.selectedHit) return; s.selectedHit = null; s.changed(); break;
         default: {
           // Sampler pads (while the sampler is shown).
-          const pad = s.showSampler && !e.repeat ? padKeys.indexOf(e.key.toUpperCase()) : -1;
+          const pad = s.showPanel && s.panelTab === 'sampler' && !e.repeat ? padKeys.indexOf(e.key.toUpperCase()) : -1;
           if (pad < 0 || e.shiftKey) return;
           s.triggerPad(pad);
         }
@@ -201,33 +194,31 @@ export function App() {
   useEffect(() => {
     document.documentElement.lang = isEnglish() ? 'en' : 'ja';
     s.offerRecoveryIfNeeded();
+    // Which part of the window has the keys: the detail panel's editors, or the rest.
+    const focus = (e: PointerEvent) => { s.focusArea = (e.target as HTMLElement)?.closest?.('.detail-panel') ? 'panel' : 'main'; };
+    window.addEventListener('pointerdown', focus, true);
     // Files dropped anywhere else must not navigate the window away.
     const prevent = (e: DragEvent) => { if (e.dataTransfer?.types.includes('Files')) e.preventDefault(); };
     window.addEventListener('dragover', prevent);
     window.addEventListener('drop', prevent);
-    return () => { window.removeEventListener('dragover', prevent); window.removeEventListener('drop', prevent); };
+    return () => { window.removeEventListener('dragover', prevent); window.removeEventListener('drop', prevent); window.removeEventListener('pointerdown', focus, true); };
   }, []);
 
-  const available = mainSize.height - 56 - (s.showSampler ? 93 : 0);
   return (
     <div className="app" key={lang}>
       <Toolbar />
       <CloudBar />
       <div className="body">
-        <Sidebar />
+        {s.showBrowser && <Sidebar />}
         <div className="main" ref={mainRef}>
+          <ArrangementBar />
           <div className="timeline-area"><Timeline /></div>
-          {s.showSampler && <div className="sampler-area"><SamplerPanel /></div>}
-          {s.showDecks && mainSize.height > 0 && <div className="deck-area" style={{ height: deckHeight(available, s.showMixer) }}><DeckPanel /></div>}
-          <div className="overview-area"><Overview /></div>
+          {s.showPanel && mainSize.height > 0 && <DetailPanel maxHeight={Math.max(170, Math.min(mainSize.height - 280, mainSize.height * 0.58))} />}
         </div>
-        {s.showInspector && <Inspector />}
       </div>
       {s.showAutoArrange && <AutoArrangeSheet />}
       {s.showMusicLibrary && <MusicLibrarySheet />}
       {s.showCloud && <CloudSheet />}
-      {s.transitionEditorTarget && <TransitionEditor />}
-      {s.cueEditorTarget && <CueEditor key={s.cueEditorTarget ? 'cue' : ''} />}
       {s.showExport && <ExportSheet />}
       {s.showPerformanceGuide && <PerformanceGuideSheet />}
       <VisualPreviewWindow />

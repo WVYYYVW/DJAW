@@ -1,9 +1,9 @@
 /* DJAW — dark theme close to the Mac version (Views/Theme.swift). */
 :root {
-  --bg: #121316;
-  --panel: #1b1c20;
-  --panel2: #222329;
-  --raised: #2b2d33;
+  --bg: #141518;
+  --panel: #1c1d21;
+  --panel2: #222328;
+  --raised: #2c2e34;
   --line: rgba(255, 255, 255, 0.08);
   --line2: rgba(255, 255, 255, 0.14);
   --text: #ececf0;
@@ -526,3 +526,133 @@ select { height: 24px; border-radius: 5px; background: var(--raised); border: 1p
 
 .sampler-hit .hit-row select:first-of-type { width: 52px; }
 @media (max-width: 1250px) { .sampler-hint { display: none; } }
+
+
+/* ======================================================================
+   Layout 2 (Ableton-style): toolbar · browser | arrangement over the detail panel
+   ====================================================================== */
+.toolbar { height: 44px; gap: 6px; padding: 0 8px; background: var(--panel2); }
+.icon { flex: none; display: block; }
+.tbtn { height: 28px; padding: 0 8px; color: rgba(236, 236, 240, 0.82); }
+.tbtn.icon { width: 28px; }
+.tbtn.small { height: 24px; font-size: 12px; padding: 0 6px; }
+.tbtn.icon.small { width: 24px; }
+.tbtn.toggle.on { background: var(--accent-soft); color: #a9cbff; }
+.tbtn.action { gap: 6px; font-size: 12.5px; }
+.tbtn.action.primary { background: var(--accent); color: #fff; font-weight: 600; }
+.tbtn.action.primary:hover:not(:disabled) { background: #5599ff; }
+.toolbar .group { border: none; gap: 2px; overflow: visible; }
+.toolbar .group .tbtn { border-radius: var(--radius); height: 28px; }
+.toolbar .group .tbtn + .tbtn { border-left: none; }
+@media (max-width: 1280px) { .action-label { display: none; } .tbtn.action { width: 30px; padding: 0; } }
+.doc-title { display: flex; align-items: center; gap: 8px; margin-left: 2px; max-width: 320px; min-width: 0; }
+.doc-title .brand { font-weight: 800; letter-spacing: 0.12em; font-size: 11px; color: var(--accent); }
+.doc-title .doc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.doc-title .edited { color: var(--orange); font-size: 9px; }
+.transport { margin: 0; gap: 6px; padding: 2px 8px 2px 4px; border-radius: 9px; background: rgba(0, 0, 0, 0.3); }
+.transport .tbtn.play { width: 30px; height: 30px; border-radius: 15px; }
+.transport .tbtn.play.playing { background: var(--orange); }
+.transport .readout { min-width: 104px; display: flex; align-items: baseline; gap: 8px; }
+.transport .readout-main { font-size: 16px; }
+.transport .tselect { height: 24px; font-size: 12px; background: transparent; }
+.vsep { height: 22px; margin: 0 2px; }
+
+.main { border-right: none; }
+.arrange-bar { flex: none; height: 34px; display: flex; align-items: center; gap: 6px; padding: 0 8px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.arrange-bar .overview { flex: 1; min-width: 60px; height: 24px; border-radius: 5px; }
+.arrange-bar .tbtn.add { color: var(--text); background: var(--raised); border: 1px solid var(--line2); gap: 4px; }
+.arrange-bar .group { border: none; gap: 1px; }
+.arrange-bar .group .tbtn + .tbtn { border-left: none; }
+.timeline-area { min-height: 160px; }
+.timeline-wrap { position: absolute; inset: 0; display: flex; }
+.track-headers { flex: none; cursor: pointer; border-right: 1px solid var(--line); }
+.timeline-wrap .timeline { position: relative; inset: auto; flex: 1; min-width: 0; }
+
+.sidebar { width: 264px; border-right: 1px solid var(--line); }
+.side-head { padding: 9px 12px 4px; font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; }
+
+/* Detail panel */
+.detail-panel { flex: none; position: relative; display: flex; flex-direction: column; background: var(--panel); border-top: 1px solid var(--line2); }
+.panel-resize { position: absolute; left: 0; right: 0; top: -4px; height: 7px; cursor: ns-resize; z-index: 5; }
+.panel-resize:hover { background: rgba(61, 139, 253, 0.35); }
+.panel-tabs { flex: none; height: 32px; display: flex; align-items: center; gap: 1px; padding: 0 6px; background: var(--panel2); border-bottom: 1px solid var(--line); }
+.panel-tab { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: none; border-radius: 6px; background: transparent; color: var(--dim); font-size: 12px; white-space: nowrap; }
+.panel-tab:hover { color: var(--text); background: rgba(255, 255, 255, 0.05); }
+.panel-tab.on { color: var(--text); background: var(--raised); box-shadow: inset 0 -2px 0 var(--accent); }
+.tab-count { font-size: 10px; padding: 0 5px; border-radius: 7px; background: rgba(255, 255, 255, 0.12); font-family: var(--mono); }
+.clip-badge { display: flex; align-items: center; gap: 7px; min-width: 0; max-width: 440px; margin-right: 4px; }
+.clip-badge-title { font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clip-badge-sub { font-size: 11px; color: var(--dim); white-space: nowrap; }
+.panel-body { flex: 1; min-height: 0; position: relative; display: flex; overflow: hidden; }
+.panel-body > * { flex: 1; min-width: 0; }
+.panel-empty { display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 13px; padding: 20px; text-align: center; }
+/* A row of cards that scroll sideways, each scrolling on its own (like Ableton's device chain). */
+.panel-columns { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; overflow-x: auto; overflow-y: hidden; height: 100%; }
+.panel-columns > * { flex: none; width: 310px; max-height: 100%; overflow-y: auto; }
+.panel-columns > .iheader { width: 260px; background: rgba(255, 255, 255, 0.035); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+.panel-split { display: flex; height: 100%; }
+.panel-props { flex: none; width: 330px; overflow-y: auto; padding: 10px 10px 16px 12px; display: flex; flex-direction: column; gap: 10px; border-right: 1px solid var(--line); }
+.panel-editor { flex: 1; min-width: 0; display: flex; }
+.trans-nav { display: flex; justify-content: space-between; }
+.panel-deck { position: relative; height: 100%; }
+.panel-deck .deckpanel { height: 100%; }
+.deck-mixer-toggle { position: absolute; right: 16px; bottom: 6px; }
+
+/* Transition editor in the panel */
+.te-embedded { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.te-embedded .te-header { padding: 6px 12px; gap: 6px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+.te-embedded .te-tracks { flex: 1; min-width: 160px; margin: 0; font-size: 12px; }
+.te-embedded .te-toolbar { padding: 6px 12px; gap: 8px; }
+.te-embedded .te-lanes { padding: 0 12px 8px; gap: 6px; }
+.te-embedded .te-lane-head { width: 104px; }
+.te-embedded .te-footer { padding: 6px 12px; }
+.te-embedded .stem-note { padding-left: 114px; }
+
+/* CUE editor in the panel */
+.cue-embedded { display: flex; height: 100%; gap: 12px; padding: 8px 12px; }
+.cue-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.cue-embedded .cue-overview { height: 34px; }
+.cue-embedded .cue-detail { min-height: 70px; }
+.cue-embedded .cue-transport { height: 40px; grid-template-columns: 1fr auto 1fr; }
+.cue-pos { display: flex; align-items: baseline; gap: 8px; }
+.cue-embedded .round { width: 30px; height: 30px; border-radius: 15px; font-size: 11px; }
+.cue-embedded .round.play { width: 38px; height: 38px; border-radius: 19px; font-size: 15px; }
+.cue-embedded .cue-options { flex-direction: row; align-items: center; gap: 10px; }
+.cue-side { flex: none; width: 380px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.cue-side .notice { padding: 0; }
+.cue-embedded .cue-tile { gap: 4px; padding: 6px 8px; border: 1px solid var(--line); border-left: 3px solid var(--tile); border-radius: 7px; background: rgba(255, 255, 255, 0.04); }
+.cue-embedded .cue-tile::before { display: none; }
+.cue-embedded .cue-tile-title { font-size: 12px; }
+.cue-embedded .readout-num { font-size: 13px; }
+.cue-tile-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.cue-tile-row .btn.tinted { width: auto; gap: 6px; }
+.cue-tile-row .check { margin-left: 4px; }
+.cue-info { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cue-embedded .memo-strip { padding: 2px 0; flex-wrap: wrap; gap: 4px; }
+
+/* Loop editor */
+.loop-editor { display: flex; height: 100%; gap: 12px; padding: 8px 12px; }
+.loop-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.loop-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.loop-bar .segmented button { padding: 2px 8px; font-size: 12px; }
+.loop-canvas { flex: 1; width: 100%; min-height: 90px; touch-action: none; }
+.loop-hint { font-size: 11px; color: var(--faint); }
+.loop-pass { font-family: var(--mono); font-size: 12px; color: rgb(255, 214, 10); }
+.loop-side { flex: none; width: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.loop-box { display: flex; flex-direction: column; gap: 6px; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line); border-left: 3px solid var(--tile, var(--accent)); background: rgba(255, 255, 255, 0.04); }
+.loop-box.empty { border-left-color: var(--line2); }
+.loop-box-title { font-weight: 700; font-size: 12.5px; }
+.loop-box .irow-label { width: 52px; }
+.loop-box select { height: 26px; background: var(--raised); border: 1px solid var(--line2); border-radius: 5px; }
+.loop-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.loop-chip { border-left: 3px solid var(--tile); }
+.loop-chip.on { background: var(--accent-soft); border-color: var(--accent); border-left-color: var(--tile); }
+
+/* Sampler in the panel */
+.panel-body .sampler { height: 100%; padding: 10px 12px; }
+.panel-body .pads { grid-template-columns: repeat(4, minmax(0, 150px)); grid-template-rows: repeat(2, minmax(0, 1fr)); max-width: 640px; }
+.panel-body .pad { padding: 6px 8px; }
+.panel-body .pad-name { font-size: 13px; white-space: normal; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.cue-embedded .cue-options .check { white-space: nowrap; }
+.cue-embedded .cue-transport { grid-template-columns: auto 1fr auto; gap: 10px; }
+.cue-embedded .cue-buttons { justify-self: center; }

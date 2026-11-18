@@ -11,6 +11,7 @@ import './store/stems';
 import './store/cloud';
 import './store/libraryFolders';
 import './store/sampler';
+import './store/loops';
 
 // For debugging from the developer tools.
 (window as unknown as { djaw: unknown }).djaw = store;

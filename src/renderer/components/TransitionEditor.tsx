@@ -16,8 +16,8 @@ interface Sel { kind: LaneKind; incoming: boolean; id: string }
 
 const INSET = 10;
 
-function LaneCanvas({ kind, lanes, totalBeats, colorOut, colorIn, target, sel, setSel, range, height }: {
-  kind: LaneKind; lanes: TransitionLanes; totalBeats: number; colorOut: string; colorIn: string; target: Target;
+function LaneCanvas({ clipID, kind, lanes, totalBeats, colorOut, colorIn, target, sel, setSel, range, height }: {
+  clipID: string; kind: LaneKind; lanes: TransitionLanes; totalBeats: number; colorOut: string; colorIn: string; target: Target;
   sel: Sel | null; setSel: (s: Sel | null) => void; range: [number, number]; height: number;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -121,7 +121,7 @@ function LaneCanvas({ kind, lanes, totalBeats, colorOut, colorIn, target, sel, s
     return v;
   };
   const commit = (pts: AutoPoint[]) => {
-    const id = store.transitionEditorTarget!;
+    const id = clipID;
     let l = Lanes.setPoints(lanes, kind, editIncoming, pts);
     if (target === 'mirror' && !Lane.isEffect(kind) && !Lane.isStem(kind)) l = Lanes.mirrorToOutgoing(l, kind);
     store.setLanes(id, l, false);
@@ -163,7 +163,7 @@ function LaneCanvas({ kind, lanes, totalBeats, colorOut, colorIn, target, sel, s
     const move = (ev: PointerEvent) => {
       if (Math.hypot(ev.clientX - target0.x, ev.clientY - target0.y) < 2) return;
       begin();
-      const lanesNow = effectiveLanes(store.clip(store.transitionEditorTarget!)!);
+      const lanesNow = effectiveLanes(store.clip(clipID)!);
       const cur = Lanes.points(lanesNow, kind, editIncoming).map(p => ({ ...p }));
       const px = ev.clientX - r.left, py = ev.clientY - r.top;
       const gg = grab.current!;
@@ -177,7 +177,7 @@ function LaneCanvas({ kind, lanes, totalBeats, colorOut, colorIn, target, sel, s
       }
       let l = Lanes.setPoints(lanesNow, kind, editIncoming, cur);
       if (target === 'mirror' && !Lane.isEffect(kind) && !Lane.isStem(kind)) l = Lanes.mirrorToOutgoing(l, kind);
-      store.setLanes(store.transitionEditorTarget!, l, false);
+      store.setLanes(clipID, l, false);
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
@@ -240,18 +240,18 @@ function BarRuler({ totalBeats, range }: { totalBeats: number; range: [number, n
     }} />;
 }
 
-export function TransitionEditor() {
+/** The transition's lanes, drawn by hand (in the detail panel's Transition tab). */
+export function TransitionEditor({ id }: { id: string }) {
   const s = useStore();
-  const id = s.transitionEditorTarget!;
   const i = s.index(id);
   const [target, setTarget] = useState<Target>('mirror');
   const [page, setPage] = useState(0);
   const [sel, setSel] = useState<Sel | null>(null);
-  const close = () => { s.isInteracting = false; s.transitionEditorTarget = null; s.changed(); };
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { close(); e.stopPropagation(); }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { deleteSel(); e.preventDefault(); e.stopPropagation(); }
+      if (store.focusArea !== 'panel' || !sel || (e.target as HTMLElement)?.tagName === 'INPUT') return;
+      if (e.key === 'Escape') { setSel(null); e.stopPropagation(); }
+      if (e.key === 'Delete' || e.key === 'Backspace') { deleteSel(); e.preventDefault(); e.stopPropagation(); }
     };
     window.addEventListener('keydown', key, true);
     return () => window.removeEventListener('keydown', key, true);
@@ -291,14 +291,9 @@ export function TransitionEditor() {
     return beat === 1 ? L(`${bar}小節目`, `bar ${bar}`) : L(`${bar}小節目 ${beat}拍`, `bar ${bar} beat ${beat}`);
   };
   return (
-    <div className="sheet-backdrop">
-      <div className="sheet transition-editor">
+    <div className="te-embedded">
         <div className="te-header">
-          <div>
-            <div className="sheet-title">{L('つなぎエディタ', 'Transition Editor')}</div>
-            <div className="te-tracks"><span className="dot" style={{ background: colorA }} />{prev.title} <span className="dim">→</span> <span className="dot" style={{ background: colorB }} />{clip.title}</div>
-          </div>
-          <div className="spacer" />
+          <div className="te-tracks"><span className="dot" style={{ background: colorA }} />{prev.title} <span className="dim">→</span> <span className="dot" style={{ background: colorB }} />{clip.title}</div>
           <span className="dim">{L('長さ', 'Length')}</span>
           {[2, 4, 8, 16, 32].map(b => <button key={b} className={'btn small' + (Math.abs(clip.transitionBars - b) < 0.01 ? ' on' : '')} onClick={() => s.setTransitionLength(id, b)}>{b}</button>)}
           <span className="stepbtns"><button onClick={() => s.setTransitionLength(id, Math.max(1, clip.transitionBars - 1))}>−</button><button onClick={() => s.setTransitionLength(id, clip.transitionBars + 1)}>＋</button></span>
@@ -306,7 +301,6 @@ export function TransitionEditor() {
           <button className="btn primary" onClick={() => s.previewTransition(id)}>▶ {s.isPlaying ? L('再生中…', 'Playing…') : L('試聴', 'Preview')}</button>
           {s.isPlaying && <button className="btn" onClick={() => s.pause()}>⏸</button>}
           <button className="btn" disabled={s.currentTakeID(id) != null} onClick={() => s.saveTake(id)}>{s.currentTakeID(id) == null ? L('候補に保存', 'Save as Take') : L('保存済み', 'Saved')}</button>
-          <button className="btn primary" onClick={close}>{L('完了', 'Done')}</button>
         </div>
         {clip.transitionBars < 0.01 ? (
           <div className="te-empty">
@@ -359,7 +353,7 @@ export function TransitionEditor() {
                     { label: L('この線をリセット', 'Reset this lane'), action: () => s.setLanes(id, (Lane.isEffect(kind) || Lane.isStem(kind)) ? Lanes.clear(lanes, kind) : Lanes.applyTemplate(lanes, 'linear', kind)) },
                   ])}>{L('形', 'Shape')} ▾</button>
                 </div>
-                <LaneCanvas kind={kind} lanes={lanes} totalBeats={totalBeats} colorOut={colorA} colorIn={colorB} target={target} sel={sel} setSel={setSel} range={range} height={kind === 'volume' ? 150 : page === 2 ? 76 : 110} />
+                <LaneCanvas clipID={id} kind={kind} lanes={lanes} totalBeats={totalBeats} colorOut={colorA} colorIn={colorB} target={target} sel={sel} setSel={setSel} range={range} height={kind === 'volume' ? 120 : page === 2 ? 64 : 84} />
               </div>
             ))}
           </div>
@@ -367,7 +361,6 @@ export function TransitionEditor() {
         <div className="te-footer">
           <SaveCustom clip={clip} />
         </div>
-      </div>
     </div>
   );
 }

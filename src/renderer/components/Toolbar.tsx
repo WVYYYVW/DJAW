@@ -5,6 +5,7 @@ import { useStore, usePlayhead } from '../hooks';
 import { CloudChip } from './CloudSheet';
 import { store } from '../store/store';
 import { Fmt, Theme, clipColor } from '../format';
+import { Icon, IconName } from './Icons';
 
 export function TimeReadout() {
   const t = usePlayhead(33);
@@ -13,7 +14,7 @@ export function TimeReadout() {
   return (
     <div className="readout" title={L('再生位置（時間 / ミックス全体の小節.拍）', 'Playhead (time / bar.beat of the mix)')}>
       <div className="readout-main">{Fmt.clock(s.tempoMap.real(t))}</div>
-      <div className="readout-sub">{L(`小節 ${p.bar}.${p.beat}`, `Bar ${p.bar}.${p.beat}`)}</div>
+      <div className="readout-sub">{`${p.bar}.${p.beat}`}</div>
     </div>
   );
 }
@@ -57,41 +58,61 @@ function MasterBPMField() {
   );
 }
 
-function Toggle({ on, onClick, children, title, disabled }: { on: boolean; onClick: () => void; children: React.ReactNode; title?: string; disabled?: boolean }) {
-  return <button className={'tbtn toggle' + (on ? ' on' : '')} onClick={onClick} title={title} disabled={disabled}>{children}</button>;
+function Toggle({ on, onClick, children, title, disabled, icon }: { on: boolean; onClick: () => void; children?: React.ReactNode; title?: string; disabled?: boolean; icon?: IconName }) {
+  return <button className={'tbtn toggle' + (on ? ' on' : '') + (children ? '' : ' icon')} onClick={onClick} title={title} disabled={disabled}>{icon && <Icon name={icon} />}{children}</button>;
 }
 
+function Action({ icon, label, title, onClick, disabled, primary }: { icon: IconName; label: string; title: string; onClick: () => void; disabled?: boolean; primary?: boolean }) {
+  return <button className={'tbtn action' + (primary ? ' primary' : '')} onClick={onClick} disabled={disabled} title={title}><Icon name={icon} /><span className="action-label">{label}</span></button>;
+}
+
+/** The bar at the top: file and title on the left, transport in the middle, views and output on the right. */
 export function Toolbar() {
   const s = useStore();
   return (
     <div className="toolbar">
-      <button className="tbtn" onClick={() => s.presentAddFiles()} title={L('曲を追加（Ctrl+Shift+I）— ファイルやフォルダをドロップしても追加できます', 'Add tracks (Ctrl+Shift+I) — you can also drop files or folders')}>＋ {L('曲を追加', 'Add Tracks')}</button>
-      <div className="doc-title">{s.documentTitle}{s.isDirty && !s.isCloudDocument() ? <span className="edited"> — {L('編集済み', 'Edited')}</span> : null}<CloudChip /></div>
-      <div className="transport">
-        <button className="tbtn icon" onClick={() => { s.seek(0); s.requestScroll(0); }} title={L('先頭へ（Home）', 'Go to start (Home)')}>⏮</button>
-        <button className="tbtn icon play" onClick={() => s.togglePlay()} disabled={!s.clips.length} title={L('再生 / 一時停止（Space）', 'Play / pause (Space)')}>{s.isPlaying ? '⏸' : '▶'}</button>
-        <TimeReadout />
-        <div className="vsep" />
-        <MasterBPMField />
+      <Toggle icon="browser" on={s.showBrowser} onClick={() => s.toggle('showBrowser')} title={L('ブラウザ（ミックス順・ライブラリ）の表示切替（Ctrl+Alt+B）', 'Show or hide the browser (Ctrl+Alt+B)')} />
+      <div className="doc-title" title={s.documentPath ?? ''}>
+        <span className="brand">DJAW</span>
+        <span className="doc-name">{s.documentTitle}</span>{s.isDirty && !s.isCloudDocument() ? <span className="edited" title={L('保存されていない変更があります', 'Unsaved changes')}>●</span> : null}<CloudChip />
       </div>
       <div className="spacer" />
-      <select className="tselect" value={s.snap} onChange={e => s.setSnap(e.target.value as never)} title={L('タイムラインでドラッグした時に動く単位（Alt で1拍単位）', 'How far things move when dragging (hold Alt for 1 beat)')}>
-        {snapUnits.map(u => <option key={u} value={u}>{L('単位: ', 'Step: ') + Snap.title(u)}</option>)}
-      </select>
-      <div className="group">
-        <button className="tbtn icon" onClick={() => s.zoom(1 / 1.4)} title={L('縮小（Ctrl+−）', 'Zoom out (Ctrl+−)')}>－</button>
-        <button className="tbtn icon" onClick={() => s.zoomToFit()} title={L('全体を表示（Ctrl+0）', 'Show whole mix (Ctrl+0)')}>↔</button>
-        <button className="tbtn icon" onClick={() => s.zoom(1.4)} title={L('拡大（Ctrl+＋）', 'Zoom in (Ctrl+＋)')}>＋</button>
+      <div className="transport">
+        <button className="tbtn icon" onClick={() => { s.seek(0); s.requestScroll(0); }} title={L('先頭へ（Home）', 'Go to start (Home)')}><Icon name="toStart" /></button>
+        <button className={'tbtn icon play' + (s.isPlaying ? ' playing' : '')} onClick={() => s.togglePlay()} disabled={!s.clips.length} title={L('再生 / 一時停止（Space）', 'Play / pause (Space)')}><Icon name={s.isPlaying ? 'pause' : 'play'} /></button>
+        <TimeReadout />
+        <MasterBPMField />
+        <select className="tselect" value={s.snap} onChange={e => s.setSnap(e.target.value as never)} title={L('タイムラインでドラッグした時に動く単位（Alt で1拍単位）', 'How far things move when dragging (hold Alt for 1 beat)')}>
+          {snapUnits.map(u => <option key={u} value={u}>{Snap.title(u)}</option>)}
+        </select>
       </div>
-      <Toggle on={s.showDecks} onClick={() => s.toggle('showDecks')} title={L('ターンテーブルとミキサーの表示', 'Show turntables and mixer')}>{L('デッキ', 'Decks')}</Toggle>
-      <Toggle on={s.showMixer} disabled={!s.showDecks} onClick={() => s.toggle('showMixer')} title={L('デッキの間のミキサーの表示 / 非表示', 'Show or hide the mixer')}>{L('ミキサー', 'Mixer')}</Toggle>
-      <Toggle on={s.showSampler} onClick={() => { s.showSampler = !s.showSampler; s.changed(); }} title={L('サンプラー：短い音（ホーン・声ネタ・サイレンなど）を8つのパッドに入れて、ミックスの拍に置く（Ctrl+Shift+B）。パッドは Q〜I キーでも鳴らせます', 'Sampler: put short sounds (horns, vocal shots, sirens …) on 8 pads and place them on the mix’s beats (Ctrl+Shift+B). Keys Q–I play the pads')}>◼ {L('サンプラー', 'Sampler')}</Toggle>
-      <Toggle on={s.followPlayhead} onClick={() => s.toggle('followPlayhead')} title={L('再生中に表示を再生位置に追従させる', 'Keep the playhead in view while playing')}>{L('追従', 'Follow')}</Toggle>
-      <button className="tbtn" onClick={() => { s.showVisualPreview = true; s.changed(); }} title={L('映像プレビュー：書き出す映像を、再生に合わせてその場で確認（Ctrl+Alt+V）', 'Visuals preview: see the video visuals live with playback (Ctrl+Alt+V)')}>✦ {L('映像', 'Visuals')}</button>
-      <button className="tbtn" onClick={() => { s.showCloud = true; s.changed(); }} title={L('クラウド（MEGA）：Windows と Mac でミックスを共有（Ctrl+Shift+O）', 'Cloud (MEGA): share mixes between Windows and Mac (Ctrl+Shift+O)')}>☁ {L('クラウド', 'Cloud')}</button>
-      <button className="tbtn" disabled={!s.clips.length} onClick={() => { s.showPerformanceGuide = true; s.changed(); }} title={L('このセットを DJ 機材で実際に演奏する手順と、曲リスト（SoundCloud の概要用）', 'Steps to play this set live on DJ gear, and the track list (for SoundCloud descriptions)')}>☰ {L('演奏手順', 'How to Play')}</button>
-      <button className="tbtn" disabled={!s.clips.length} onClick={() => { s.showExport = true; s.changed(); }} title={L('ミックスを書き出し（Ctrl+E）', 'Export the mix (Ctrl+E)')}>⇪ {L('書き出し', 'Export')}</button>
-      <Toggle on={s.showInspector} onClick={() => s.toggle('showInspector')} title={L('インスペクタの表示切替（Ctrl+Alt+I）', 'Show or hide the inspector (Ctrl+Alt+I)')}>▥</Toggle>
+      <div className="spacer" />
+      <div className="group">
+        <Action icon="film" label={L('映像', 'Visuals')} title={L('映像プレビュー：書き出す映像を、再生に合わせてその場で確認（Ctrl+Alt+V）', 'Visuals preview: see the video visuals live with playback (Ctrl+Alt+V)')} onClick={() => { s.showVisualPreview = true; s.changed(); }} />
+        <Action icon="cloud" label={L('クラウド', 'Cloud')} title={L('クラウド（MEGA）：Windows と Mac でミックスを共有（Ctrl+Shift+O）', 'Cloud (MEGA): share mixes between Windows and Mac (Ctrl+Shift+O)')} onClick={() => { s.showCloud = true; s.changed(); }} />
+        <Action icon="list" label={L('演奏手順', 'How to Play')} disabled={!s.clips.length} title={L('このセットを DJ 機材で実際に演奏する手順と、曲リスト（SoundCloud の概要用）（Ctrl+Shift+P）', 'Steps to play this set live on DJ gear, and the track list (for SoundCloud descriptions) (Ctrl+Shift+P)')} onClick={() => { s.showPerformanceGuide = true; s.changed(); }} />
+        <Action icon="export" label={L('書き出し', 'Export')} primary disabled={!s.clips.length} title={L('ミックスを書き出し（Ctrl+E）', 'Export the mix (Ctrl+E)')} onClick={() => { s.showExport = true; s.changed(); }} />
+      </div>
+      <div className="vsep" />
+      <Toggle icon="panel" on={s.showPanel} onClick={() => s.toggle('showPanel')} title={L('下の詳細パネル（つなぎ・CUE・ループ・FX・サンプラー・デッキ）の表示切替（Ctrl+Alt+I）', 'Show or hide the detail panel (Ctrl+Alt+I)')} />
+    </div>
+  );
+}
+
+/** The strip above the arrangement: the whole-mix overview, zoom and follow. */
+export function ArrangementBar() {
+  const s = useStore();
+  return (
+    <div className="arrange-bar">
+      <button className="tbtn small add" onClick={() => s.presentAddFiles()} title={L('曲を追加（Ctrl+Shift+I）— ファイルやフォルダをドロップしても追加できます', 'Add tracks (Ctrl+Shift+I) — you can also drop files or folders')}><Icon name="plus" size={14} />{L('曲を追加', 'Add Tracks')}</button>
+      <Overview />
+      <div className="group">
+        <button className="tbtn icon small" onClick={() => s.zoom(1 / 1.4)} title={L('縮小（Ctrl+−）', 'Zoom out (Ctrl+−)')}><Icon name="zoomOut" size={15} /></button>
+        <button className="tbtn icon small" onClick={() => s.zoomToFit()} title={L('全体を表示（Ctrl+0）', 'Show whole mix (Ctrl+0)')}><Icon name="fit" size={15} /></button>
+        <button className="tbtn icon small" onClick={() => s.zoom(1.4)} title={L('拡大（Ctrl+＋）', 'Zoom in (Ctrl+＋)')}><Icon name="zoomIn" size={15} /></button>
+      </div>
+      <Toggle icon="wave" on={s.showMixWaveform} onClick={() => s.toggle('showMixWaveform')} title={L('MIX レーン：書き出しと同じ処理で作った最終的な波形', 'MIX lane: the final waveform, rendered exactly like an export')} />
+      <Toggle icon="follow" on={s.followPlayhead} onClick={() => s.toggle('followPlayhead')} title={L('再生中に表示を再生位置に追従させる', 'Keep the playhead in view while playing')} />
     </div>
   );
 }

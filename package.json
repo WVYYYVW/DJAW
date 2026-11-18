@@ -1,7 +1,7 @@
 {
   "name": "djaw",
   "productName": "DJAW",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "DAW-style DJ mix editor",
   "main": "build/main.js",
   "private": true,

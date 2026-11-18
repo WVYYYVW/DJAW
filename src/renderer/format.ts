@@ -53,10 +53,14 @@ export const Fmt = {
 };
 
 export const Theme = {
-  timelineBG: 'rgb(18,19,22)',
-  laneBG: 'rgb(25,26,30)',
-  rulerBG: 'rgb(30,31,36)',
+  timelineBG: 'rgb(20,21,24)',
+  laneBG: 'rgb(28,29,33)',
+  rulerBG: 'rgb(33,34,39)',
   chipBG: 'rgb(43,45,51)',
+  headerBG: 'rgb(30,31,35)',
+  headerRow: 'rgb(40,42,47)',
+  deckA: 'rgb(255,159,10)',
+  deckB: 'rgb(64,200,224)',
   playhead: 'rgb(255,92,82)',
   accent: '#3d8bfd',
 };

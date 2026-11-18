@@ -70,7 +70,7 @@ function PositionRow({ title, value, color, help, onDelta }: { title: string; va
   );
 }
 
-function Tabs({ value, onChange, items }: { value: string; onChange: (v: string) => void; items: [string, string][] }) {
+export function Tabs({ value, onChange, items }: { value: string; onChange: (v: string) => void; items: [string, string][] }) {
   return <div className="segmented">{items.map(([k, label]) => <button key={k} className={value === k ? 'on' : ''} onClick={() => onChange(k)}>{label}</button>)}</div>;
 }
 
@@ -115,7 +115,7 @@ function TransitionDiagram({ clip, prev }: { clip: Clip; prev: Clip }) {
 const styleOrder: TransitionStyle[] = ['crossfade', 'bassSwap', 'filter', 'echoOut', 'cut', 'brake', 'backspin', 'custom'];
 const styleIcon: Record<TransitionStyle, string> = { crossfade: '⇄', bassSwap: '◖◗', filter: '⏚', echoOut: '◌))', cut: '✂', brake: '⏷', backspin: '⟲', custom: '✎' };
 
-function TransitionSection({ clip, index }: { clip: Clip; index: number }) {
+export function TransitionSection({ clip, index }: { clip: Clip; index: number }) {
   const s = useStore();
   const prev = s.clips[index - 1];
   const [fine, setFine] = useState(false);
@@ -145,8 +145,7 @@ function TransitionSection({ clip, index }: { clip: Clip; index: number }) {
           <button className="btn purple grow" onClick={() => s.autoMixTransition(clip.id)} title={L('2曲のイントロ・ドロップ・アウトロとキーを解析して、出口・入口・長さ・つなぎ方をまとめて決めます', 'Analyses both tracks’ intro, drops, outro and key, and sets mix-out, mix-in, length and style')}>✦ {L('自動で決める', 'Auto')}</button>
           <button className="btn primary grow" onClick={() => s.previewTransition(clip.id)} title={L('つなぎの4小節前から再生します', 'Plays from 4 bars before the transition')}>▶ {L('試聴', 'Preview')}</button>
         </div>
-        <button className="btn wide" disabled={clip.transitionBars < 0.01} onClick={() => s.openTransitionEditor(clip.id)}
-          title={L('自動ミックスで決まったつなぎも、ここから描き直せます（Ctrl+T、タイムラインのつなぎ表示をダブルクリックでも開きます）', 'Redraw any transition, including auto-mixed ones (also Ctrl+T, or double-click the transition on the timeline)')}>✎ {L('つなぎエディタで LOW / HIGH・フェーダーを描く…', 'Draw LOW / HIGH & Fader in Transition Editor…')}</button>
+        <div className="caption">✎ {L('右側の線で、フェーダー・EQ・FX・ステムの動きを描き直せます。', 'Redraw the fader, EQ, FX and stem moves in the lanes on the right.')}</div>
         {s.autoNoteText(clip) && (
           <div className="autonote">
             <div className="autonote-title">✦ {L('自動ミックスの判断', 'Why the auto-mix chose this')}</div>
@@ -241,7 +240,7 @@ function TransitionSection({ clip, index }: { clip: Clip; index: number }) {
   );
 }
 
-function TakesSection({ clip }: { clip: Clip }) {
+export function TakesSection({ clip }: { clip: Clip }) {
   const s = useStore();
   const list = s.takes(clip.id);
   const current = s.currentTakeID(clip.id);
@@ -270,7 +269,7 @@ function TakesSection({ clip }: { clip: Clip }) {
   );
 }
 
-function TempoChangeSection({ clip, index }: { clip: Clip; index: number }) {
+export function TempoChangeSection({ clip, index }: { clip: Clip; index: number }) {
   const s = useStore();
   if (index === 0) {
     return (
@@ -304,39 +303,15 @@ function TempoChangeSection({ clip, index }: { clip: Clip; index: number }) {
   );
 }
 
-function DeckTab({ clip, index }: { clip: Clip; index: number }) {
+export function DeckTab({ clip, index }: { clip: Clip; index: number }) {
   const s = useStore();
-  const [loopBars, setLoopBars] = useState(4);
-  const [loopRepeats, setLoopRepeats] = useState(1);
-  const playBar = s.sourceBar(clip.id, s.playhead);
   const r = rate(clip, s.masterBPM);
   const keySug = s.suggestedKeyShift(clip.id);
   return (
     <>
-      <Section>
-        <button className="btn wide" onClick={() => s.openCueEditor(clip.id)}>⎍ {L('CUE（IN / OUT）を編集…', 'Edit Cues (IN / OUT)…')}</button>
-      </Section>
       <GenreSection clip={clip} />
       <AIAnalysisSection clip={clip} />
-      <Section title={L('DJ操作（ループ・ジャンプ・キー）', 'DJ Controls (Loop · Jump · Key)')} footer={L('ループやジャンプを入れると曲の長さが変わり、後ろの曲は自動でずれます。タイムラインで右クリックしても追加できます。', 'Loops and jumps change the track length; later tracks move automatically. You can also add them by right-clicking on the timeline.')}>
-        <div className="chooser">
-          <span>{L('ループ', 'Loop')}</span>
-          <select value={loopBars} onChange={e => setLoopBars(Number(e.target.value))}>{[0.25, 0.5, 1, 2, 4, 8, 16, 32].map(b => <option key={b} value={b}>{b < 1 ? L(`${b * 4}拍`, `${b * 4} beats`) : L(`${b}小節`, `${b} bars`)}</option>)}</select>
-          <select value={loopRepeats} onChange={e => setLoopRepeats(Number(e.target.value))}>{[1, 2, 3, 4, 7].map(n => <option key={n} value={n}>{`×${n + 1}`}</option>)}</select>
-          <button className="btn small" disabled={playBar == null} title={L('再生位置からループ', 'Loop from the playhead')} onClick={() => playBar != null && s.addLoop(clip.id, playBar, loopBars, loopRepeats)}>{L('再生位置に', 'At playhead')}</button>
-        </div>
-        <div className="chooser">
-          <span>{L('ジャンプ', 'Jump')}</span>
-          {[1, 2, 4, 8, 16].map(b => <button key={b} disabled={playBar == null} onClick={() => playBar != null && s.addJump(clip.id, playBar, b)}>{b}</button>)}
-          <span className="dim">{L('小節先へ（再生位置で）', 'bars ahead (at the playhead)')}</span>
-        </div>
-        {(clip.edits ?? []).map(e => (
-          <div key={e.id} className="edit-row">
-            <span>{e.kind === 'loop' ? '⟲' : '⇥'} {Edit.summary(e)}</span>
-            {e.kind === 'loop' && <span className="stepbtns"><button onClick={() => s.setEditRepeats(clip.id, e.id, e.repeats - 1)}>−</button><button onClick={() => s.setEditRepeats(clip.id, e.id, e.repeats + 1)}>＋</button></span>}
-            <button className="btn small" onClick={() => s.removeEdit(clip.id, e.id)}>✕</button>
-          </div>
-        ))}
+      <Section title={L('キー', 'Key')}>
         <label className="check"><input type="checkbox" checked={clip.keyLock ?? true} onChange={e => s.setKeyLock(clip.id, e.target.checked)} /> {L('キーロック（オフにするとテンポに合わせて音程も変わる、レコード風）', 'Key lock (off: pitch follows the tempo, like vinyl)')}</label>
         <Row label={L('キーシフト', 'Key Shift')}>
           <span className="stepbtns"><button onClick={() => s.setKeyShift(clip.id, (clip.keyShift ?? 0) - 1)}>−</button></span>
@@ -365,7 +340,7 @@ function DeckTab({ clip, index }: { clip: Clip; index: number }) {
   );
 }
 
-function StructureSummary({ clip }: { clip: Clip }) {
+export function StructureSummary({ clip }: { clip: Clip }) {
   const s = useStore();
   const st = s.structures.get(clip.url);
   if (!st) return null;
@@ -380,7 +355,7 @@ function StructureSummary({ clip }: { clip: Clip }) {
   );
 }
 
-function FXTab({ clip }: { clip: Clip }) {
+export function FXTab({ clip }: { clip: Clip }) {
   const s = useStore();
   return (
     <>
@@ -424,7 +399,7 @@ function FXTab({ clip }: { clip: Clip }) {
   );
 }
 
-function MixerTab({ clip, index }: { clip: Clip; index: number }) {
+export function MixerTab({ clip, index }: { clip: Clip; index: number }) {
   const s = useStore();
   const isLast = index === s.clips.length - 1;
   const eq = (title: string, key: 'eqLow' | 'eqMid' | 'eqHigh') => (
@@ -451,59 +426,11 @@ function MixerTab({ clip, index }: { clip: Clip; index: number }) {
   );
 }
 
-function ClipInspector({ clip, index }: { clip: Clip; index: number }) {
-  const s = useStore();
-  const isLast = index === s.clips.length - 1;
-  const key = s.structures.get(clip.url)?.key;
-  const next = s.clips[index + 1];
-  return (
-    <div className="inspector-content">
-      <Tabs value={s.inspectorTab} onChange={v => { s.inspectorTab = v as InspectorTab; s.changed(); }} items={[
-        ['transition', L('つなぎ', 'Transition')], ['deck', L('デッキ', 'Deck')], ['fx', clip.fx?.length ? `FX ${clip.fx.length}` : 'FX'], ['mixer', L('ミキサー', 'Mixer')],
-      ]} />
-      <div className="iheader">
-        <ArtworkThumb url={clip.url} colorIndex={clip.colorIndex} size={48} onClick={() => s.openProfileEditor(clip.id)} />
-        <div>
-          <div className="ititle">{clip.title}</div>
-          <div className="isub">{clip.artist || clip.url.split(/[\\/]/).pop()}</div>
-          <div className="isub mono">{L(`${index + 1}曲目 · ${Fmt.bpm(clip.bpm)} BPM · ${Fmt.duration(clip.duration)}`, `Track ${index + 1} · ${Fmt.bpm(clip.bpm)} BPM · ${Fmt.duration(clip.duration)}`)}{key ? <span className="keybadge">{Key.camelot(key)}</span> : null}</div>
-        </div>
-        <button className="btn small" title={L('この曲の操作', 'Track actions')} onClick={e => showContextMenu(e, [
-          { label: L('曲の情報（ジャケット・アーティスト）を編集…', 'Edit Track Info (Artwork, Artist)…'), action: () => s.openProfileEditor(clip.id) },
-          { label: L('ライブラリに戻す', 'Move Back to Library'), action: () => s.removeFromMix(clip.id) },
-          { label: L('エクスプローラーで表示', 'Show in Explorer'), action: () => s.revealInFolder(clip.id) },
-          { separator: true },
-          { label: L('ミックスから削除', 'Remove from Mix'), action: () => s.deleteClip(clip.id) },
-        ])}>…</button>
-      </div>
-      {s.inspectorTab === 'transition' && <>
-        {index > 0 ? <><TakesSection clip={clip} /><VariationsSection clip={clip} index={index} /><TransitionSection clip={clip} index={index} /></>
-          : <Section title={L('つなぎ', 'Transition')}><div className="caption">⚑ {L('ミックスの1曲目です', 'This is the first track of the mix')}</div></Section>}
-        <TempoChangeSection clip={clip} index={index} />
-        {!isLast && next && (
-          <Section title={L('次の曲へ', 'Into the Next Track')}>
-            <div className="next-row">
-              <div>
-                <div>{next.title}</div>
-                <div className="caption">{L(`出口 ${Fmt.barOrdinal(clip.mixOutBar)} · ${next.transitionBars < 0.01 ? Style.title(next.transition) : Fmt.bars(next.transitionBars) + ' ' + Style.title(next.transition)}`, `Mix-out ${Fmt.barOrdinal(clip.mixOutBar)} · ${next.transitionBars < 0.01 ? Style.title(next.transition) : Fmt.bars(next.transitionBars) + ' ' + Style.title(next.transition)}`)}</div>
-              </div>
-              <button className="btn small" onClick={() => { s.selectedClipID = next.id; s.changed(); }}>{L('編集', 'Edit')}</button>
-            </div>
-          </Section>
-        )}
-      </>}
-      {s.inspectorTab === 'deck' && <DeckTab clip={clip} index={index} />}
-      {s.inspectorTab === 'fx' && <FXTab clip={clip} />}
-      {s.inspectorTab === 'mixer' && <MixerTab clip={clip} index={index} />}
-    </div>
-  );
-}
-
-function LibraryInspector({ clip }: { clip: Clip }) {
+export function LibraryInspector({ clip }: { clip: Clip }) {
   const s = useStore();
   const key = s.structures.get(clip.url)?.key;
   return (
-    <div className="inspector-content">
+    <div className="panel-columns">
       <div className="iheader">
         <ArtworkThumb url={clip.url} colorIndex={clip.colorIndex} size={48} onClick={() => s.openProfileEditor(clip.id)} />
         <div>
@@ -516,7 +443,7 @@ function LibraryInspector({ clip }: { clip: Clip }) {
         <Row label="IN">{Fmt.barOrdinal(clip.mixInBar)}</Row>
         <Row label="OUT">{Fmt.barOrdinal(clip.mixOutBar)}</Row>
         {cueList(clip).map(c => <Row key={c.id} label={c.label}>{Fmt.barOrdinal(c.bar)}</Row>)}
-        <button className="btn" onClick={() => s.openCueEditor(clip.id)}>⎍ {L('CUE（IN / OUT）を編集…', 'Edit Cues (IN / OUT)…')}</button>
+        <button className="btn" onClick={() => s.openCueEditor(clip.id)}>{L('CUE タブで編集', 'Edit in the CUE Tab')}</button>
       </Section>
       <Section footer={L('ミックスに入れると、前の曲の OUT からこの曲の IN で直結されます。つなぎ方はそのあと選びます。', 'In the mix, it connects straight from the previous track’s OUT to this IN. Choose the transition afterwards.')}>
         <div className="button-row">
@@ -528,11 +455,11 @@ function LibraryInspector({ clip }: { clip: Clip }) {
   );
 }
 
-function MultiLibraryInspector() {
+export function MultiLibraryInspector() {
   const s = useStore();
   const ids = s.library.map(c => c.id).filter(id => s.librarySelection.has(id));
   return (
-    <div className="inspector-content">
+    <div className="panel-columns">
       <Section title={L(`${ids.length}曲を選択中`, `${ids.length} tracks selected`)}>
         <div className="button-row">
           <button className="btn primary" onClick={() => s.addToMixMany(ids, s.clips.length)}>{L(`${ids.length}曲をミックスの末尾に入れる`, `Add ${ids.length} Tracks to End of Mix`)}</button>
@@ -556,7 +483,7 @@ function SimplifyHint({ clip, index }: { clip: Clip; index: number }) {
   );
 }
 
-function VariationsSection({ clip, index }: { clip: Clip; index: number }) {
+export function VariationsSection({ clip, index }: { clip: Clip; index: number }) {
   const s = useStore();
   const [checking, setChecking] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -754,11 +681,11 @@ function AIStatusSection() {
   );
 }
 
-function MixInspector() {
+export function MixInspector() {
   const s = useStore();
   const p = s.progressSummary;
   return (
-    <div className="inspector-content">
+    <div className="panel-columns">
       <AIStatusSection />
       <Section title={L('進捗とメモ', 'Progress & Notes')}>
         <div className="caption">{L(`CUE ${p.cues}/${p.cueTotal} · つなぎ ${p.transitions}/${p.transitionTotal}`, `Cues ${p.cues}/${p.cueTotal} · Transitions ${p.transitions}/${p.transitionTotal}`)}</div>
@@ -776,7 +703,7 @@ function MixInspector() {
           </select>
         </Row>
         <div className="caption">{Loudness.detail(s.loudnessMode)}</div>
-        <Row label={L('曲を追加したら CUE エディタを開く', 'Open the CUE editor after adding')}><input type="checkbox" checked={s.openCueEditorOnAdd} onChange={() => s.toggle('openCueEditorOnAdd')} /></Row>
+        <Row label={L('曲を追加したら CUE タブを開く', 'Open the CUE tab after adding')}><input type="checkbox" checked={s.openCueEditorOnAdd} onChange={() => s.toggle('openCueEditorOnAdd')} /></Row>
         <Row label={L('曲の音声をファイルに含めて保存', 'Include audio when saving')}><input type="checkbox" checked={s.embedMedia} onChange={() => s.toggle('embedMedia')} /></Row>
       </Section>
       <Section title={L('標準のつなぎ', 'Default Transition')} footer={L('新しく入れた曲のつなぎ方。下のボタンで、いまのミックスのすべてのつなぎを同じにできます（Ctrl+Z で戻せます）。', 'Used for newly added tracks. The buttons below apply a recipe to every transition in the mix (Ctrl+Z undoes it).')}>
@@ -795,27 +722,14 @@ function MixInspector() {
           <div><kbd>Space</kbd> {L('再生 / 停止', 'Play / pause')}</div>
           <div><kbd>← →</kbd> {L('選んだ曲の入る位置を1小節ずつ', 'Move the selected entry by a bar')}</div>
           <div><kbd>1</kbd>–<kbd>6</kbd> {L('つなぎのレシピ', 'Transition recipes')}</div>
-          <div><kbd>Ctrl+T</kbd> {L('つなぎエディタ', 'Transition editor')}</div>
-          <div><kbd>Ctrl+K</kbd> {L('CUE エディタ', 'Cue editor')}</div>
+          <div><kbd>Ctrl+T</kbd> {L('つなぎタブ', 'Transition tab')}</div>
+          <div><kbd>Ctrl+K</kbd> {L('CUE タブ', 'CUE tab')}</div>
+          <div><kbd>Ctrl+L</kbd> {L('ループタブ', 'Loop tab')}</div>
           <div><kbd>Ctrl+/</kbd> {L('ショートカット一覧', 'All shortcuts')}</div>
         </div>
       </Section>
     </div>
   );
-}
-
-export function Inspector() {
-  const s = useStore();
-  let body: React.ReactNode;
-  if (s.librarySelection.size > 1) body = <MultiLibraryInspector />;
-  else {
-    const id = s.selectedClipID;
-    const i = id ? s.index(id) : null;
-    if (id && i != null) body = <ClipInspector key={id} clip={s.clips[i]} index={i} />;
-    else if (id && s.libraryIndex(id) != null) body = <LibraryInspector key={id} clip={s.library[s.libraryIndex(id)!]} />;
-    else body = <MixInspector />;
-  }
-  return <div className="inspector">{body}</div>;
 }
 
 void clipEnd; void hasEdits; void Lanes; void effectiveLanes;

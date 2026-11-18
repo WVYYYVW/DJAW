@@ -75,7 +75,7 @@ const quantizeApply = (q: Quantize, bar: number) => (q === 'bar' ? Math.round(ba
 
 // MARK: Waveform painting
 
-function drawWave(ctx: CanvasRenderingContext2D, rect: { x: number; y: number; w: number; h: number }, wf: Waveform, s0: number, s1: number, color: string) {
+export function drawWave(ctx: CanvasRenderingContext2D, rect: { x: number; y: number; w: number; h: number }, wf: Waveform, s0: number, s1: number, color: string) {
   const width = Math.floor(rect.w);
   if (!(s1 > s0) || width <= 1 || !wf.peaks.length) return;
   const count = wf.peaks.length;
@@ -104,7 +104,7 @@ function drawWave(ctx: CanvasRenderingContext2D, rect: { x: number; y: number; w
   fill(lows, color);
 }
 
-function useCanvas(draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void) {
+export function useCanvas(draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const c = ref.current;
@@ -245,46 +245,46 @@ function CueTile({ title, subtitle, keyName, color, value, info, onSet, onPlay, 
   playLabel?: string; onNudge: (d: number) => void; extra?: React.ReactNode; disabled?: boolean;
 }) {
   return (
-    <div className={'cue-tile' + (disabled ? ' disabled' : '')} style={{ borderColor: color.replace('rgb', 'rgba').replace(')', ',0.3)'), ['--tile' as never]: color }}>
+    <div className={'cue-tile' + (disabled ? ' disabled' : '')} style={{ ['--tile' as never]: color }} title={subtitle + (info ? '\n' + info : '')}>
       <div className="cue-tile-head">
-        <div><div className="cue-tile-title">{title}</div><div className="caption">{subtitle}</div></div>
-        <div className="readout-num" style={{ color }}>{Fmt.barOrdinal(value)}</div>
+        <span className="cue-tile-title">{title}</span>
+        <span className="readout-num" style={{ color }}>{Fmt.barOrdinal(value)}</span>
       </div>
-      <button className="btn big tinted" style={{ background: color }} onClick={onSet}>
-        <span>◎ {L('再生位置にセット', 'Set at playhead')}</span><span className="keycap">{L('キー ', 'Key ') + keyName}</span>
-      </button>
-      <div className="button-row small">
-        <button className="btn small" onClick={onPlay}>▶ {playLabel ?? L('ここから試聴', 'Play from here')}</button>
-        <div className="spacer" />
-        <button className="btn small" title={L('1小節前へ', '1 bar earlier')} onClick={() => onNudge(-1)}>−1</button>
-        <button className="btn small" title={L('1小節後ろへ', '1 bar later')} onClick={() => onNudge(1)}>+1</button>
-        <button className="btn small" title={L('1拍前へ', '1 beat earlier')} onClick={() => onNudge(-0.25)}>‹</button>
-        <button className="btn small" title={L('1拍後ろへ', '1 beat later')} onClick={() => onNudge(0.25)}>›</button>
+      <div className="cue-tile-row">
+        <button className="btn small tinted" style={{ background: color }} onClick={onSet} title={L('再生位置にセット', 'Set at the playhead')}>◎ {L('セット', 'Set')} <span className="keycap">{keyName}</span></button>
+        <button className="btn small" onClick={onPlay} title={playLabel ?? L('ここから試聴', 'Play from here')}>▶</button>
+        <span className="stepbtns">
+          <button title={L('1小節前へ', '1 bar earlier')} onClick={() => onNudge(-1)}>−1</button>
+          <button title={L('1小節後ろへ', '1 bar later')} onClick={() => onNudge(1)}>+1</button>
+          <button title={L('1拍前へ', '1 beat earlier')} onClick={() => onNudge(-0.25)}>‹</button>
+          <button title={L('1拍後ろへ', '1 beat later')} onClick={() => onNudge(0.25)}>›</button>
+        </span>
+        {extra}
       </div>
-      {extra}
-      {info && <div className="caption">{info}</div>}
+      {info && <div className="caption cue-info">{info}</div>}
     </div>
   );
 }
 
 // MARK: Editor
 
-export function CueEditor() {
+/** IN / switch / OUT and memo cues of one track, heard on its own (the detail panel's CUE tab). */
+export function CueEditor({ id }: { id: string }) {
   const s = useStore();
   const preview = cuePreview();
   useSyncExternalStore(preview.subscribe, preview.getVersion);
-  const [clipID, setClipID] = useState(s.cueEditorTarget!);
+  const clipID = id;
   const [quantize, setQuantize] = useState<Quantize>('bar');
   const [sync, setSync] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const clip = s.clip(clipID);
-  const close = () => { preview.pause(); s.cueEditorTarget = null; s.changed(); };
-
   useEffect(() => {
     const c = s.clip(clipID);
-    if (c && preview.position === 0) preview.setPosition(Math.max(0, sourceTimeAtBar(c, c.mixInBar)));
+    if (c) preview.setPosition(Math.max(0, sourceTimeAtBar(c, c.mixInBar)));
     return () => preview.pause();
   }, []);
+  // The mix starting to play stops this track's own preview (never two at once).
+  useEffect(() => store.subscribe(() => { if (store.isPlaying && preview.isPlaying) preview.pause(); }), []);
 
   const mixIndex = clip ? s.index(clip.id) : null;
   const next = mixIndex != null && mixIndex + 1 < s.clips.length ? s.clips[mixIndex + 1] : null;
@@ -309,27 +309,15 @@ export function CueEditor() {
   };
   const setLanding = (c: Clip) => { setNotice(null); s.setLandingBar(c.id, quantizeApply(quantize, posBar(c))); };
   const addMemo = (c: Clip) => s.addCue(c.id, quantizeApply(quantize, posBar(c)));
-  const go = (id: string) => {
-    preview.pause();
-    setNotice(null);
-    setClipID(id);
-    s.selectedClipID = id;
-    s.cueEditorTarget = id;
-    const c = s.clip(id);
-    if (c) preview.setPosition(Math.max(0, sourceTimeAtBar(c, c.mixInBar)));
-    s.changed();
-  };
-
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (!clip || (e.target as HTMLElement)?.tagName === 'INPUT') return;
+      if (!clip || store.focusArea !== 'panel' || (e.target as HTMLElement)?.tagName === 'INPUT') return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       let handled = true;
       switch (e.key) {
         case 'ArrowLeft': moveBars(clip, e.shiftKey ? -4 : -1); break;
         case 'ArrowRight': moveBars(clip, e.shiftKey ? 4 : 1); break;
         case ' ': togglePlay(clip); break;
-        case 'Escape': case 'Enter': close(); break;
         default:
           switch (e.key.toLowerCase()) {
             case 'i': setIn(clip); break;
@@ -345,12 +333,8 @@ export function CueEditor() {
     return () => window.removeEventListener('keydown', key, true);
   });
 
-  if (!clip) {
-    return <div className="sheet-backdrop"><div className="sheet small"><div>{L('曲が見つかりません', 'Track not found')}</div><button className="btn" onClick={close}>{L('閉じる', 'Close')}</button></div></div>;
-  }
+  if (!clip) return null;
   const wf = s.waveforms.get(clip.url);
-  const order = s.allTrackIDs;
-  const idx = Math.max(0, order.indexOf(clip.id));
   const pb = posBar(clip);
   const beats = Math.floor(pb * 4 + 1e-6);
   const barBeat = `${Math.floor(beats / 4) + 1}.${((beats % 4) + 4) % 4 + 1}`;
@@ -364,82 +348,57 @@ export function CueEditor() {
   ]);
 
   return (
-    <div className="sheet-backdrop">
-      <div className="sheet cue-editor">
-        <div className="cue-header">
-          <span className="color-bar" style={{ background: clipColor(clip.colorIndex) }} />
-          <div className="grow">
-            <div className="cue-title">{clip.title}
-              <span className={'badge' + (mixIndex != null ? ' accent' : '')}>{mixIndex != null ? L(`ミックス ${mixIndex + 1}曲目`, `Mix track ${mixIndex + 1}`) : L('ライブラリ', 'Library')}</span>
-            </div>
-            <div className="dim">{clip.artist || clip.url.split(/[\\/]/).pop()} · {Fmt.bpm(clip.bpm)} BPM · {Fmt.duration(clip.duration)}</div>
+    <div className="cue-embedded">
+      <div className="cue-main">
+        <CueOverview clip={clip} wf={wf} position={preview.position} outgoingBars={next ? next.transitionBars : null} onSeek={v => preview.seek(v, clip, s.masterBPM, sync)} />
+        <CueDetail clip={clip} wf={wf} position={preview.position} outgoingBars={next ? next.transitionBars : null} preview={preview}
+          onSeek={v => preview.seek(v, clip, s.masterBPM, sync)} onResume={v => preview.play(clip, s.masterBPM, sync, v)} />
+        <div className="cue-transport">
+          <div className="cue-pos">
+            <span className="readout-main">{barBeat}</span>
+            <span className="readout-sub">{Fmt.clock(preview.position)}</span>
           </div>
-          <button className="btn" disabled={idx === 0} title={L('前の曲', 'Previous track')} onClick={() => go(order[idx - 1])}>‹</button>
-          <span className="mono dim">{idx + 1} / {order.length}</span>
-          <button className="btn" disabled={idx >= order.length - 1} title={L('次の曲', 'Next track')} onClick={() => go(order[idx + 1])}>›</button>
-          <button className="btn primary" onClick={close}>{L('完了', 'Done')}</button>
-        </div>
-        <div className="cue-body">
-          <CueOverview clip={clip} wf={wf} position={preview.position} outgoingBars={next ? next.transitionBars : null} onSeek={v => preview.seek(v, clip, s.masterBPM, sync)} />
-          <CueDetail clip={clip} wf={wf} position={preview.position} outgoingBars={next ? next.transitionBars : null} preview={preview}
-            onSeek={v => preview.seek(v, clip, s.masterBPM, sync)} onResume={v => preview.play(clip, s.masterBPM, sync, v)} />
-          <div className="cue-transport">
-            <div className="cue-pos">
-              <div className="readout-main">{L('小節 ', 'Bar ') + barBeat}</div>
-              <div className="readout-sub">{Fmt.clock(preview.position)}</div>
-            </div>
-            <div className="cue-buttons">
-              <button className="round" title={L('4小節戻る（Shift+←）', 'Back 4 bars (Shift+←)')} onClick={() => moveBars(clip, -4)}>⏪</button>
-              <button className="round" title={L('1小節戻る（←）', 'Back 1 bar (←)')} onClick={() => moveBars(clip, -1)}>⏮</button>
-              <button className={'round play' + (preview.isPlaying ? ' playing' : '')} title={L('再生 / 一時停止（Space）', 'Play / pause (Space)')} onClick={() => togglePlay(clip)}>{preview.isPlaying ? '⏸' : '▶'}</button>
-              <button className="round" title={L('1小節進む（→）', 'Forward 1 bar (→)')} onClick={() => moveBars(clip, 1)}>⏭</button>
-              <button className="round" title={L('4小節進む（Shift+→）', 'Forward 4 bars (Shift+→)')} onClick={() => moveBars(clip, 4)}>⏩</button>
-            </div>
-            <div className="cue-options">
-              <div><span className="caption">{L('CUEを揃える', 'Snap cues to')} </span>
-                <span className="segmented">{(['bar', 'beat', 'off'] as Quantize[]).map(q => <button key={q} className={quantize === q ? 'on' : ''} onClick={() => setQuantize(q)}>{q === 'bar' ? L('小節', 'Bar') : q === 'beat' ? L('拍', 'Beat') : L('オフ', 'Off')}</button>)}</span>
-              </div>
-              <label className="check caption" title={L('ミックスのマスターBPMに合わせた速さで再生します', 'Play at the mix’s master BPM')}>
-                <input type="checkbox" checked={sync} onChange={e => { setSync(e.target.checked); if (preview.isPlaying) preview.play(clip, s.masterBPM, e.target.checked, preview.position); }} />
-                {L(`BPM ${Fmt.bpm(s.masterBPM)} で聴く`, `Play at ${Fmt.bpm(s.masterBPM)} BPM`)}
-              </label>
-            </div>
+          <div className="cue-buttons">
+            <button className="round" title={L('4小節戻る（Shift+←）', 'Back 4 bars (Shift+←)')} onClick={() => moveBars(clip, -4)}>⏪</button>
+            <button className="round" title={L('1小節戻る（←）', 'Back 1 bar (←)')} onClick={() => moveBars(clip, -1)}>⏮</button>
+            <button className={'round play' + (preview.isPlaying ? ' playing' : '')} title={L('この曲だけを再生 / 一時停止（Space）', 'Play this track alone / pause (Space)')} onClick={() => togglePlay(clip)}>{preview.isPlaying ? '⏸' : '▶'}</button>
+            <button className="round" title={L('1小節進む（→）', 'Forward 1 bar (→)')} onClick={() => moveBars(clip, 1)}>⏭</button>
+            <button className="round" title={L('4小節進む（Shift+→）', 'Forward 4 bars (Shift+→)')} onClick={() => moveBars(clip, 4)}>⏩</button>
+          </div>
+          <div className="cue-options">
+            <span className="segmented" title={L('CUE を揃える単位', 'Snap cues to')}>{(['bar', 'beat', 'off'] as Quantize[]).map(q => <button key={q} className={quantize === q ? 'on' : ''} onClick={() => setQuantize(q)}>{q === 'bar' ? L('小節', 'Bar') : q === 'beat' ? L('拍', 'Beat') : L('オフ', 'Off')}</button>)}</span>
+            <label className="check caption" title={L('ミックスのマスターBPMに合わせた速さで再生します', 'Play at the mix’s master BPM')}>
+              <input type="checkbox" checked={sync} onChange={e => { setSync(e.target.checked); if (preview.isPlaying) preview.play(clip, s.masterBPM, e.target.checked, preview.position); }} />
+              {L(`${Fmt.bpm(s.masterBPM)} BPM で`, `At ${Fmt.bpm(s.masterBPM)} BPM`)}
+            </label>
           </div>
         </div>
+      </div>
+      <div className="cue-side">
         {notice && <div className="notice">⚠ {notice}</div>}
-        <div className="cue-tiles">
-          <CueTile title={L('IN（入口）', 'IN (mix-in)')} subtitle={L('この曲が入り始める位置', 'Where this track starts')} keyName="I" color={GREEN} value={clip.mixInBar}
-            info={prev ? L(`前の曲「${prev.title}」の OUT で入ります`, `Enters at the OUT of “${prev.title}”`) : null}
-            onSet={() => setIn(clip)} onPlay={() => play(clip, clip.mixInBar)} onNudge={d => s.setMixIn(clip.id, clip.mixInBar + d)} />
-          <CueTile title={L('切替完了', 'Switch done')} subtitle={L('前の曲が消えて、この曲だけになる位置', 'Where only this track remains')} keyName="L" color={PURPLE} value={landingBar(clip)}
-            disabled={!prev}
-            info={!prev ? L('前の曲がないので使いません（2曲目以降で設定）', 'Not used: there is no previous track')
-              : clip.transitionBars > 0.01 ? L(`入口の ${Fmt.bars(clip.transitionBars)} 後`, `${Fmt.bars(clip.transitionBars)} after the mix-in`)
-              : L('つなぎの長さを選ぶと入口が自動で決まります', 'Picking a length places the mix-in automatically')}
-            onSet={() => setLanding(clip)} onPlay={() => play(clip, landingBar(clip))} onNudge={d => s.setLandingBar(clip.id, landingBar(clip) + d)}
-            extra={<label className="check caption"><input type="checkbox" disabled={!prev} checked={keepsLanding(clip)} onChange={e => s.setLandingLock(clip.id, e.target.checked)} />{L('長さを変えてもここを保つ', 'Keep when length changes')}</label>} />
-          <CueTile title={L('OUT（出口）', 'OUT (mix-out)')} subtitle={L('次の曲へのつなぎが始まる位置', 'Where the next transition begins')} keyName="O" color={ORANGE} value={clip.mixOutBar}
-            info={next ? (next.transitionBars < 0.01 ? L(`ここで「${next.title}」に切り替え`, `Switches to “${next.title}” here`) : L(`ここから「${next.title}」と ${Fmt.bars(next.transitionBars)} 重なる`, `Overlaps “${next.title}” for ${Fmt.bars(next.transitionBars)}`)) : null}
-            onSet={() => setOut(clip)} onPlay={() => play(clip, clip.mixOutBar - 4)} playLabel={L('4小節前から', 'From −4 bars')} onNudge={d => s.setMixOut(clip.id, clip.mixOutBar + d)} />
-        </div>
+        <CueTile title={L('IN（入口）', 'IN')} subtitle={L('この曲が入り始める位置', 'Where this track starts')} keyName="I" color={GREEN} value={clip.mixInBar}
+          info={prev ? L(`「${prev.title}」の OUT で入ります`, `Enters at the OUT of “${prev.title}”`) : null}
+          onSet={() => setIn(clip)} onPlay={() => play(clip, clip.mixInBar)} onNudge={d => s.setMixIn(clip.id, clip.mixInBar + d)} />
+        <CueTile title={L('切替完了', 'Switch')} subtitle={L('前の曲が消えて、この曲だけになる位置', 'Where only this track remains')} keyName="L" color={PURPLE} value={landingBar(clip)}
+          disabled={!prev}
+          info={!prev ? L('前の曲がないので使いません', 'Not used: there is no previous track')
+            : clip.transitionBars > 0.01 ? L(`入口の ${Fmt.bars(clip.transitionBars)} 後`, `${Fmt.bars(clip.transitionBars)} after the mix-in`)
+            : L('つなぎの長さを選ぶと入口が自動で決まります', 'Picking a length places the mix-in automatically')}
+          onSet={() => setLanding(clip)} onPlay={() => play(clip, landingBar(clip))} onNudge={d => s.setLandingBar(clip.id, landingBar(clip) + d)}
+          extra={<label className="check caption" title={L('つなぎの長さを変えてもこの位置を保つ', 'Keep this when the length changes')}><input type="checkbox" disabled={!prev} checked={keepsLanding(clip)} onChange={e => s.setLandingLock(clip.id, e.target.checked)} />{L('保つ', 'Keep')}</label>} />
+        <CueTile title={L('OUT（出口）', 'OUT')} subtitle={L('次の曲へのつなぎが始まる位置', 'Where the next transition begins')} keyName="O" color={ORANGE} value={clip.mixOutBar}
+          info={next ? (next.transitionBars < 0.01 ? L(`ここで「${next.title}」に切り替え`, `Switches to “${next.title}” here`) : L(`ここから「${next.title}」と ${Fmt.bars(next.transitionBars)} 重なる`, `Overlaps “${next.title}” for ${Fmt.bars(next.transitionBars)}`)) : null}
+          onSet={() => setOut(clip)} onPlay={() => play(clip, clip.mixOutBar - 4)} playLabel={L('4小節前から', 'From −4 bars')} onNudge={d => s.setMixOut(clip.id, clip.mixOutBar + d)} />
         <div className="memo-strip">
-          <button className="btn" title={L('ドロップやブレイクの頭に目印を付けておくと、IN / OUT を選ぶ時に使えます', 'Mark drops and breakdowns to use them as IN / OUT later')} onClick={() => addMemo(clip)}>🔖 {L('メモCUEを追加（M）', 'Add memo cue (M)')}</button>
-          {cueList(clip).length === 0 ? <span className="caption dim">{L('目印はまだありません', 'No markers yet')}</span> : (
-            <div className="memo-list">
-              {cueList(clip).map(cue => (
-                <button key={cue.id} className="btn small memo" onClick={() => play(clip, cue.bar)} onContextMenu={e => { e.preventDefault(); memoMenu(e, cue.bar, cue.id); }}>
-                  🔖 {cue.label} · {barLabel(cue.bar)} <span className="chev" onClick={e => { e.stopPropagation(); memoMenu(e, cue.bar, cue.id); }}>▾</span>
-                </button>
-              ))}
-            </div>
-          )}
+          <button className="btn small" title={L('ドロップやブレイクの頭に目印を付けておくと、IN / OUT を選ぶ時に使えます', 'Mark drops and breakdowns to use them as IN / OUT later')} onClick={() => addMemo(clip)}>🔖 {L('メモ（M）', 'Memo (M)')}</button>
+          {cueList(clip).map(cue => (
+            <button key={cue.id} className="btn small memo" onClick={() => play(clip, cue.bar)} onContextMenu={e => { e.preventDefault(); memoMenu(e, cue.bar, cue.id); }}>
+              {cue.label} · {barLabel(cue.bar)} <span className="chev" onClick={e => { e.stopPropagation(); memoMenu(e, cue.bar, cue.id); }}>▾</span>
+            </button>
+          ))}
           <div className="spacer" />
-          <button className="btn" title={L('IN を曲の頭、OUT を曲の最後に戻します', 'Reset IN to the start and OUT to the end')} onClick={() => s.useWholeTrack(clip.id)}>↔ {L('曲全体を使う', 'Use whole track')}</button>
-        </div>
-        <div className="sheet-footer">
-          <span className="caption dim">⌨ {L('Space 再生・停止　I 入口　L 切替完了　O 出口　M メモ　←→ 1小節（Shift 4小節）　波形をドラッグで移動', 'Space play/stop · I in · L switch · O out · M memo · ←→ 1 bar (Shift 4) · drag waveform to scrub')}</span>
-          <div className="spacer" />
-          {!s.isInMix(clip.id) && <button className="btn" onClick={() => s.addToMix(clip.id)}>＋ {L('ミックスに入れる', 'Add to Mix')}</button>}
+          <button className="btn small" title={L('IN を曲の頭、OUT を曲の最後に戻します', 'Reset IN to the start and OUT to the end')} onClick={() => s.useWholeTrack(clip.id)}>↔ {L('曲全体', 'Whole track')}</button>
+          {!s.isInMix(clip.id) && <button className="btn small primary" onClick={() => s.addToMix(clip.id)}>＋ {L('ミックスに入れる', 'Add to Mix')}</button>}
         </div>
       </div>
     </div>

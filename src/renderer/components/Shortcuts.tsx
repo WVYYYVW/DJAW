@@ -29,8 +29,9 @@ export function Shortcuts() {
       ['Ctrl+↑ / Ctrl+↓', L('前 / 次の曲を選択', 'Select previous / next track')],
       ['Ctrl+[ / Ctrl+]', L('曲順を前 / 後ろへ', 'Move earlier / later in the mix')],
       ['← / →', L('つなぐ位置を1小節移動（Shift で4小節、Alt で1拍）', 'Move the entry 1 bar (Shift 4 bars, Alt 1 beat)')],
-      ['Ctrl+K', L('CUE（IN / OUT）を編集', 'Edit cues (IN / OUT)')],
-      ['Ctrl+T', L('つなぎエディタを開く', 'Open the transition editor')],
+      ['Ctrl+K', L('CUE タブ（IN / OUT）', 'CUE tab (IN / OUT)')],
+      ['Ctrl+T', L('つなぎタブ', 'Transition tab')],
+      ['Ctrl+L', L('ループタブ', 'Loop tab')],
       ['Ctrl+Enter', L('ライブラリの曲をミックスに入れる（複数可）', 'Add library track(s) to the mix')],
       [L('Ctrl / Shift + クリック', 'Ctrl / Shift + click'), L('ライブラリの曲を複数選択', 'Select several library tracks')],
       ['Ctrl+Alt+A', L('ライブラリの曲をすべて選択', 'Select all library tracks')],
@@ -39,8 +40,9 @@ export function Shortcuts() {
     [L('表示', 'View'), [
       ['Ctrl+= / Ctrl+− / Ctrl+0', L('拡大 / 縮小 / 全体表示', 'Zoom in / out / fit')],
       [L('Ctrl + スクロール', 'Ctrl + scroll'), L('ズーム', 'Zoom')],
-      ['Ctrl+Alt+I', L('インスペクタの表示切替', 'Show / hide the inspector')],
-      ['Ctrl+Shift+D', L('デッキの表示切替', 'Show / hide the decks')],
+      ['Ctrl+Alt+B', L('ブラウザの表示切替', 'Show / hide the browser')],
+      ['Ctrl+Alt+I', L('詳細パネルの表示切替', 'Show / hide the detail panel')],
+      ['Ctrl+Shift+D', L('デッキタブ', 'Decks tab')],
       ['Ctrl+Shift+X', L('ミキサーの表示切替', 'Show / hide the mixer')],
       ['Ctrl+Alt+V', L('映像プレビュー', 'Visuals preview')],
     ]],
@@ -61,12 +63,18 @@ export function Shortcuts() {
       ['Delete', L('選択した置いた音を削除', 'Delete the selected placed sound')],
       [L('レーンでダブルクリック', 'Double-click the lane'), L('選んだパッドの音を置く', 'Place the chosen pad’s sound')],
     ]],
-    [L('CUE エディタ', 'CUE editor'), [
+    [L('CUE タブ', 'CUE tab'), [
       ['I / L / O', L('入口 / 切替完了 / 出口をセット', 'Set IN / switch / OUT')],
       ['M', L('メモCUE', 'Memo cue')],
       ['← / →', L('1小節移動（Shift で4小節）', 'Move 1 bar (Shift 4 bars)')],
     ]],
-    [L('つなぎエディタ', 'Transition editor'), [
+    [L('ループタブ', 'Loop tab'), [
+      [L('波形をドラッグ', 'Drag the waveform'), L('範囲を選ぶ（L でループ、J でジャンプ）', 'Choose a range (L loop, J jump)')],
+      ['[ / ]', L('長さを半分 / 2倍', 'Halve / double the length')],
+      ['↑ / ↓', L('くり返し回数', 'Repeats')],
+      ['← / →', L('移動（Shift で1小節）', 'Move (Shift: 1 bar)')],
+    ]],
+    [L('つなぎタブ', 'Transition tab'), [
       [L('◆をドラッグ', 'Drag ◆'), L('曲線を曲げる（ダブルクリックで直線）', 'Bend the curve (double-click to straighten)')],
       [L('空いた所をクリック', 'Click empty space'), L('点を追加', 'Add a point')],
       [L('点をダブルクリック / Delete', 'Double-click point / Delete'), L('点を削除', 'Delete a point')],

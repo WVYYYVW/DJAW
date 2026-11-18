@@ -44,6 +44,8 @@ export const audioExtensions = new Set(['mp3', 'wav', 'wave', 'aif', 'aiff', 'ai
 export interface PendingTrack { id: string; url: string; name: string; stage?: string; fraction?: number }
 export type ExportPhase = { kind: 'idle' } | { kind: 'rendering'; progress: number } | { kind: 'done'; path: string } | { kind: 'failed'; message: string };
 export type InspectorTab = 'transition' | 'deck' | 'fx' | 'mixer';
+/** Tabs of the detail panel under the arrangement (Ableton's detail view). */
+export type PanelTab = 'mix' | 'track' | 'transition' | 'cue' | 'loop' | 'fx' | 'sampler' | 'deck';
 export type AddDestination = { kind: 'library'; folder?: string | null } | { kind: 'mix'; index: number | null };
 
 export interface Snapshot { clips: Clip[]; library: Clip[]; masterBPM: number; gridOffset: number; libraryFolders?: LibraryFolder[]; samples?: Sample[]; sampleHits?: SampleHit[] }
@@ -120,6 +122,13 @@ export class MixStore {
   fitRequest = 0;
   scrollRequest: { id: number; time: number } | null = null;
   showInspector = true;
+  /** The detail panel under the arrangement, its tab and height; the browser on the left. */
+  showPanel = true;
+  panelTab: PanelTab = 'transition';
+  panelHeight = 330;
+  showBrowser = true;
+  /** Where the user last clicked: the editors in the panel take the keys while it is 'panel'. */
+  focusArea: 'main' | 'panel' = 'main';
   showDecks = true;
   showMixer = true;
   showExport = false;
@@ -178,6 +187,9 @@ export class MixStore {
     this.embedMedia = (s.embedMedia as boolean) ?? true;
     this.openCueEditorOnAdd = (s.openCueEditorOnAdd as boolean) ?? false;
     this.showMixWaveform = (s.showMixWaveform as boolean) ?? true;
+    this.showPanel = (s.showPanel as boolean) ?? true;
+    this.panelHeight = (s.panelHeight as number) ?? 330;
+    this.showBrowser = (s.showBrowser as boolean) ?? true;
     this.customTransitions = (s.customTransitions as CustomTransition[]) ?? [];
     this.recentDocuments = ((s.recentDocuments as string[]) ?? []).filter(p => fs.existsSync(p));
     this.defaultTransitionStyle = (s.defaultTransitionStyle as TransitionStyle) ?? 'bassSwap';
@@ -190,6 +202,7 @@ export class MixStore {
 
   saveSettings() {
     const s = {
+      showPanel: this.showPanel, panelHeight: this.panelHeight, showBrowser: this.showBrowser,
       showDecks: this.showDecks, showMixer: this.showMixer, exportNormalize: this.exportNormalize, embedMedia: this.embedMedia,
       openCueEditorOnAdd: this.openCueEditorOnAdd, showMixWaveform: this.showMixWaveform, customTransitions: this.customTransitions,
       recentDocuments: this.recentDocuments.slice(0, 10), defaultTransitionStyle: this.defaultTransitionStyle,
@@ -788,9 +801,14 @@ export class MixStore {
 
   openCueEditor(id: string) {
     if (!this.clip(id)) return;
-    this.pause();
     this.selectedClipID = id;
-    this.cueEditorTarget = id;
+    this.openPanel('cue');
+  }
+
+  /** Shows a tab of the detail panel. */
+  openPanel(tab: PanelTab) {
+    this.panelTab = tab;
+    if (!this.showPanel) { this.showPanel = true; this.saveSettings(); }
     this.changed();
   }
 
@@ -1021,8 +1039,7 @@ export class MixStore {
     const i = this.index(id);
     if (i == null || i <= 0) return;
     this.selectedClipID = id;
-    this.transitionEditorTarget = id;
-    this.changed();
+    this.openPanel('transition');
   }
 
   setLanes(id: string, lanes: TransitionLanes, undoable = true) {
@@ -1354,7 +1371,7 @@ export class MixStore {
   zoomToFit() { this.fitRequest++; this.changed(); }
   requestScroll(t: number) { this.scrollRequest = { id: (this.scrollRequest?.id ?? 0) + 1, time: t }; this.changed(); }
   setSnap(s: SnapUnit) { this.snap = s; this.changed(); }
-  toggle(key: 'showInspector' | 'showDecks' | 'showMixer' | 'followPlayhead' | 'showMixWaveform' | 'exportNormalize' | 'embedMedia' | 'openCueEditorOnAdd') {
+  toggle(key: 'showPanel' | 'showBrowser' | 'showInspector' | 'showDecks' | 'showMixer' | 'followPlayhead' | 'showMixWaveform' | 'exportNormalize' | 'embedMedia' | 'openCueEditorOnAdd') {
     (this as Record<string, unknown>)[key] = !(this as Record<string, unknown>)[key];
     this.saveSettings();
     this.changed();

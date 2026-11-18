@@ -19,6 +19,8 @@ import { showContextMenu, MenuItem } from './ContextMenu';
 import { Sampler, SampleHit } from '../../core/sampler';
 import { hitMenu } from './SamplerPanel';
 
+/** Width of the track headers on the left (A, B, MIX, SAMPLER). */
+export const HEAD_W = 86;
 const INSET = 24, RULER = 34, LANE_GAP = 18, HEADER = 20, TEMPO_STRIP = 16, MIX_LANE = 64, SAMPLER_LANE = 30;
 const LANES_TOP = RULER + TEMPO_STRIP + 6;
 const ORANGE = 'rgb(255,159,10)', GREEN = 'rgb(48,209,88)', PURPLE = 'rgb(191,90,242)', TEAL = 'rgb(64,200,224)', RED = 'rgb(255,69,58)', PINK = 'rgb(255,55,95)', YELLOW = 'rgb(255,214,10)';
@@ -57,18 +59,57 @@ class TimelineView {
   dpr = window.devicePixelRatio || 1;
   drawQueued = false;
 
-  constructor(canvas: HTMLCanvasElement, overlay: HTMLCanvasElement, scroller: HTMLDivElement, spacer: HTMLDivElement) {
-    this.canvas = canvas; this.overlay = overlay; this.scroller = scroller; this.spacer = spacer;
+  header: HTMLCanvasElement;
+
+  constructor(canvas: HTMLCanvasElement, overlay: HTMLCanvasElement, scroller: HTMLDivElement, spacer: HTMLDivElement, header: HTMLCanvasElement) {
+    this.canvas = canvas; this.overlay = overlay; this.scroller = scroller; this.spacer = spacer; this.header = header;
+  }
+
+  /** The track headers (their own canvas, left of the scrolling area). */
+  drawHeaders() {
+    const c = this.header, h = this.height, dpr = this.dpr;
+    if (c.width !== Math.round(HEAD_W * dpr) || c.height !== Math.round(h * dpr)) {
+      c.width = Math.round(HEAD_W * dpr); c.height = Math.round(h * dpr);
+      c.style.width = `${HEAD_W}px`; c.style.height = `${h}px`;
+    }
+    const ctx = c.getContext('2d')!;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = Theme.headerBG;
+    ctx.fillRect(0, 0, HEAD_W, h);
+    const row = (top: number, height: number, name: string, sub: string, color: string, on = true) => {
+      ctx.fillStyle = Theme.headerRow;
+      ctx.beginPath(); ctx.roundRect(4, top, HEAD_W - 8, height, 5); ctx.fill();
+      ctx.fillStyle = color; ctx.fillRect(4, top + 4, 3, height - 8);
+      ctx.textBaseline = 'top';
+      ctx.font = '700 11px system-ui'; ctx.fillStyle = on ? 'rgba(255,255,255,0.88)' : 'rgba(255,255,255,0.35)';
+      ctx.fillText(name, 12, top + 6);
+      if (height >= 30) { ctx.font = '10px system-ui'; ctx.fillStyle = 'rgba(255,255,255,0.42)'; ctx.fillText(sub, 12, top + 21, HEAD_W - 18); }
+    };
+    ctx.textBaseline = 'middle'; ctx.font = '600 9.5px system-ui'; ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillText(L('小節', 'BAR'), 12, RULER / 2);
+    ctx.fillText(L('テンポ', 'TEMPO'), 12, RULER + TEMPO_STRIP / 2);
+    const count = (lane: number) => store.clips.filter((_, i) => i % 2 === lane).length;
+    row(this.laneTop(0), this.laneHeight, L('デッキ A', 'DECK A'), L(`${count(0)}曲`, `${count(0)} tracks`), Theme.deckA);
+    row(this.laneTop(1), this.laneHeight, L('デッキ B', 'DECK B'), L(`${count(1)}曲`, `${count(1)} tracks`), Theme.deckB);
+    if (store.showMixWaveform) row(this.mixLaneTop, MIX_LANE, 'MIX', L('書き出しと同じ', 'as exported'), 'rgb(115,217,242)');
+    if (this.showsSamplerLane) row(this.samplerLaneTop, SAMPLER_LANE, L('サンプラー', 'SAMPLER'), '', 'rgb(255,214,10)', store.samples.length > 0);
+  }
+
+  /** Clicks on the headers. */
+  headerClick(y: number) {
+    if (store.showMixWaveform && y >= this.mixLaneTop && y <= this.mixLaneTop + MIX_LANE) { store.toggle('showMixWaveform'); return; }
+    if (this.showsSamplerLane && y >= this.samplerLaneTop && y <= this.samplerLaneTop + SAMPLER_LANE) { store.openPanel('sampler'); return; }
+    if (y >= LANES_TOP && y <= this.lanesBottom) store.openPanel('deck');
   }
 
   // MARK: Geometry
   get scrollX() { return this.scroller.scrollLeft; }
   get mixLaneSpace() { return store.showMixWaveform ? MIX_LANE + 10 : 0; }
   /** The sampler lane: shown with the sampler panel, or whenever sounds are placed. */
-  get showsSamplerLane() { return store.showSampler || store.sampleHits.length > 0; }
+  get showsSamplerLane() { return (store.showPanel && store.panelTab === 'sampler') || store.samples.length > 0 || store.sampleHits.length > 0; }
   get samplerLaneSpace() { return this.showsSamplerLane ? SAMPLER_LANE + 8 : 0; }
   get samplerLaneTop() { return this.lanesBottom + 8 + this.mixLaneSpace; }
-  get laneHeight() { return Math.max(64, (this.height - LANES_TOP - LANE_GAP - 14 - this.mixLaneSpace - this.samplerLaneSpace) / 2); }
+  get laneHeight() { return Math.max(46, (this.height - LANES_TOP - LANE_GAP - 14 - this.mixLaneSpace - this.samplerLaneSpace) / 2); }
   laneTop(lane: number) { return LANES_TOP + lane * (this.laneHeight + LANE_GAP); }
   get lanesBottom() { return this.laneTop(1) + this.laneHeight; }
   get mixLaneTop() { return this.lanesBottom + 8; }
@@ -179,6 +220,7 @@ class TimelineView {
     if (!store.clips.length) this.drawEmptyState(ctx);
     this.drawRuler(ctx, area);
     this.drawTempoStrip(ctx, area);
+    this.drawHeaders();
   }
 
   drawOverlay() {
@@ -204,7 +246,6 @@ class TimelineView {
       const top = this.laneTop(lane);
       ctx.fillStyle = Theme.laneBG;
       ctx.fillRect(area.x, top, area.w, this.laneHeight);
-      this.text(ctx, lane === 0 ? 'A' : 'B', this.scrollX + 6, top + this.laneHeight - 16, '600 10px system-ui', 'rgba(255,255,255,0.18)');
     }
   }
 
@@ -289,7 +330,7 @@ class TimelineView {
 
   roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
     ctx.beginPath();
-    ctx.roundRect(x, y, w, h, Math.min(r, w / 2, h / 2));
+    ctx.roundRect(x, y, Math.max(0, w), Math.max(0, h), Math.max(0, Math.min(r, w / 2, h / 2)));
   }
 
   drawClip(ctx: CanvasRenderingContext2D, i: number, r: { x: number; y: number; w: number; h: number }, master: number, area: { x: number; w: number }) {
@@ -740,7 +781,7 @@ class TimelineView {
     if (!store.sampleHits.length) {
       this.text(ctx, L('サンプラー — パッドの ＋ で再生位置に置く／ここをダブルクリックで置く', 'SAMPLER — ＋ on a pad places it at the playhead; double-click here to place'),
         this.scrollX + 6, top + 9, '600 10px system-ui', 'rgba(255,255,255,0.32)');
-    } else this.text(ctx, L('サンプラー', 'SAMPLER'), this.scrollX + 6, top - 1, '600 9px system-ui', 'rgba(255,255,255,0.3)');
+    }
   }
 
   drawEmptyState(ctx: CanvasRenderingContext2D) {
@@ -832,7 +873,8 @@ class TimelineView {
     if (hit.kind === 'transition') {
       if (e.detail >= 2) { store.openTransitionEditor(hit.id); return; }
       store.selectedClipID = hit.id;
-      store.showInspector = true;
+      store.panelTab = 'transition';
+      store.showPanel = true;
       hit = { kind: 'clip', id: hit.id, part: 'body' };
     }
     const selectedSample = store.sampleHits.find(x => x.id === store.selectedHit)?.sample ?? null;
@@ -847,7 +889,7 @@ class TimelineView {
         // Places the pad last used (the selected sound's, or the first).
         const sample = store.samples.find(x => x.id === selectedSample) ?? store.samples.find(x => x.id === this.lastSample) ?? store.samples[0];
         if (sample) store.placeHit(sample.id, store.snapBeat(Sampler.beatOfTime(t, store.masterBPM, store.gridOffset)));
-        else store.showSampler = true;
+        else store.openPanel('sampler');
       } else store.seek(t);
     } else if (hit.kind === 'ruler') {
       this.followSuspendedUntil = 0;
@@ -859,7 +901,15 @@ class TimelineView {
       store.seek(t);
     } else if (hit.kind === 'clip') {
       store.selectedClipID = hit.id;
-      if (e.detail >= 2) { store.openCueEditor(hit.id); this.drag = null; return; }
+      if (e.detail >= 2) {
+        // On a loop: the Loop tab with that loop; elsewhere the CUE tab.
+        const bar = store.sourceBar(hit.id, t);
+        const c = store.clip(hit.id);
+        const loop = bar != null && c ? (c.edits ?? []).find(x => x.kind === 'loop' && bar >= x.bar && bar < x.bar + x.bars) : null;
+        if (loop) store.openLoopEditor(hit.id, loop.id); else store.openCueEditor(hit.id);
+        this.drag = null;
+        return;
+      }
       const i = store.index(hit.id);
       if (i == null) return;
       const clip = store.clips[i];
@@ -999,7 +1049,7 @@ class TimelineView {
       const beat = store.snapBeat(Sampler.beatOfTime(t, store.masterBPM, store.gridOffset));
       items.push({ label: L('ここに置く', 'Place Here'), enabled: store.samples.length > 0, submenu: store.samples.map(x => ({ label: x.name, action: () => { this.lastSample = x.id; store.placeHit(x.id, beat); } })) });
       items.push({ label: L('サンプラーに音を読み込む…', 'Load Sounds into the Sampler…'), action: () => store.chooseSamples() });
-      items.push({ label: store.showSampler ? L('サンプラーのパッドを隠す', 'Hide the Sampler Pads') : L('サンプラーのパッドを表示', 'Show the Sampler Pads'), action: () => { store.showSampler = !store.showSampler; store.changed(); } });
+      items.push({ label: L('サンプラーのパッドを開く', 'Open the Sampler Pads'), action: () => store.openPanel('sampler') });
       showContextMenu(e, items);
       return;
     }
@@ -1010,7 +1060,7 @@ class TimelineView {
       const i = store.index(id);
       items.push({ label: L('CUE（IN / OUT）を編集…', 'Edit Cues (IN / OUT)…'), action: () => store.openCueEditor(id) });
       items.push({ label: L('ライブラリに戻す', 'Move Back to Library'), action: () => store.removeFromMix(id) });
-      if (i != null && i > 0) items.push({ label: L('つなぎエディタで描く…', 'Draw in Transition Editor…'), action: () => store.openTransitionEditor(id) });
+      if (i != null && i > 0) items.push({ label: L('つなぎを編集（つなぎタブ）', 'Edit the Transition (Transition Tab)'), action: () => store.openTransitionEditor(id) });
       items.push({ separator: true });
       items.push({ label: L('ここから再生', 'Play from Here'), action: () => { store.seek(t); if (!store.isPlaying) store.play(); } });
       items.push({ separator: true });
@@ -1031,10 +1081,11 @@ class TimelineView {
           label: L(`${b}小節先へ`, `${b} bar${b > 1 ? 's' : ''} ahead`), action: () => store.addJump(id, bar, b),
         })) });
         items.push({ label: L('ここにエフェクト', 'Add Effect Here'), submenu: fxKinds.map((k: FXKind) => ({
-          label: FX.title(k), action: () => { const f = store.addFX(id, k, Math.floor(bar * 4) / 4); if (f) { store.inspectorTab = 'fx'; store.focusedFX = f; store.changed(); } },
+          label: FX.title(k), action: () => { const f = store.addFX(id, k, Math.floor(bar * 4) / 4); if (f) { store.focusedFX = f; store.openPanel('fx'); } },
         })) });
       }
       if (clip.fx?.length) items.push({ label: L('この曲のエフェクトをすべて解除', 'Clear All Effects'), action: () => store.removeAllFX(id) });
+      items.push({ label: L('ループ・ジャンプを編集（ループタブ）', 'Edit Loops & Jumps (Loop Tab)'), action: () => store.openLoopEditor(id) });
       if (hasEdits(clip)) items.push({ label: L('この曲のループ／ジャンプをすべて解除', 'Clear All Loops / Jumps'), action: () => store.removeAllEdits(id) });
       if (i != null && i > 0) {
         items.push({ label: L('トランジションの長さ', 'Transition Length'), submenu: [0, 4, 8, 16, 32].map(b => ({
@@ -1075,9 +1126,13 @@ export function Timeline() {
   const spacer = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const overlay = useRef<HTMLCanvasElement>(null);
+  const header = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    const v = new TimelineView(canvas.current!, overlay.current!, scroller.current!, spacer.current!);
+    const v = new TimelineView(canvas.current!, overlay.current!, scroller.current!, spacer.current!, header.current!);
+    const hd = header.current!;
+    const headerDown = (e: MouseEvent) => { const r = hd.getBoundingClientRect(); v.headerClick(e.clientY - r.top); };
+    hd.addEventListener('mousedown', headerDown);
     const w = wrap.current!, sc = scroller.current!, ov = overlay.current!;
     const SCROLLBAR = 12;
     const ro = new ResizeObserver(() => v.resize(w.clientWidth, w.clientHeight - SCROLLBAR));
@@ -1134,7 +1189,7 @@ export function Timeline() {
     w.addEventListener('dragleave', dragLeave);
     w.addEventListener('drop', drop);
     return () => {
-      ro.disconnect(); unsub(); unclock();
+      ro.disconnect(); unsub(); unclock(); hd.removeEventListener('mousedown', headerDown);
       sc.removeEventListener('scroll', onScroll);
       ov.removeEventListener('mousedown', down); ov.removeEventListener('mousemove', hover); ov.removeEventListener('mouseleave', leave);
       ov.removeEventListener('contextmenu', ctx); ov.removeEventListener('wheel', wheel);
@@ -1156,10 +1211,13 @@ export function Timeline() {
   };
 
   return (
-    <div className="timeline" ref={wrap} tabIndex={0} onKeyDown={onKey}>
-      <canvas ref={canvas} className="timeline-canvas" />
-      <canvas ref={overlay} className="timeline-canvas overlay" />
-      <div className="timeline-scroll" ref={scroller}><div className="timeline-spacer" ref={spacer} /></div>
+    <div className="timeline-wrap">
+      <canvas ref={header} className="track-headers" title={L('トラック見出し（MIX をクリックで表示切替、サンプラーをクリックでパッドを開く）', 'Track headers (click MIX to toggle it, the sampler to open the pads)')} />
+      <div className="timeline" ref={wrap} tabIndex={0} onKeyDown={onKey}>
+        <canvas ref={canvas} className="timeline-canvas" />
+        <canvas ref={overlay} className="timeline-canvas overlay" />
+        <div className="timeline-scroll" ref={scroller}><div className="timeline-spacer" ref={spacer} /></div>
+      </div>
     </div>
   );
 }

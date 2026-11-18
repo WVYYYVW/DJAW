@@ -62,7 +62,7 @@ export function AutoArrangeSheet() {
           <div className="sheet-head pad">
             <div className="grow">
               <div className="sheet-title">✓ {L('ミックスを作成しました', 'Mix built')}</div>
-              <div className="caption">{L('各つなぎを試聴し、気になる所はつなぎエディタで LOW / HIGH やフェーダーの動きを描き直せます。', 'Preview each transition and redraw its LOW / HIGH and fader moves in the Transition Editor where needed.')}</div>
+              <div className="caption">{L('各つなぎを試聴し、気になる所は下のパネルの「つなぎ」タブで LOW / HIGH やフェーダーの動きを描き直せます。', 'Preview each transition and redraw its LOW / HIGH and fader moves in the panel’s Transition tab where needed.')}</div>
             </div>
             <span className="mono dim">{L(`マスター ${Fmt.bpm(s.masterBPM)} BPM`, `Master ${Fmt.bpm(s.masterBPM)} BPM`)}</span>
           </div>
@@ -89,7 +89,7 @@ export function AutoArrangeSheet() {
                     <button className="btn" title={L('このつなぎだけ、曲を解析して決め直します', 'Re-plans only this transition from the analysis')} onClick={() => s.autoMixTransition(clip.id)}>✦ {L('決め直す', 'Re-decide')}</button>
                     <button className="btn primary" disabled={clip.transitionBars < 0.01}
                       title={clip.transitionBars < 0.01 ? L('カットインは重なりがないため描けません', 'A cut has no overlap to draw') : L('LOW / MID / HIGH とフェーダーの時間変化を描きます', 'Draw the LOW / MID / HIGH and fader moves over time')}
-                      onClick={() => { if (s.isPlaying) s.pause(); s.selectedClipID = clip.id; s.openTransitionEditor(clip.id); }}>✎ {L('つなぎエディタ…', 'Transition Editor…')}</button>
+                      onClick={() => { if (s.isPlaying) s.pause(); s.selectedClipID = clip.id; s.showAutoArrange = false; s.openTransitionEditor(clip.id); }}>✎ {L('つなぎタブで編集', 'Edit in the Transition Tab')}</button>
                   </div>
                 </div>
               );

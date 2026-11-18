@@ -119,9 +119,12 @@ Windows では WebCodecs（H.264）＋ mp4 マルチプレクサ、または ffm
 - 映像：`src/core/visuals.ts`（VisualPainter・特徴量・オート VJ。Canvas 2D を y 反転して CoreGraphics と同じ座標で描く）
 - 解析：`src/core/analysis/`（neural.ts＝Beat This!/CUE-DETR、genreModel.ts、stems.ts＝Spleeter）。ONNX は子プロセス（解析用とステム用の 2 本）
 - 自動ミックス：`src/core/automixer.ts`、`src/renderer/store/automix.ts`、演奏手順 `src/core/performance.ts`
-- ストア拡張：`src/renderer/store/{automix,simplify,profiles,video,stems}.ts`（`declare module './store'` で MixStore に足す方式。store.ts からこれらを import しないこと＝循環 import で起動時に落ちる）
+- ストア拡張：`src/renderer/store/{automix,simplify,profiles,video,stems,cloud,libraryFolders,sampler,loops}.ts`（`declare module './store'` で MixStore に足す方式。store.ts からこれらを import しないこと＝循環 import で起動時に落ちる）
 - AAC エンコーダが無い環境（Linux の Electron など）では、映像の音声は Opus 48kHz に自動で切り替え。M4A 書き出しはエラー表示
 - クラウド（MEGA の同期フォルダ）：`src/core/cloud.ts`、`src/renderer/store/cloud.ts`、`components/CloudSheet.tsx`。クラウドに保存するミックスは音声を埋め込まず、曲は `<MEGA>/DJAW/曲/` に1回だけコピーし relativePath で引く。Mac 版の解析データ（analyses、10MB 超）はクラウド保存では省く。一時ファイルは「.」始まり（MEGA が同期しない）
+- 0.3.0（2026-11-18）で Mac 版より先に進んだ機能：ステム4分割（`stems.ts`、Spleeter 4stems を1ステム1ファイルの ONNX に。melody＝原音−他3つ）、ライブラリのフォルダ（`store/libraryFolders.ts`）、サンプラー（`core/sampler.ts`＝拍の位置に正確に鳴らす SamplerVoice、`store/sampler.ts`、`components/SamplerPanel.tsx`、タイムラインのサンプラーレーン）、ループタブ（`store/loops.ts`、`components/LoopEditor.tsx`）
+- 画面は Ableton 風（0.3.0〜）：上のツールバー・左のブラウザ・中央のアレンジ（`Timeline.tsx` はトラック見出しを別キャンバス `HEAD_W` で描く）・下の詳細パネル（`components/Panel.tsx`、タブ＝`store.panelTab`）。右インスペクタは廃止し、`Inspector.tsx` は各タブで使う部品の置き場。つなぎ／CUE／ループの各エディタはパネル内に埋め込み。エディタのキー操作は `store.focusArea === 'panel'`（最後にパネル内をクリックした）の時だけ効く
+- 作業の進め方（2026-11-18 ユーザーの指示）：大きな変更はブランチで進め、デバッグしてバグが無いことを確かめてから main に入れて push する
 - まだ Windows 実機で確認していないもの：AAC（Media Foundation）での M4A／映像書き出し、映像プレビューの別ウィンドウ、iTunes XML の実データ
 
 ## 7. 参考：Mac 版の状態（2026-11-05）
