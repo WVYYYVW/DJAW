@@ -115,9 +115,12 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
         const overlap = t.some((a, i) => t.some((b, j) => i < j && a.left < b.right - 0.5 && b.left < a.right - 0.5));
         const tr = document.querySelector('.transport').getBoundingClientRect();
         const centers = t.map(r => Math.round(r.top + r.height / 2));
-        return { barHeight: Math.round(bar.height), outside, overlap, transportH: Math.round(tr.height), misaligned: Math.max(...centers) - Math.min(...centers), docOverflow: document.documentElement.scrollWidth > window.innerWidth + 1 };
+        // The time text itself (not only its box) on the play button's centre line.
+        const mid = e => { const r = document.querySelector(e)?.getBoundingClientRect(); return r ? r.top + r.height / 2 : null; };
+        const textOff = Math.abs(mid('.transport .readout-main') - mid('.transport .tbtn.play'));
+        return { barHeight: Math.round(bar.height), outside, overlap, transportH: Math.round(tr.height), misaligned: Math.max(...centers) - Math.min(...centers), textOff: Math.round(textOff * 10) / 10, docOverflow: document.documentElement.scrollWidth > window.innerWidth + 1 };
       });
-      check(`toolbar layout ${w}x${h}`, !lay.outside.length && !lay.overlap && lay.misaligned <= 2 && !lay.docOverflow, lay);
+      check(`toolbar layout ${w}x${h}`, !lay.outside.length && !lay.overlap && lay.misaligned <= 2 && lay.textOff <= 2 && !lay.docOverflow, lay);
     }
     await setSize(1440, 900); await win.waitForTimeout(500);
     await shot('01-empty');

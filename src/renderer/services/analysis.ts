@@ -101,6 +101,33 @@ async function metadata(file: string) {
 /** Analyses made before the cue / genre models were added are made again. */
 const complete = (a: TrackAnalysis) => a.genre !== undefined;
 
+/** The saved analysis of a file, without reading the audio (null when it has to be analysed). */
+export function cachedAnalysis(file: string): { analysis: TrackAnalysis; fp: string } | null {
+  const fp = fingerprint(file);
+  if (!fp) return null;
+  const hit = analysisStore.load<TrackAnalysis>(fp);
+  return hit && complete(hit) ? { analysis: hit, fp } : null;
+}
+
+/**
+ * The quick first pass: waveform, energy-based tempo and grid, key and structure, without the models (about a second
+ * per track). The full analysis (`analyze`) follows and replaces it; this result is not saved.
+ */
+export async function analyzeQuick(file: string, progress?: Progress): Promise<{ analysis: TrackAnalysis; fp: string; pcm: string }> {
+  const fp = fingerprint(file);
+  if (!fp) throw new Error('unreadable');
+  progress?.('decode', 0);
+  const pcm = await ensurePcm(file, fp);
+  const [r, meta] = await Promise.all([
+    request<{ analysis: TrackAnalysis }>({ type: 'analyze', pcm, modelPath: modelPath('beatthis.onnx'), neural: false }, progress),
+    metadata(file),
+  ]);
+  const a = r.analysis;
+  a.title = meta.title;
+  a.artist = meta.artist;
+  return { analysis: a, fp, pcm };
+}
+
 /** Analysis of a file (cached by content). `fresh` analyses again. */
 export async function analyze(file: string, opts: { fresh?: boolean; progress?: Progress } = {}): Promise<{ analysis: TrackAnalysis; fp: string; pcm: string }> {
   const fp = fingerprint(file);

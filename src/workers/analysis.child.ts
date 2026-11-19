@@ -25,6 +25,8 @@ const send = (m: unknown) => { if (port) port.postMessage(m); else if (process.c
 
 async function handle(m: any) {
   if (m.type === 'analyze') {
+    // The models load (in the background) from the first request on, also for a quick pass: the full analyses that
+    // follow do not have to wait for them.
     if (!model) model = loadBeatModel(m.modelPath).catch(e => { send({ type: 'log', message: `beat model: ${e?.message ?? e}` }); return null; });
     const dir = path.dirname(m.modelPath);
     if (!cueModel) cueModel = loadCueModel(dir);

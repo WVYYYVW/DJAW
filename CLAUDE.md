@@ -129,6 +129,7 @@ Windows では WebCodecs（H.264）＋ mp4 マルチプレクサ、または ffm
 - Mac では onnxruntime のメモリアリーナを切る（`beatmodel.ts`。Electron の PartitionAlloc が大きなアライン確保で SIGTRAP を起こす）
 - 自動更新（`src/main/updater.ts`）：このリポジトリ（2026-11-19 から公開）の最新リリースを見る（ログイン不要）。0.3.2 だけは存在しない `DJAW-releases` を見ていたので、0.3.3 は手で入れてもらう必要がある。Windows は NSIS を `/S --updated` で、Mac は dmg からアプリを取り出し codesign で検証して終了時に入れ替え。
 - E2E テスト（`.github/workflows/e2e.yml`、手動起動。リポジトリが公開になったので GitHub の機械の利用は無料）：`tests/e2e/smoke.cjs` が配布版を起動し、無音再生（`DJAW_MUTE=1`）で音が流れているか・解析・ステム・書き出し（WAV/M4A/映像）・保存・.djaw を引数で開く を確認。`tests/e2e/update.cjs` が 9.9.9 への自動更新、`tests/e2e/onnx-probe.cjs` が解析プロセス単体。スクリーンショットは下書きリリース `e2e-results` に上がる
+- 曲の読み込み順（0.3.4〜）：保存済みの解析 → 全曲の音声と簡易解析（`analyzeQuick`＝モデルなし、波形・エネルギーのテンポ）→ AI の解析を1曲ずつミックス順（`loadAnalyses`、`addFiles`）。追加した曲は簡易テンポで並べ、AI の結果で `refineProvisional` が直す（手で触った曲は直さない）。読み込み中はミックス波形を止める（`holdMixWaveform`）
 - リリースの前に E2E を Mac・Windows で通すこと（Linux のクラウドだけの確認で Mac 版が壊れていた前例あり）
 - まだ Windows 実機で確認していないもの：AAC（Media Foundation）での M4A／映像書き出し、映像プレビューの別ウィンドウ、iTunes XML の実データ
 

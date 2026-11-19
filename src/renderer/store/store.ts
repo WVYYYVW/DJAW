@@ -21,7 +21,7 @@ import { integratedLoudness } from '../../core/analysis/loudness';
 import { fingerprint } from '../../core/analysis/cache';
 import { RenderSession } from '../../core/render/session';
 import { Automation } from '../../core/automation';
-import { analyze, loudness as loadLoudness } from '../services/analysis';
+import { analyze, analyzeQuick, cachedAnalysis, loudness as loadLoudness } from '../services/analysis';
 import { enginePath, ensurePcm } from '../services/decode';
 import { dataDir } from '../services/env';
 import { Player } from '../services/player';
@@ -493,29 +493,48 @@ export class MixStore {
         added.push(clip.id);
       } else notAdded.push(path.basename(d.file, path.extname(d.file)));
     }
-    const jobs = items.map(item => ({ item, job: analyze(item.url, { progress: (stage, f) => { item.stage = stage; item.fraction = f; this.changed(); } }) }));
+    // First every track with a quick pass (waveform and energy tempo, about a second each), placed at once; then the
+    // full analyses one after another, which correct the tempo and grid of the tracks nobody has touched meanwhile.
+    // (A track analysed before goes straight in with its saved analysis.)
+    const progressOf = (item: PendingTrack) => (stage: string, f: number) => { item.stage = stage; item.fraction = f; this.changed(); };
+    const jobs = items.map(item => {
+      const saved = cachedAnalysis(item.url) != null;
+      return { item, saved, job: saved ? analyze(item.url, { progress: progressOf(item) }) : analyzeQuick(item.url, progressOf(item)) };
+    });
     const failed: string[] = [];
     const analyzed: string[] = [];
-    for (const { item, job } of jobs) {
-      try {
-        const { analysis, fp, pcm } = await job;
-        if (!pushed) { this.pushUndo(); pushed = true; }
-        this.fingerprints.set(item.url, fp);
-        this.pcmPaths.set(item.url, pcm);
-        const clip = this.makeClip(analysis, item.url);
-        if (destination.kind === 'library') this.library = [...this.library, destination.folder ? { ...clip, folder: destination.folder } : clip];
-        else {
-          const at = this.placeInMix(clip, Math.min(position ?? this.clips.length, this.clips.length));
-          position = at + 1;
+    const provisional: { item: PendingTrack; id: string; bpm: number; firstBeat: number; mixInBar: number; mixOutBar: number; master: number | null }[] = [];
+    this.holdMixWaveform();
+    try {
+      for (const { item, saved, job } of jobs) {
+        try {
+          const { analysis, fp, pcm } = await job;
+          if (!pushed) { this.pushUndo(); pushed = true; }
+          this.fingerprints.set(item.url, fp);
+          this.pcmPaths.set(item.url, pcm);
+          const clip = this.makeClip(analysis, item.url);
+          const setsMaster = destination.kind === 'mix' && this.clips.length === 0;
+          if (destination.kind === 'library') this.library = [...this.library, destination.folder ? { ...clip, folder: destination.folder } : clip];
+          else {
+            const at = this.placeInMix(clip, Math.min(position ?? this.clips.length, this.clips.length));
+            position = at + 1;
+          }
+          added.push(clip.id);
+          analyzed.push(clip.id);
+          if (saved) this.pending = this.pending.filter(p => p.id !== item.id);
+          else {
+            item.stage = 'beats'; item.fraction = 0;
+            provisional.push({ item, id: clip.id, bpm: clip.bpm, firstBeat: clip.firstBeat, mixInBar: clip.mixInBar, mixOutBar: clip.mixOutBar, master: setsMaster ? this.masterBPM : null });
+          }
+        } catch (e) {
+          console.error('[DJAW] could not add', item.url, e);
+          failed.push(`${item.name}（${(e as Error).message}）`);
+          this.pending = this.pending.filter(p => p.id !== item.id);
         }
-        added.push(clip.id);
-        analyzed.push(clip.id);
-      } catch (e) {
-        console.error('[DJAW] could not add', item.url, e);
-        failed.push(`${item.name}（${(e as Error).message}）`);
+        this.changed();
       }
-      this.pending = this.pending.filter(p => p.id !== item.id);
-      this.changed();
+    } finally {
+      if (!provisional.length) this.releaseMixWaveform();
     }
     if (added.length) {
       this.selectedClipID = added[0];
@@ -530,6 +549,57 @@ export class MixStore {
     if (failed.length) messages.push(L('次のファイルを読み込めませんでした:\n', 'These files could not be read:\n') + failed.join('\n'));
     if (messages.length) this.alertMessage = messages.join('\n\n');
     this.changed();
+    if (!provisional.length) return;
+    const unfinished: string[] = [];
+    try {
+      for (const p of provisional) {
+        try {
+          const { analysis } = await analyze(p.item.url, { progress: progressOf(p.item) });
+          this.refineProvisional(p, analysis);
+        } catch (e) {
+          console.error('[DJAW] analysis failed', p.item.url, e);
+          unfinished.push(`${p.item.name}（${(e as Error).message}）`);
+        } finally {
+          this.pending = this.pending.filter(x => x.id !== p.item.id);
+          this.changed();
+        }
+      }
+    } finally {
+      this.releaseMixWaveform();
+    }
+    if (unfinished.length) {
+      this.alertMessage = L(`次の曲は詳しい解析ができませんでした（簡易解析のテンポで追加しています。再生と書き出しはできます）：\n${unfinished.join('\n')}`,
+        `These tracks could not be fully analysed (they were added with the quick tempo estimate, and still play and export):\n${unfinished.join('\n')}`);
+    }
+    this.applyLoudness();
+    this.changed();
+    this.runPendingAutoMix();
+  }
+
+  /**
+   * The full analysis of a track that went in with the quick pass: its waveform, structure, readings and models' results
+   * replace the quick ones, and its tempo and grid are corrected unless the track has been changed in the meantime
+   * (then the AI grid is offered in the track tab, as for any track).
+   */
+  private refineProvisional(p: { id: string; bpm: number; firstBeat: number; mixInBar: number; mixOutBar: number; master: number | null }, a: TrackAnalysis) {
+    const c = this.clip(p.id);
+    if (!c) { return; }
+    this.rememberAnalysis(c.url, a);
+    const untouched = c.bpm === p.bpm && c.firstBeat === p.firstBeat && c.mixInBar === p.mixInBar && c.mixOutBar === p.mixOutBar && c.endBar == null;
+    if (!untouched) {
+      if (Math.abs(c.bpm - a.bpm) > 0.01 && a.energies) {
+        const st = structureFor(a.energies, c.bpm, c.firstBeat);
+        if (st) this.structures.set(c.url, st);
+      }
+      this.changed();
+      return;
+    }
+    const sameGrid = Math.abs(a.bpm - c.bpm) < 0.001 && Math.abs(a.firstBeat - c.firstBeat) < 0.0005;
+    if (!sameGrid) {
+      this.updateClip(p.id, false, x => { x.bpm = a.bpm; x.firstBeat = a.firstBeat; resetToWholeTrack(x); });
+      if (p.master != null && this.masterBPM === p.master && this.clips[0]?.id === p.id) this.masterBPM = Math.round(a.bpm * 100) / 100;
+    }
+    if (this.isInMix(p.id)) this.finishTimingEdit(); else this.changed();
   }
 
   rememberAnalysis(url: string, a: TrackAnalysis) {
@@ -1415,8 +1485,13 @@ export class MixStore {
     this.mixWaveformIsRendering = sig != null;
   }
 
+  /** While tracks are being read, the mix waveform waits (drawing it then only competes with the reading). */
+  private mixWaveformHold = 0;
+  private holdMixWaveform() { this.mixWaveformHold++; }
+  private releaseMixWaveform() { this.mixWaveformHold = Math.max(0, this.mixWaveformHold - 1); if (!this.mixWaveformHold) this.scheduleMixWaveform(); }
+
   scheduleMixWaveform() {
-    if (!this.showMixWaveform || this.isInteracting) return;
+    if (!this.showMixWaveform || this.isInteracting || this.mixWaveformHold) return;
     const sig = this.mixSignature();
     if (sig === this.renderingSignature || (sig === this.mixPeaksSignature && !this.renderingSignature)) return;
     if (this.peaksTimer) clearTimeout(this.peaksTimer);
@@ -1664,49 +1739,95 @@ export class MixStore {
     }
   }
 
-  /** Waveforms / structures for every track (cached analyses load at once; new files are analysed). */
+  /**
+   * Waveforms / structures for every track, in this order:
+   *   1. saved analyses — at once, before any audio is read;
+   *   2. the audio of every track (mix order, then the library), so the mix plays, and for tracks without a saved
+   *      analysis a quick pass (waveform, energy tempo, structure — about a second each);
+   *   3. the full analyses (beats, cues, genre — the slow part), one track after another in mix order.
+   * The mix waveform is drawn once step 2 is done.
+   */
   async loadAnalyses() {
     const urls = [...new Set([...this.clips, ...this.library].map(c => c.url))].filter(u => !this.missingFiles.has(u) && !this.waveforms.has(u));
-    const items: PendingTrack[] = urls.map(u => ({ id: uuid(), url: u, name: path.basename(u, path.extname(u)) }));
+    const items: (PendingTrack & { saved: boolean })[] = urls.map(u => ({ id: uuid(), url: u, name: path.basename(u, path.extname(u)), saved: false }));
+    if (!items.length) { this.runPendingAutoMix(); return; }
     this.pending = [...this.pending, ...items];
+    const done = (item: PendingTrack) => { this.pending = this.pending.filter(p => p.id !== item.id); };
+    const show = (url: string, a: TrackAnalysis) => {
+      this.rememberAnalysis(url, a);
+      // The saved tempo / grid wins; rebuild the structure on that grid.
+      const c = [...this.clips, ...this.library].find(x => x.url === url);
+      if (c && Math.abs(c.bpm - a.bpm) > 0.01 && a.energies) {
+        const st = structureFor(a.energies, c.bpm, c.firstBeat);
+        if (st) this.structures.set(url, st);
+      }
+    };
+    // 1. Saved analyses.
+    for (const item of items) {
+      const hit = cachedAnalysis(item.url);
+      if (!hit) continue;
+      item.saved = true;
+      this.fingerprints.set(item.url, hit.fp);
+      show(item.url, hit.analysis);
+      const ready = enginePath(item.url, hit.fp);
+      if (ready) { this.pcmPaths.set(item.url, ready); done(item); }
+    }
     this.changed();
+    // 2. The audio, and a quick pass where nothing is saved.
     const failed: string[] = [];
-    await Promise.all(items.map(async item => {
-      try {
-        // The audio first, so the mix plays while the (slower) analysis is still running.
-        const fp0 = fingerprint(item.url);
-        if (fp0 && !this.pcmPaths.has(item.url)) {
-          this.pcmPaths.set(item.url, await ensurePcm(item.url, fp0));
+    const deep: typeof items = [];
+    this.holdMixWaveform();
+    try {
+      await Promise.all(items.filter(i => this.pending.some(p => p.id === i.id)).map(async item => {
+        try {
+          const fp = this.fingerprints.get(item.url) ?? fingerprint(item.url);
+          if (!fp) throw new Error('unreadable');
+          this.fingerprints.set(item.url, fp);
+          this.pcmPaths.set(item.url, await ensurePcm(item.url, fp));
           this.mixInputsChanged();
+        } catch (e) {
+          console.error('[DJAW] could not read', item.url, e);
+          this.missingFiles.add(item.url);
+          done(item);
+          return;
+        }
+        if (item.saved) { done(item); return; }
+        try {
+          const { analysis } = await analyzeQuick(item.url, (stage, f) => { item.stage = stage; item.fraction = f; this.changed(); });
+          if (!this.waveforms.has(item.url)) show(item.url, analysis);
+          item.stage = 'beats'; item.fraction = 0;
+          deep.push(item);
+        } catch (e) {
+          // The track still plays and exports: only the audio is needed for that.
+          console.error('[DJAW] analysis failed', item.url, e);
+          failed.push(`${item.name}（${(e as Error).message}）`);
+          done(item);
+        } finally {
           this.changed();
         }
+      }));
+    } finally {
+      this.releaseMixWaveform();
+    }
+    this.applyLoudness();
+    this.changed();
+    // 3. The full analyses, in mix order.
+    deep.sort((a, b) => urls.indexOf(a.url) - urls.indexOf(b.url));
+    for (const item of deep) {
+      try {
         const { analysis, pcm, fp } = await analyze(item.url, { progress: (stage, f) => { item.stage = stage; item.fraction = f; this.changed(); } });
         this.pcmPaths.set(item.url, pcm);
         this.fingerprints.set(item.url, fp);
-        this.rememberAnalysis(item.url, analysis);
-        // The saved tempo / grid wins; rebuild the structure on that grid.
-        const c = [...this.clips, ...this.library].find(x => x.url === item.url);
-        if (c && Math.abs(c.bpm - analysis.bpm) > 0.01 && analysis.energies) {
-          const st = structureFor(analysis.energies, c.bpm, c.firstBeat);
-          if (st) this.structures.set(item.url, st);
-        }
+        show(item.url, analysis);
       } catch (e) {
-        // Without the analysis the track can still be played and exported: only the audio is needed for that.
+        // Without the full analysis the track still plays and exports (the quick pass gave its waveform).
         console.error('[DJAW] analysis failed', item.url, e);
-        const fp = fingerprint(item.url);
-        try {
-          if (!fp) throw e;
-          if (!this.pcmPaths.has(item.url)) { this.pcmPaths.set(item.url, await ensurePcm(item.url, fp)); this.mixInputsChanged(); }
-          this.fingerprints.set(item.url, fp);
-          failed.push(`${item.name}（${(e as Error).message}）`);
-        } catch {
-          this.missingFiles.add(item.url);
-        }
+        failed.push(`${item.name}（${(e as Error).message}）`);
       } finally {
-        this.pending = this.pending.filter(p => p.id !== item.id);
+        done(item);
         this.changed();
       }
-    }));
+    }
     if (failed.length) {
       this.alertMessage = L(`次の曲を解析できませんでした（再生と書き出しはできます）：\n${failed.join('\n')}`, `These tracks could not be analysed (they still play and export):\n${failed.join('\n')}`);
     }
