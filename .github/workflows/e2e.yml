@@ -3,8 +3,7 @@
 # toolbar layout, screenshots). The screenshots and report are kept for a few days.
 name: E2E
 
-# Started by hand (macOS minutes are costly on a private repository): choose the systems and whether to run the
-# update test too.
+# Started by hand: choose the systems and whether to run the update tests too.
 on:
   workflow_dispatch:
     inputs:
@@ -15,6 +14,10 @@ on:
         default: both
       update_test:
         description: 'Also run the update test'
+        type: boolean
+        default: false
+      update_github:
+        description: 'Also update a 0.0.1 build from the real latest release on GitHub'
         type: boolean
         default: false
       probe_only:
@@ -156,3 +159,45 @@ jobs:
           npm version 9.9.9 --no-git-tag-version
           npx electron-builder --win nsis --x64 --publish never
           node tests/e2e/update.cjs $exe dist\DJAW-Setup-9.9.9.exe
+
+  # The real feed: a 0.0.1 build (this code) finds the latest release of WVYYYVW/DJAW, downloads it from GitHub,
+  # checks its SHA-256, installs it and restarts.
+  update-github:
+    if: ${{ inputs.update_github && !inputs.probe_only }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.systems == 'mac' && '["macos-latest"]' || inputs.systems == 'windows' && '["windows-latest"]' || '["macos-latest","windows-latest"]') }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm version 0.0.1 --no-git-tag-version
+      - run: node scripts/build.mjs
+      - name: Mac — a 0.0.1 app updates from GitHub
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          set -e
+          npx electron-builder --mac --arm64 --dir --publish never
+          mkdir -p "$RUNNER_TEMP/apps" && ditto dist/mac-arm64/DJAW.app "$RUNNER_TEMP/apps/DJAW.app"
+          node tests/e2e/update.cjs "$RUNNER_TEMP/apps/DJAW.app/Contents/MacOS/DJAW" --github
+      - name: Windows — an installed 0.0.1 updates from GitHub
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npx electron-builder --win nsis --x64 --publish never
+          $setup = Get-ChildItem dist\DJAW-Setup-*.exe | Select-Object -First 1
+          Start-Process -Wait -FilePath $setup.FullName -ArgumentList '/S'
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\DJAW\DJAW.exe'
+          node tests/e2e/update.cjs $exe --github

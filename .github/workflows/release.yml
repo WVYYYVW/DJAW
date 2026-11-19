@@ -52,8 +52,6 @@ jobs:
             command: npx electron-builder --mac --arm64 --publish never
             files: dist/*.dmg
     runs-on: ${{ matrix.os }}
-    env:
-      HAS_RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -88,18 +86,5 @@ jobs:
         if: ${{ !inputs.dry_run }}
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
-          files: ${{ matrix.files }}
-          fail_on_unmatched_files: true
-      # The same files in the public WVYYYVW/DJAW-releases, where the installed app looks for updates
-      # (needs the RELEASES_TOKEN secret: a token that can write to that repository).
-      - uses: softprops/action-gh-release@v2
-        if: ${{ !inputs.dry_run && env.HAS_RELEASES_TOKEN == 'true' }}
-        with:
-          repository: WVYYYVW/DJAW-releases
-          token: ${{ secrets.RELEASES_TOKEN }}
-          tag_name: ${{ needs.prepare.outputs.tag }}
-          name: DJAW ${{ needs.prepare.outputs.tag }}
-          body_path: RELEASE_NOTES.md
-          make_latest: true
           files: ${{ matrix.files }}
           fail_on_unmatched_files: true

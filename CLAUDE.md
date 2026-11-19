@@ -127,8 +127,8 @@ Windows では WebCodecs（H.264）＋ mp4 マルチプレクサ、または ffm
 - 作業の進め方（2026-11-18 ユーザーの指示）：大きな変更はブランチで進め、デバッグしてバグが無いことを確かめてから main に入れて push する
 - 解析用プロセス（0.3.2〜）：レンダラーからではなく**メインプロセスから** fork し（`src/main/analysisHost.ts`）、MessagePort で中継する。Mac ではレンダラー（ヘルパーアプリ）から起動すると落ちる。Electron の utilityProcess は起動引数にファイルがあると別のスクリプトを読むので使わない
 - Mac では onnxruntime のメモリアリーナを切る（`beatmodel.ts`。Electron の PartitionAlloc が大きなアライン確保で SIGTRAP を起こす）
-- 自動更新（`src/main/updater.ts`）：公開リポジトリ `WVYYYVW/DJAW-releases` の最新リリースを見る（本体リポジトリは非公開でアプリから読めないため）。Windows は NSIS を `/S --updated` で、Mac は dmg からアプリを取り出し codesign で検証して終了時に入れ替え。Release ワークフローは secret `RELEASES_TOKEN` があるときだけ DJAW-releases にも同じファイルを載せる
-- E2E テスト（`.github/workflows/e2e.yml`、手動起動。macOS の分数が高いので必要なときだけ）：`tests/e2e/smoke.cjs` が配布版を起動し、無音再生（`DJAW_MUTE=1`）で音が流れているか・解析・ステム・書き出し（WAV/M4A/映像）・保存・.djaw を引数で開く を確認。`tests/e2e/update.cjs` が 9.9.9 への自動更新、`tests/e2e/onnx-probe.cjs` が解析プロセス単体。スクリーンショットは下書きリリース `e2e-results` に上がる
+- 自動更新（`src/main/updater.ts`）：このリポジトリ（2026-11-19 から公開）の最新リリースを見る（ログイン不要）。0.3.2 だけは存在しない `DJAW-releases` を見ていたので、0.3.3 は手で入れてもらう必要がある。Windows は NSIS を `/S --updated` で、Mac は dmg からアプリを取り出し codesign で検証して終了時に入れ替え。
+- E2E テスト（`.github/workflows/e2e.yml`、手動起動。リポジトリが公開になったので GitHub の機械の利用は無料）：`tests/e2e/smoke.cjs` が配布版を起動し、無音再生（`DJAW_MUTE=1`）で音が流れているか・解析・ステム・書き出し（WAV/M4A/映像）・保存・.djaw を引数で開く を確認。`tests/e2e/update.cjs` が 9.9.9 への自動更新、`tests/e2e/onnx-probe.cjs` が解析プロセス単体。スクリーンショットは下書きリリース `e2e-results` に上がる
 - リリースの前に E2E を Mac・Windows で通すこと（Linux のクラウドだけの確認で Mac 版が壊れていた前例あり）
 - まだ Windows 実機で確認していないもの：AAC（Media Foundation）での M4A／映像書き出し、映像プレビューの別ウィンドウ、iTunes XML の実データ
 

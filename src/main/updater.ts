@@ -1,4 +1,4 @@
-// Updates from GitHub Releases of WVYYYVW/DJAW-releases (public; the release workflow copies each version there). At start (and from the menu) the latest release is checked; when it is
+// Updates from GitHub Releases of WVYYYVW/DJAW (a public repository, so the app reads it without signing in). At start (and from the menu) the latest release is checked; when it is
 // newer, the user is asked, the installer for this computer is downloaded (checked against GitHub's SHA-256), and it
 // is installed when the app closes — at once, with a restart, if the user chooses so.
 //   Windows: the NSIS installer runs silently over the installed app (same place, settings kept).
@@ -17,8 +17,8 @@ type Lang = (ja: string, en: string) => string;
 
 interface Release { version: string; notes: string; asset: { name: string; url: string; size: number; sha256: string | null } | null }
 
-/** A public repository holding only the installers (the source repository is private, so the app cannot read it). */
-const REPO = 'WVYYYVW/DJAW-releases';
+/** The repository whose latest release is the newest DJAW (public: read without signing in). */
+const REPO = 'WVYYYVW/DJAW';
 const testDir = process.env.DJAW_UPDATE_TEST_DIR || null;
 const auto = process.env.DJAW_UPDATE_AUTO === '1';
 
