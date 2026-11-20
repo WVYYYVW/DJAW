@@ -276,9 +276,9 @@ export class Updater {
     if (!u) return;
     this.ready = null;
     if (process.platform === 'win32') {
-      // Over this one, with the installer's own small progress window (so the few seconds without DJAW are not a
-      // mystery); --force-run starts the new version afterwards.
-      const args = ['--updated'];
+      // Silently over this one (shown with its own window, the installer stops to ask about the closing app);
+      // --force-run starts the new version afterwards. The card said beforehand that this takes a few seconds.
+      const args = ['/S', '--updated'];
       if (u.restart) args.push('--force-run');
       spawn(u.file, args, { detached: true, stdio: 'ignore' }).unref();
     } else if (process.platform === 'darwin') {

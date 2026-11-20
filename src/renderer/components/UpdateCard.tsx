@@ -71,7 +71,7 @@ export function UpdateCard() {
       case 'preparing': return L('ディスクイメージからアプリを取り出して、署名を確かめています。数十秒かかることがあります', 'Taking the app out of the disk image and checking its signature. Can take half a minute');
       case 'ready': return L('今すぐ再起動するか、DJAW を終了するときに入れ替えます。保存していない変更は、先に保存するか確認します', 'Restart now, or it is installed when DJAW quits. You will be asked to save unsaved changes first');
       case 'installing': return mac ? L('数秒後に新しい DJAW が起動します', 'The new DJAW starts in a few seconds')
-        : L('インストーラーの進み具合が表示され、終わると新しい DJAW が起動します', 'The installer shows its progress, then the new DJAW starts');
+        : L('DJAW が閉じてから 10〜20 秒ほどで、新しい DJAW が起動します', 'The new DJAW starts 10–20 seconds after this one closes');
       case 'failed': return u.error ?? '';
       default: return '';
     }

@@ -127,6 +127,22 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
       });
       check(`toolbar layout ${w}x${h}`, !lay.outside.length && !lay.overlap && lay.misaligned <= 2 && lay.textOff <= 2 && lay.offCenter <= 2 && !lay.docOverflow, lay);
     }
+    // Icons in the middle of their buttons (an icon-only button: its centre; next to text: the text's height).
+    const icons = await ev(() => {
+      const bad = [];
+      for (const svg of document.querySelectorAll('svg.icon')) {
+        const host = svg.closest('button');
+        if (!host || !svg.getClientRects().length) continue;
+        const sr = svg.getBoundingClientRect(), hr = host.getBoundingClientRect();
+        const b = svg.getBBox(), k = sr.width / 16;
+        const ix = sr.left + (b.x + b.width / 2) * k, iy = sr.top + (b.y + b.height / 2) * k;
+        const hasText = host.textContent.trim().length > 0;
+        const dx = hasText ? 0 : ix - (hr.left + hr.width / 2), dy = iy - (hr.top + hr.height / 2);
+        if (Math.abs(dx) > 1.2 || Math.abs(dy) > 1.6) bad.push({ c: String(host.className).slice(0, 24), dx: +dx.toFixed(1), dy: +dy.toFixed(1) });
+      }
+      return bad;
+    });
+    check('icons centred in their buttons', icons.length === 0, icons.slice(0, 6));
     await setSize(1440, 900); await win.waitForTimeout(500);
     await shot('01-empty');
 

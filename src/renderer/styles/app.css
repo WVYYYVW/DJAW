@@ -519,10 +519,11 @@ select { height: 24px; border-radius: 5px; background: var(--raised); border: 1p
 .tb-side { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .tb-right { justify-content: flex-end; }
 .icon { flex: none; display: block; }
-.tbtn { height: 28px; padding: 0 8px; color: rgba(236, 236, 240, 0.82); }
-.tbtn.icon { width: 28px; }
+/* Buttons centre what they hold (an icon is a block box: without this it sits at the left edge). */
+.tbtn { height: 28px; padding: 0 8px; color: rgba(236, 236, 240, 0.82); display: inline-flex; align-items: center; justify-content: center; }
+.tbtn.icon { width: 28px; padding: 0; }
 .tbtn.small { height: 24px; font-size: 12px; padding: 0 6px; }
-.tbtn.icon.small { width: 24px; }
+.tbtn.icon.small { width: 24px; padding: 0; }
 .tbtn.toggle.on { background: var(--accent-soft); color: #a9cbff; }
 .tbtn.action { gap: 6px; font-size: 12.5px; }
 .tbtn.action.primary { background: var(--accent); color: #fff; font-weight: 600; }
