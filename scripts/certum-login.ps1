@@ -22,10 +22,16 @@ function Escape-Keys([string]$s) { return ($s -replace '([+^%~(){}\[\]])', '{$1}
 function ConvertFrom-Base32([string]$s) {
   $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
   $clean = ($s.ToUpperInvariant() -replace '[^A-Z2-7]', '')
-  $bits = 0; $value = 0; $out = New-Object System.Collections.Generic.List[byte]
+  # Plain arithmetic (PowerShell's shift operators keep the operand's narrow type).
+  [long]$bits = 0; [long]$value = 0; $out = New-Object System.Collections.Generic.List[byte]
   foreach ($ch in $clean.ToCharArray()) {
-    $value = ($value -shl 5) -bor $alphabet.IndexOf($ch); $bits += 5
-    if ($bits -ge 8) { $bits -= 8; $out.Add([byte](($value -shr $bits) -band 0xFF)); $value = $value -band ((1 -shl $bits) - 1) }
+    $value = $value * 32 + $alphabet.IndexOf($ch); $bits += 5
+    if ($bits -ge 8) {
+      $bits -= 8
+      [long]$p = [Math]::Pow(2, $bits)
+      $out.Add([byte]([Math]::Floor($value / $p) % 256))
+      $value = $value % $p
+    }
   }
   return ,$out.ToArray()
 }
@@ -33,14 +39,18 @@ function ConvertFrom-Base32([string]$s) {
 $period = 30; $digits = 6; $key = $null
 
 function Get-Totp([string]$algorithm, [long]$time = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(), [byte[]]$keyBytes = $script:key, [int]$n = $script:digits) {
-  $counter = [long][Math]::Floor($time / $period)
-  $msg = [BitConverter]::GetBytes($counter); if ([BitConverter]::IsLittleEndian) { [Array]::Reverse($msg) }
+  [long]$counter = [Math]::Floor([double]$time / [double]$period)
+  # The counter as 8 big-endian bytes.
+  $msg = New-Object byte[] 8
+  for ($i = 7; $i -ge 0; $i--) { $msg[$i] = [byte]($counter % 256); $counter = [Math]::Floor($counter / 256) }
   $hmac = switch ($algorithm) { 'SHA1' { New-Object System.Security.Cryptography.HMACSHA1 } 'SHA512' { New-Object System.Security.Cryptography.HMACSHA512 } default { New-Object System.Security.Cryptography.HMACSHA256 } }
   $hmac.Key = $keyBytes
   $h = $hmac.ComputeHash($msg)
-  $o = $h[$h.Length - 1] -band 0x0F
-  $code = (($h[$o] -band 0x7F) -shl 24) -bor ($h[$o + 1] -shl 16) -bor ($h[$o + 2] -shl 8) -bor $h[$o + 3]
-  return ([long]$code % [long][Math]::Pow(10, $n)).ToString().PadLeft($n, '0')
+  # Dynamic truncation: four bytes at the offset given by the last nibble, as a big-endian number without the top bit.
+  $o = [int]($h[$h.Length - 1] -band 0x0F)
+  [long]$code = ([long]($h[$o] -band 0x7F)) * 16777216 + ([long]$h[$o + 1]) * 65536 + ([long]$h[$o + 2]) * 256 + [long]$h[$o + 3]
+  [long]$mod = 1; for ($i = 0; $i -lt $n; $i++) { $mod *= 10 }
+  return ($code % $mod).ToString().PadLeft($n, '0')
 }
 
 if ($SelfTest) {
