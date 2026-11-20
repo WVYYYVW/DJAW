@@ -532,6 +532,12 @@ select { height: 24px; border-radius: 5px; background: var(--raised); border: 1p
    Layout 2 (Ableton-style): toolbar · browser | arrangement over the detail panel
    ====================================================================== */
 .toolbar { height: 44px; gap: 6px; padding: 0 8px; background: var(--panel2); }
+/* Three columns: the transport sits in the middle of the window, whatever is on either side. The right side keeps its
+   buttons whole (when the window is too narrow for the middle, the transport moves left rather than covering them);
+   the left side shortens the mix name instead. */
+.toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr); }
+.tb-side { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tb-right { justify-content: flex-end; }
 .icon { flex: none; display: block; }
 .tbtn { height: 28px; padding: 0 8px; color: rgba(236, 236, 240, 0.82); }
 .tbtn.icon { width: 28px; }

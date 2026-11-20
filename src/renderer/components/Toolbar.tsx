@@ -71,12 +71,13 @@ export function Toolbar() {
   const s = useStore();
   return (
     <div className="toolbar">
+      <div className="tb-side tb-left">
       <Toggle icon="browser" on={s.showBrowser} onClick={() => s.toggle('showBrowser')} title={L('ブラウザ（ミックス順・ライブラリ）の表示切替（Ctrl+Alt+B）', 'Show or hide the browser (Ctrl+Alt+B)')} />
       <div className="doc-title" title={s.documentPath ?? ''}>
         <span className="brand">DJAW</span>
         <span className="doc-name">{s.documentTitle}</span>{s.isDirty && !s.isCloudDocument() ? <span className="edited" title={L('保存されていない変更があります', 'Unsaved changes')}>●</span> : null}<CloudChip />
       </div>
-      <div className="spacer" />
+      </div>
       <div className="transport">
         <button className="tbtn icon" onClick={() => { s.seek(0); s.requestScroll(0); }} title={L('先頭へ（Home）', 'Go to start (Home)')}><Icon name="toStart" /></button>
         <button className={'tbtn icon play' + (s.isPlaying ? ' playing' : '')} onClick={() => s.togglePlay()} disabled={!s.clips.length} title={L('再生 / 一時停止（Space）', 'Play / pause (Space)')}><Icon name={s.isPlaying ? 'pause' : 'play'} /></button>
@@ -86,7 +87,7 @@ export function Toolbar() {
           {snapUnits.map(u => <option key={u} value={u}>{Snap.title(u)}</option>)}
         </select>
       </div>
-      <div className="spacer" />
+      <div className="tb-side tb-right">
       {s.updateStatus && <span className="update-chip" title={s.updateStatus.ready ? L('DJAW を終了するときに更新されます（メニューの「アップデートを確認…」から今すぐ再起動もできます）', 'Installs when DJAW quits (or restart now from “Check for Updates…”)') : ''}>
         {s.updateStatus.ready ? L(`${s.updateStatus.version} を準備しました`, `${s.updateStatus.version} ready`) : L(`${s.updateStatus.version} をダウンロード中 ${Math.round(s.updateStatus.progress * 100)}%`, `Downloading ${s.updateStatus.version} ${Math.round(s.updateStatus.progress * 100)}%`)}
       </span>}
@@ -98,6 +99,7 @@ export function Toolbar() {
       </div>
       <div className="vsep" />
       <Toggle icon="panel" on={s.showPanel} onClick={() => s.toggle('showPanel')} title={L('下の詳細パネル（つなぎ・CUE・ループ・FX・サンプラー・デッキ）の表示切替（Ctrl+Alt+I）', 'Show or hide the detail panel (Ctrl+Alt+I)')} />
+      </div>
     </div>
   );
 }

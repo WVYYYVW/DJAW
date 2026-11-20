@@ -108,19 +108,24 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
       await setSize(w, h); await win.waitForTimeout(700);
       const lay = await ev(() => {
         const bar = document.querySelector('.toolbar').getBoundingClientRect();
-        const kids = [...document.querySelectorAll('.toolbar > *, .transport > *, .toolbar .group > *')].filter(e => e.offsetParent);
+        const kids = [...document.querySelectorAll('.toolbar > *, .tb-side > *, .transport > *, .toolbar .group > *')].filter(e => e.offsetParent);
         const boxes = kids.map(e => ({ c: e.className || e.tagName, r: e.getBoundingClientRect() }));
         const outside = boxes.filter(b => b.r.top < bar.top - 0.5 || b.r.bottom > bar.bottom + 0.5 || b.r.right > bar.right + 0.5 || b.r.left < bar.left - 0.5).map(b => b.c);
         const t = [...document.querySelectorAll('.transport > *')].map(e => e.getBoundingClientRect());
-        const overlap = t.some((a, i) => t.some((b, j) => i < j && a.left < b.right - 0.5 && b.left < a.right - 0.5));
         const tr = document.querySelector('.transport').getBoundingClientRect();
+        // Nothing in the transport overlaps, and nothing on either side runs into it.
+        const sides = [...document.querySelectorAll('.tb-side > *, .toolbar .group > *')].filter(e => e.offsetParent).map(e => e.getBoundingClientRect());
+        const overlap = t.some((a, i) => t.some((b, j) => i < j && a.left < b.right - 0.5 && b.left < a.right - 0.5))
+          || sides.some(r => r.left < tr.right - 0.5 && tr.left < r.right - 0.5);
         const centers = t.map(r => Math.round(r.top + r.height / 2));
         // The time text itself (not only its box) on the play button's centre line.
         const mid = e => { const r = document.querySelector(e)?.getBoundingClientRect(); return r ? r.top + r.height / 2 : null; };
         const textOff = Math.abs(mid('.transport .readout-main') - mid('.transport .tbtn.play'));
-        return { barHeight: Math.round(bar.height), outside, overlap, transportH: Math.round(tr.height), misaligned: Math.max(...centers) - Math.min(...centers), textOff: Math.round(textOff * 10) / 10, docOverflow: document.documentElement.scrollWidth > window.innerWidth + 1 };
+        // The transport in the middle of the window.
+        const offCenter = Math.abs((tr.left + tr.width / 2) - (bar.left + bar.width / 2));
+        return { barHeight: Math.round(bar.height), outside, overlap, transportH: Math.round(tr.height), misaligned: Math.max(...centers) - Math.min(...centers), textOff: Math.round(textOff * 10) / 10, offCenter: Math.round(offCenter), docOverflow: document.documentElement.scrollWidth > window.innerWidth + 1 };
       });
-      check(`toolbar layout ${w}x${h}`, !lay.outside.length && !lay.overlap && lay.misaligned <= 2 && lay.textOff <= 2 && !lay.docOverflow, lay);
+      check(`toolbar layout ${w}x${h}`, !lay.outside.length && !lay.overlap && lay.misaligned <= 2 && lay.textOff <= 2 && lay.offCenter <= 2 && !lay.docOverflow, lay);
     }
     await setSize(1440, 900); await win.waitForTimeout(500);
     await shot('01-empty');
