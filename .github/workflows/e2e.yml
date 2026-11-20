@@ -45,6 +45,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node scripts/build.mjs
+      - name: Windows code signing script (one-time codes against RFC 6238)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/certum-login.ps1 -SelfTest
       - name: ONNX probe (default settings)
         shell: bash
         run: node tests/e2e/onnx-probe.cjs "$(node -p "require('electron')")" build models

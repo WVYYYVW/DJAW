@@ -52,6 +52,9 @@ jobs:
             command: npx electron-builder --mac --arm64 --publish never
             files: dist/*.dmg
     runs-on: ${{ matrix.os }}
+    env:
+      # Windows code signing (Certum cloud certificate) once the owner has set the secrets; until then unsigned.
+      HAS_CERTUM: ${{ secrets.CERTUM_OTP != '' && secrets.CERTUM_USERNAME != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -62,11 +65,32 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: node scripts/build.mjs
+      - name: Sign in to Certum SimplySign (Windows code signing)
+        if: runner.os == 'Windows' && env.HAS_CERTUM == 'true'
+        shell: pwsh
+        env:
+          CERTUM_USERNAME: ${{ secrets.CERTUM_USERNAME }}
+          CERTUM_OTP: ${{ secrets.CERTUM_OTP }}
+        run: ./scripts/certum-login.ps1
       - name: Package
         run: ${{ matrix.command }}
         env:
-          # No Apple / Windows signing certificate: the Mac app is signed ad hoc (scripts/after-pack.cjs).
+          # No Apple certificate: the Mac app is signed ad hoc (scripts/after-pack.cjs). Windows: Certum, when signed in
+          # above (scripts/sign-win.cjs), otherwise unsigned.
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Check the Windows signatures
+        if: runner.os == 'Windows' && env.HAS_CERTUM == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($f in @((Get-ChildItem dist\DJAW-Setup-*.exe | Select-Object -First 1).FullName, 'dist\win-unpacked\DJAW.exe')) {
+            & $env:SIGNTOOL verify /pa /v $f
+            if ($LASTEXITCODE -ne 0) { throw "not signed: $f" }
+          }
+      - name: Sign out of Certum SimplySign
+        if: always() && runner.os == 'Windows' && env.HAS_CERTUM == 'true'
+        shell: pwsh
+        run: Get-Process SimplySignDesktop -ErrorAction SilentlyContinue | Stop-Process -Force
       - name: Check the Mac app (signature, icon, the disk image)
         if: runner.os == 'macOS'
         shell: bash

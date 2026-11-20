@@ -1,7 +1,7 @@
 {
   "name": "djaw",
   "productName": "DJAW",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "DAW-style DJ mix editor",
   "main": "build/main.js",
   "private": true,
@@ -50,7 +50,10 @@
           ]
         }
       ],
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon.ico",
+      "signtoolOptions": {
+        "sign": "./scripts/sign-win.cjs"
+      }
     },
     "nsis": {
       "oneClick": false,
