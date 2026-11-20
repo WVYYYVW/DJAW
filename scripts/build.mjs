@@ -38,6 +38,17 @@ if (tests) {
 }
 
 if (!tests && !cli) fs.copyFileSync('src/renderer/index.html', `${out}/index.html`);
+// The sampler's built-in sounds are made, not stored (assets/samples is not in git): again whenever the generator changed.
+if (!tests && !cli) {
+  const gen = 'scripts/make-samples.mjs', stamp = 'assets/samples/.made';
+  const madeFor = fs.existsSync(stamp) ? fs.readFileSync(stamp, 'utf8') : '';
+  const want = String(fs.statSync(gen).size) + ':' + fs.readFileSync(gen, 'utf8').length;
+  if (madeFor !== want || !fs.existsSync('assets/samples/air-horn.wav')) {
+    const { execFileSync } = await import('node:child_process');
+    execFileSync(process.execPath, [gen], { stdio: 'ignore' });
+    fs.writeFileSync(stamp, want);
+  }
+}
 if (watch) {
   for (const b of builds) (await esbuild.context(b)).watch();
 } else {
