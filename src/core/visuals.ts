@@ -622,15 +622,68 @@ export class VisualPainter {
     return text;
   }
 
+  /**
+   * Breaks a text into lines no wider than maxWidth: at spaces and after punctuation where it can (Latin titles), and
+   * between any two characters otherwise (Japanese), never starting a line with closing punctuation.
+   */
+  private wrap(ctx: Ctx, text: string, maxWidth: number): string[] {
+    const chars = [...text.trim()];
+    const lines: string[] = [];
+    let line = '', breakAt = -1; // index in `line` after which a break is good
+    const closing = /[、。，．・）」』】〕〉》！？!?,.)\]}ー〜…]/;
+    for (let i = 0; i < chars.length; i++) {
+      const ch = chars[i];
+      if (line === '' && ch === ' ') continue;
+      const next = line + ch;
+      if (ctx.measureText(next).width <= maxWidth || line === '') {
+        line = next;
+        if (/[\s\-–—/／(（\[「『:：]/.test(ch)) breakAt = line.length - (/[(（\[「『]/.test(ch) ? 1 : 0);
+        continue;
+      }
+      // Too wide: break at the last good place in this line if it is not too early, else before this character
+      // (moving one character down if this one may not start a line).
+      let cut = breakAt > line.length * 0.4 ? breakAt : line.length;
+      if (cut === line.length && closing.test(ch) && line.length > 1) cut = line.length - 1;
+      lines.push(line.slice(0, cut).trimEnd());
+      line = (line.slice(cut) + ch).trimStart();
+      breakAt = -1;
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  /**
+   * The largest of `sizes` at which the text fits in `maxLines` lines; failing that the smallest, its last line ending
+   * in an ellipsis.
+   */
+  private layoutText(ctx: Ctx, text: string, maxWidth: number, sizes: number[], maxLines: number[], bold: boolean) {
+    for (let k = 0; k < sizes.length; k++) {
+      ctx.font = this.font(sizes[k], bold);
+      const lines = this.wrap(ctx, text, maxWidth);
+      if (lines.length <= maxLines[k]) return { size: sizes[k], lines };
+    }
+    const size = sizes[sizes.length - 1], n = maxLines[maxLines.length - 1];
+    ctx.font = this.font(size, bold);
+    const lines = this.wrap(ctx, text, maxWidth);
+    const kept = lines.slice(0, n);
+    // The last line takes the rest, cut to fit with an ellipsis.
+    let last = [...lines.slice(n - 1).join(' ')];
+    while (last.length > 1 && ctx.measureText(last.join('').trimEnd() + '…').width > maxWidth) last.pop();
+    kept[n - 1] = last.join('').trimEnd() + '…';
+    return { size, lines: kept };
+  }
+
   private title(s: string, alpha: number) {
     if (alpha <= 0) return;
     const ctx = this.ctx, w = this.w, h = this.h;
     ctx.save();
-    ctx.font = this.font(h * 0.06, true);
-    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
     ctx.textBaseline = 'alphabetic';
-    const t = this.fit(ctx, s, w * 0.8);
-    ctx.fillText(t, (w - ctx.measureText(t).width) / 2, h - h * 0.82);
+    const t = this.layoutText(ctx, s, w * 0.84, [h * 0.06, h * 0.05, h * 0.045, h * 0.04], [1, 1, 2, 2], true);
+    ctx.font = this.font(t.size, true);
+    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    const lh = t.size * 1.2;
+    // The first line where the single line used to be, further lines below it.
+    t.lines.forEach((l, k) => ctx.fillText(l, (w - ctx.measureText(l).width) / 2, h - h * 0.82 + k * lh));
     ctx.restore();
   }
 
@@ -647,16 +700,26 @@ export class VisualPainter {
       const ease = 1 - Math.pow(1 - inT, 3);
       const a = Math.min(1, inT * 2) * (1 - outT);
       if (a > 0) {
-        const art = h * 0.14, textW = w * 0.42;
-        const cardW = art + pad * 1.5 + textW, cardH = art + pad;
+        // The card fits its text: the title as large as it fits (one line, then two, then three at smaller sizes),
+        // the artist below; wider and taller cards for long names, up to half the picture's width.
+        const art = h * 0.14, maxTextW = w * 0.5;
+        const title = this.layoutText(ctx, tr.title, maxTextW, [h * 0.042, h * 0.038, h * 0.038, h * 0.034, h * 0.03, h * 0.027], [1, 1, 2, 2, 2, 3], true);
+        const artist = tr.artist ? this.layoutText(ctx, tr.artist, maxTextW, [h * 0.028, h * 0.025, h * 0.022], [1, 1, 1], false) : null;
+        const titleLH = title.size * 1.2, artistLH = artist ? artist.size * 1.25 : 0, gap = artist ? h * 0.01 : 0;
+        ctx.font = this.font(title.size, true);
+        let textW = Math.max(...title.lines.map(l => ctx.measureText(l).width));
+        if (artist) { ctx.font = this.font(artist.size, false); textW = Math.max(textW, ...artist.lines.map(l => ctx.measureText(l).width)); }
+        textW = Math.min(maxTextW, Math.max(w * 0.16, textW));
+        const textH = title.lines.length * titleLH + gap + artistLH;
+        const inner = Math.max(art, textH);
+        const cardW = art + pad * 1.5 + textW + pad * 0.6, cardH = inner + pad;
         const slide = (1 - ease) * -(cardW + pad);
-        // Mac rect: x = pad + slide, y (from the bottom) = pad.
         const x = pad + slide, y = h - pad - cardH;
         ctx.fillStyle = `rgba(0,0,0,${0.6 * a})`;
         ctx.beginPath(); ctx.roundRect(x, y, cardW, cardH, h * 0.015); ctx.fill();
         ctx.fillStyle = this.color(m.hue, 0.8, 1, a);
         ctx.fillRect(x, y + h * 0.012, h * 0.006, cardH - h * 0.024);
-        const ax = x + pad / 2, ay = y + pad / 2;
+        const ax = x + pad / 2, ay = y + pad / 2 + (inner - art) / 2;
         ctx.save();
         ctx.globalAlpha = a;
         ctx.beginPath(); ctx.roundRect(ax, ay, art, art, h * 0.01); ctx.clip();
@@ -665,22 +728,26 @@ export class VisualPainter {
           ctx.drawImage(tr.artwork, ax + art / 2 - tr.artwork.width * s / 2, ay + art / 2 - tr.artwork.height * s / 2, tr.artwork.width * s, tr.artwork.height * s);
         } else { ctx.fillStyle = this.color(tr.hue, 0.6, 0.8); ctx.fillRect(ax, ay, art, art); }
         ctx.restore();
+        // The text block, centred on the artwork (or filling the card when it is taller).
         const tx = ax + art + pad / 2;
-        ctx.font = this.font(h * 0.04, true);
+        let ty = y + pad / 2 + (inner - textH) / 2;
+        ctx.font = this.font(title.size, true);
         ctx.fillStyle = `rgba(255,255,255,${a})`;
-        // Baselines at 55 % / 20 % of the artwork height from its bottom edge (y-up on the Mac).
-        ctx.fillText(this.fit(ctx, tr.title, textW), tx, ay + art - art * 0.55);
-        if (tr.artist) {
-          ctx.font = this.font(h * 0.028, false);
+        for (const l of title.lines) { ty += titleLH; ctx.fillText(l, tx, ty - (titleLH - title.size) * 0.55); }
+        if (artist) {
+          ty += gap;
+          ctx.font = this.font(artist.size, false);
           ctx.fillStyle = `rgba(255,255,255,${a * 0.8})`;
-          ctx.fillText(this.fit(ctx, tr.artist, textW), tx, ay + art - art * 0.2);
+          for (const l of artist.lines) { ty += artistLH; ctx.fillText(l, tx, ty - (artistLH - artist.size) * 0.55); }
         }
       }
     } else if (since >= 9) {
+      // Afterwards a small caption: as small as needed to fit (then cut), up to most of the width.
       const s = tr.artist ? `${tr.artist} – ${tr.title}` : tr.title;
-      ctx.font = this.font(h * 0.022, false);
+      const cap = this.layoutText(ctx, s, w * 0.86, [h * 0.022, h * 0.019, h * 0.017], [1, 1, 1], false);
+      ctx.font = this.font(cap.size, false);
       ctx.fillStyle = 'rgba(255,255,255,0.6)';
-      ctx.fillText(this.fit(ctx, s, w * 0.6), pad, h - pad);
+      ctx.fillText(cap.lines[0], pad, h - pad);
     }
     ctx.restore();
   }
