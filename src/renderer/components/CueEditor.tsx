@@ -235,7 +235,7 @@ function CueDetail({ clip, wf, position, outgoingBars, preview, onSeek, onResume
     };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
-  return <canvas ref={ref} className="cue-detail" onPointerDown={down} title={L('ドラッグでスクラッチのように移動、クリックでその位置へ', 'Drag to scrub, click to jump')} />;
+  return <canvas ref={ref} className="cue-detail" onPointerDown={down} />;
 }
 
 // MARK: Tiles

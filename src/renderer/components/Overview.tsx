@@ -360,9 +360,10 @@ export function OverviewTab() {
         <span className="legend-item"><span className="sw" style={{ background: 'rgba(80,220,120,0.8)' }} />{L('EQ ブースト', 'EQ boost')}</span>
         <span className="legend-item"><span className="sw fxsw" />{L('FX（濃いほど強い）', 'FX (darker = stronger)')}</span>
         <div className="spacer" />
+        <span className="help-dot" title={L('クリックで再生位置を移動・Ctrl（⌘）＋ホイールで拡大・ホイールで左右に移動・曲をダブルクリックで FX、つなぎの名札をダブルクリックでつなぎエディタ', 'Click: move the playhead · Ctrl (⌘) + wheel: zoom · wheel: scroll · double-click a track: its FX · double-click a transition label: the transition editor')}>?</span>
         <button className="btn small" disabled={!view} onClick={() => setView(null)}>{L('全体を表示', 'Show All')}</button>
       </div>
-      <div className="overview-canvas" title={L('クリックで再生位置を移動・Ctrl（⌘）＋ホイールで拡大・ホイールで左右に移動・曲をダブルクリックで FX、つなぎの名札をダブルクリックでつなぎエディタ', 'Click: move the playhead · Ctrl (⌘) + wheel: zoom · wheel: scroll · double-click a track: its FX · double-click a transition label: the transition editor')} ref={el => { wrapEl.current = el; wrapRef(el); }} onClick={onClick} onDoubleClick={onDouble}>
+      <div className="overview-canvas" ref={el => { wrapEl.current = el; wrapRef(el); }} onClick={onClick} onDoubleClick={onDouble}>
         <canvas ref={canvas} />
         <OverviewPlayhead xOf={xOf} height={H} from={from} to={to} />
       </div>

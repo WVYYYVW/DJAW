@@ -95,6 +95,14 @@ class TimelineView {
     if (this.showsSamplerLane) row(this.samplerLaneTop, SAMPLER_LANE, L('サンプラー', 'SAMPLER'), '', 'rgb(255,214,10)', store.samples.length > 0);
   }
 
+  /** The tooltip for the header row under the pointer (none elsewhere, so it does not pop up over everything). */
+  headerTitle(y: number): string {
+    if (store.showMixWaveform && y >= this.mixLaneTop && y <= this.mixLaneTop + MIX_LANE) return L('クリックでミックス波形を隠す', 'Click to hide the mix waveform');
+    if (this.showsSamplerLane && y >= this.samplerLaneTop && y <= this.samplerLaneTop + SAMPLER_LANE) return L('クリックでサンプラーのパッドを開く', 'Click to open the sampler pads');
+    if (y >= LANES_TOP && y <= this.lanesBottom) return L('クリックでデッキを表示', 'Click to show the decks');
+    return '';
+  }
+
   /** Clicks on the headers. */
   headerClick(y: number) {
     if (store.showMixWaveform && y >= this.mixLaneTop && y <= this.mixLaneTop + MIX_LANE) { store.toggle('showMixWaveform'); return; }
@@ -1133,6 +1141,8 @@ export function Timeline() {
     const hd = header.current!;
     const headerDown = (e: MouseEvent) => { const r = hd.getBoundingClientRect(); v.headerClick(e.clientY - r.top); };
     hd.addEventListener('mousedown', headerDown);
+    const headerHover = (e: MouseEvent) => { const r = hd.getBoundingClientRect(); const t = v.headerTitle(e.clientY - r.top); if (hd.title !== t) hd.title = t; };
+    hd.addEventListener('mousemove', headerHover);
     const w = wrap.current!, sc = scroller.current!, ov = overlay.current!;
     const SCROLLBAR = 12;
     const ro = new ResizeObserver(() => v.resize(w.clientWidth, w.clientHeight - SCROLLBAR));
@@ -1189,7 +1199,7 @@ export function Timeline() {
     w.addEventListener('dragleave', dragLeave);
     w.addEventListener('drop', drop);
     return () => {
-      ro.disconnect(); unsub(); unclock(); hd.removeEventListener('mousedown', headerDown);
+      ro.disconnect(); unsub(); unclock(); hd.removeEventListener('mousedown', headerDown); hd.removeEventListener('mousemove', headerHover);
       sc.removeEventListener('scroll', onScroll);
       ov.removeEventListener('mousedown', down); ov.removeEventListener('mousemove', hover); ov.removeEventListener('mouseleave', leave);
       ov.removeEventListener('contextmenu', ctx); ov.removeEventListener('wheel', wheel);
@@ -1212,7 +1222,7 @@ export function Timeline() {
 
   return (
     <div className="timeline-wrap">
-      <canvas ref={header} className="track-headers" title={L('トラック見出し（MIX をクリックで表示切替、サンプラーをクリックでパッドを開く）', 'Track headers (click MIX to toggle it, the sampler to open the pads)')} />
+      <canvas ref={header} className="track-headers" />
       <div className="timeline" ref={wrap} tabIndex={0} onKeyDown={onKey}>
         <canvas ref={canvas} className="timeline-canvas" />
         <canvas ref={overlay} className="timeline-canvas overlay" />
