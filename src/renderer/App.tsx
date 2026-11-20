@@ -21,6 +21,7 @@ import { VisualPreviewWindow } from './components/VisualPreview';
 import { MusicLibrarySheet } from './components/MusicLibrarySheet';
 import { TrackProfileSheet } from './components/TrackProfileSheet';
 import { padKeys } from '../core/sampler';
+import { UpdateCard } from './components/UpdateCard';
 
 function readLanguage(): AppLanguage {
   try { return (JSON.parse(fs.readFileSync(dataDir('settings.json'), 'utf8')).language as AppLanguage) ?? 'system'; } catch { return 'system'; }
@@ -131,10 +132,14 @@ export function App() {
       }
     };
     ipcRenderer.on('menu', onMenu);
-    // Progress of an update being downloaded (main/updater.ts), shown in the toolbar.
-    const onUpdate = (_e: unknown, u: { version: string; progress: number; ready?: boolean } | null) => { s.updateStatus = u; s.changed(); };
-    ipcRenderer.on('update:progress', onUpdate);
-    return () => { ipcRenderer.removeListener('menu', onMenu); ipcRenderer.removeListener('update:progress', onUpdate); };
+    // The update in progress (main/updater.ts): the card and the toolbar chip. A new stage brings the card back.
+    const onUpdate = (_e: unknown, u: import('../main/updater').UpdateStatus | null) => {
+      if (!u || u.stage !== s.updateStatus?.stage) s.updateCardHidden = false;
+      s.updateStatus = u; s.changed();
+    };
+    ipcRenderer.on('update:status', onUpdate);
+    void ipcRenderer.invoke('update:status').then(u => { if (u) onUpdate(null, u); }).catch(() => {});
+    return () => { ipcRenderer.removeListener('menu', onMenu); ipcRenderer.removeListener('update:status', onUpdate); };
   }, []);
 
   // Keys that are not menu items (MixStore.handleKey on the Mac).
@@ -234,6 +239,7 @@ export function App() {
       {s.showPerformanceGuide && <PerformanceGuideSheet />}
       <VisualPreviewWindow />
       {s.profileEditorTarget && <TrackProfileSheet />}
+      <UpdateCard />
       {s.showShortcuts && <Shortcuts />}
       <Alert />
       <ContextMenuHost />

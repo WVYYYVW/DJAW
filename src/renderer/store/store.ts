@@ -136,7 +136,10 @@ export class MixStore {
   panelHeight = 330;
   showBrowser = true;
   /** An update being downloaded or ready to install (main/updater.ts). */
-  updateStatus: { version: string; progress: number; ready?: boolean } | null = null;
+  /** The update in progress (main/updater.ts), shown by the update card and the toolbar chip. */
+  updateStatus: import('../../main/updater').UpdateStatus | null = null;
+  /** The card was put away (the toolbar chip brings it back). */
+  updateCardHidden = false;
   /** Where the user last clicked: the editors in the panel take the keys while it is 'panel'. */
   focusArea: 'main' | 'panel' = 'main';
   showDecks = true;

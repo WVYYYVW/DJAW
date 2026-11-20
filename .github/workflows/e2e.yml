@@ -177,6 +177,14 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: The same installer downloaded directly (to compare the app's download speed with)
+        shell: bash
+        run: |
+          pat=$([ "$RUNNER_OS" = macOS ] && echo 'mac-arm64\.dmg$' || echo '^DJAW-Setup-.*\.exe$')
+          url=$(curl -s https://api.github.com/repos/WVYYYVW/DJAW/releases/latest | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const a=JSON.parse(s).assets.find(a=>new RegExp(process.argv[1]).test(a.name));console.log(a.browser_download_url)})" "$pat")
+          echo "$url"
+          curl -sL -o "$RUNNER_TEMP/direct.bin" -w 'direct download: %{size_download} bytes in %{time_total} s (%{speed_download} bytes/s)\n' "$url"
+          rm -f "$RUNNER_TEMP/direct.bin"
       - run: npm version 0.0.1 --no-git-tag-version
       - run: node scripts/build.mjs
       - name: Mac — a 0.0.1 app updates from GitHub

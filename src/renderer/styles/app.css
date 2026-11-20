@@ -689,3 +689,23 @@ select option { background: #26282d; color: var(--text); }
 .panel-columns > .span-all { column-span: all; }
 .fx-wave { position: relative; width: 100%; background: rgba(255,255,255,0.025); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; touch-action: none; }
 .fx-wave canvas { display: block; width: 100%; }
+
+/* Update card (bottom right) and the toolbar chip. */
+.update-card { position: fixed; right: 16px; bottom: 16px; z-index: 900; width: 360px; max-width: calc(100vw - 32px); background: var(--panel2, #1d1e23); border: 1px solid var(--line2); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.55); padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; font-size: 12.5px; }
+.update-card.failed { border-color: rgba(255,110,90,0.5); }
+.update-card-head { display: flex; align-items: center; gap: 8px; }
+.update-card-head b { font-size: 13px; }
+.update-steps { display: flex; gap: 10px; font-size: 11px; color: var(--faint); flex-wrap: wrap; }
+.update-steps .done { color: #6fcf8b; }
+.update-steps .now { color: #a9cbff; font-weight: 700; }
+.update-bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.08); overflow: hidden; position: relative; }
+.update-bar > div { height: 100%; background: var(--accent); border-radius: 4px; transition: width 0.15s linear; }
+.update-bar.busy > div { width: 35% !important; position: absolute; animation: update-busy 1.2s ease-in-out infinite; }
+@keyframes update-busy { 0% { left: -35%; } 100% { left: 100%; } }
+.update-detail { display: flex; align-items: baseline; gap: 8px; color: var(--dim); line-height: 1.45; }
+.update-detail .pct { color: #fff; font-size: 15px; font-variant-numeric: tabular-nums; }
+.update-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+button.update-chip { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; border: none; font-variant-numeric: tabular-nums; }
+button.update-chip.failed { background: rgba(255,110,90,0.18); color: #ffb3a6; }
+.update-chip .chip-bar { width: 46px; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.15); overflow: hidden; display: inline-block; }
+.update-chip .chip-bar > span { display: block; height: 100%; background: #a9cbff; }

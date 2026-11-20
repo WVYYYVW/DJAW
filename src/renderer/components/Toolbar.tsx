@@ -5,6 +5,7 @@ import { useStore, usePlayhead } from '../hooks';
 import { store } from '../store/store';
 import { Fmt, Theme, clipColor } from '../format';
 import { Icon, IconName } from './Icons';
+import { updateChipText } from './UpdateCard';
 
 export function TimeReadout() {
   const t = usePlayhead(33);
@@ -87,9 +88,12 @@ export function Toolbar() {
         </select>
       </div>
       <div className="tb-side tb-right">
-      {s.updateStatus && <span className="update-chip" title={s.updateStatus.ready ? L('DJAW を終了するときに更新されます（メニューの「アップデートを確認…」から今すぐ再起動もできます）', 'Installs when DJAW quits (or restart now from “Check for Updates…”)') : ''}>
-        {s.updateStatus.ready ? L(`${s.updateStatus.version} を準備しました`, `${s.updateStatus.version} ready`) : L(`${s.updateStatus.version} をダウンロード中 ${Math.round(s.updateStatus.progress * 100)}%`, `Downloading ${s.updateStatus.version} ${Math.round(s.updateStatus.progress * 100)}%`)}
-      </span>}
+      {s.updateStatus && (
+        <button className={'update-chip' + (s.updateStatus.stage === 'failed' ? ' failed' : '')} title={L('更新の進み具合を表示', 'Show the update’s progress')} onClick={() => { s.updateCardHidden = false; s.changed(); }}>
+          {s.updateStatus.stage === 'downloading' && s.updateStatus.total ? <span className="chip-bar"><span style={{ width: `${Math.min(100, (s.updateStatus.received ?? 0) / s.updateStatus.total * 100)}%` }} /></span> : null}
+          {updateChipText(s.updateStatus)}
+        </button>
+      )}
       <div className="group">
         <Action icon="film" label={L('映像', 'Visuals')} title={L('映像プレビュー：書き出す映像を、再生に合わせてその場で確認（Ctrl+Alt+V）', 'Visuals preview: see the video visuals live with playback (Ctrl+Alt+V)')} onClick={() => { s.showVisualPreview = true; s.changed(); }} />
         <Action icon="list" label={L('演奏手順', 'How to Play')} disabled={!s.clips.length} title={L('このセットを DJ 機材で実際に演奏する手順と、曲リスト（SoundCloud の概要用）（Ctrl+Shift+P）', 'Steps to play this set live on DJ gear, and the track list (for SoundCloud descriptions) (Ctrl+Shift+P)')} onClick={() => { s.showPerformanceGuide = true; s.changed(); }} />
