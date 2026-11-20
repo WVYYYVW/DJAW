@@ -3,18 +3,66 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { L } from '../../core/i18n';
 import {
-  AutoPoint, AutoPt, Clip, Lane, LaneKind, Lanes, Shape, TransitionLanes, clipEnd, effectiveLanes, pt, transitionPresets,
+  AutoPoint, AutoPt, Clip, Lane, LaneKind, Lanes, Shape, TransitionLanes, clipEnd, effectiveLanes, pt, sourceMapper, transitionPresets,
 } from '../../core/models';
+import { stemPeaks, stemPeaksVersion } from '../services/stemPeaks';
 import { useStore, usePlayhead, useSize } from '../hooks';
 import { store } from '../store/store';
 import { Fmt, clipColor } from '../format';
 import { showContextMenu } from './ContextMenu';
+import { GridSelect, snapBeats, gridStep, beatFraction } from './GridSelect';
 
 type Target = 'incoming' | 'outgoing' | 'mirror';
 type Grab = { kind: 'point' | 'bend'; id: string } | null;
 interface Sel { kind: LaneKind; incoming: boolean; id: string }
 
 const INSET = 10;
+
+/**
+ * What each lane shows behind its curve, per pixel column (0…1): the part of the track the lane works on — the whole
+ * track for the fader and the effects, the lows for LOW, the rest for MID / HIGH, and the separated stem for the stem
+ * lanes (null while that stem is not separated / read yet).
+ */
+function laneWave(clip: Clip, kind: LaneKind, range: [number, number], cols: number): Float32Array | null {
+  const s = store;
+  const toSource = sourceMapper(clip, s.masterBPM);
+  const span = (k: number) => { const t0 = range[0] + (range[1] - range[0]) * k / cols, t1 = range[0] + (range[1] - range[0]) * (k + 1) / cols; const a = toSource(t0); let b = toSource(t1); if (b < a) b = a + (t1 - t0); return [a, b]; };
+  const out = new Float32Array(cols);
+  if (Lane.isStem(kind)) {
+    const files = s.stemsFor(clip.url);
+    if (!files) return null;
+    const names = kind === 'vocal' ? ['vocals'] : kind === 'instrumental' ? ['drums', 'bass', 'melody'] : [kind];
+    const ready = () => store.changed();
+    const all = (['vocals', 'drums', 'bass', 'melody'] as const).map(n => stemPeaks(files[n], ready));
+    const mine = names.map(n => all[['vocals', 'drums', 'bass', 'melody'].indexOf(n)]);
+    if (mine.some(p => !p)) return null;
+    // Relative to the track's loudest stem, so a quiet part looks quiet.
+    const top = Math.max(1e-6, ...all.map(p => p?.max ?? 0));
+    for (let k = 0; k < cols; k++) {
+      const [a, b] = span(k);
+      let v = 0;
+      for (const p of mine) {
+        const bps = p!.binsPerSecond, n = p!.peaks.length;
+        const b0 = Math.min(Math.max(0, Math.floor(a * bps)), n - 1), b1 = Math.min(n, Math.max(b0 + 1, Math.floor(b * bps)));
+        for (let i = b0; i < b1; i++) if (p!.peaks[i] > v) v = p!.peaks[i];
+      }
+      out[k] = Math.min(1, v / top);
+    }
+    return out;
+  }
+  const wf = s.waveforms.get(clip.url);
+  if (!wf || !wf.peaks.length) return null;
+  const norm = 1 / Math.max(wf.maxPeak, 1e-6), bps = wf.binsPerSecond, n = wf.peaks.length;
+  for (let k = 0; k < cols; k++) {
+    const [a, b] = span(k);
+    const b0 = Math.min(Math.max(0, Math.floor(a * bps)), n - 1), b1 = Math.min(n, Math.max(b0 + 1, Math.floor(b * bps)));
+    let p = 0, l = 0;
+    for (let i = b0; i < b1; i++) { if (wf.peaks[i] > p) p = wf.peaks[i]; if (wf.lows[i] > l) l = wf.lows[i]; }
+    p *= norm; l *= norm;
+    out[k] = Math.min(1, kind === 'low' ? l : kind === 'mid' || kind === 'high' ? Math.sqrt(Math.max(0, p * p - l * l)) : p);
+  }
+  return out;
+}
 
 function LaneCanvas({ clipID, kind, lanes, totalBeats, colorOut, colorIn, target, sel, setSel, range, height }: {
   clipID: string; kind: LaneKind; lanes: TransitionLanes; totalBeats: number; colorOut: string; colorIn: string; target: Target;
@@ -25,6 +73,7 @@ function LaneCanvas({ clipID, kind, lanes, totalBeats, colorOut, colorIn, target
   const began = useRef(false);
   const lastTap = useRef<{ g: string; t: number } | null>(null);
   const [hover, setHover] = useState<string | null>(null);
+  const waveCache = useRef<{ key: string; a: Float32Array | null; b: Float32Array | null } | null>(null);
   const t = usePlayhead(0);
   const editIncoming = target !== 'outgoing';
   const size = () => ({ w: ref.current!.clientWidth, h: ref.current!.clientHeight });
@@ -44,10 +93,45 @@ function LaneCanvas({ clipID, kind, lanes, totalBeats, colorOut, colorIn, target
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = 'rgba(255,255,255,0.04)';
     ctx.beginPath(); ctx.roundRect(0, 0, w, h, 8); ctx.fill();
-    for (let b = 0; b <= totalBeats; b++) {
-      const isBar = b % 4 === 0;
+    // Behind the curves: the previous track's part above the middle, this track's below (see laneWave).
+    const idx = store.index(clipID);
+    if (idx != null && idx > 0) {
+      const cols = Math.max(1, Math.round(w - INSET * 2));
+      const prevClip = store.clips[idx - 1], thisClip = store.clips[idx];
+      const key = [cols, range[0], range[1], kind, prevClip.id, clipID, store.masterBPM, store.stemRevision, stemPeaksVersion,
+        store.waveforms.get(prevClip.url)?.maxPeak ?? 0, store.waveforms.get(thisClip.url)?.maxPeak ?? 0,
+        prevClip.bpm, prevClip.firstBeat, thisClip.bpm, thisClip.firstBeat].join('|');
+      if (waveCache.current?.key !== key) waveCache.current = { key, a: laneWave(prevClip, kind, range, cols), b: laneWave(thisClip, kind, range, cols) };
+      const { a, b } = waveCache.current!;
+      const mid = h / 2, half = mid - INSET + 2;
+      const band = (vals: Float32Array | null, color: string, up: boolean) => {
+        if (!vals) return;
+        ctx.beginPath();
+        ctx.moveTo(INSET, mid);
+        for (let k = 0; k < vals.length; k++) ctx.lineTo(INSET + k, mid + (up ? -1 : 1) * vals[k] * half);
+        ctx.lineTo(INSET + vals.length, mid);
+        ctx.closePath();
+        ctx.fillStyle = color;
+        ctx.fill();
+      };
+      ctx.save();
+      ctx.globalAlpha = 0.24;
+      band(a, colorOut, true);
+      band(b, colorIn, false);
+      ctx.restore();
+      if ((!a || !b) && Lane.isStem(kind) && h > 40) {
+        ctx.font = '10px system-ui'; ctx.fillStyle = 'rgba(255,255,255,0.35)';
+        ctx.fillText(L('（分離すると、この成分の波形が出ます）', '(separate the tracks to see this part’s waveform)'), INSET + 6, h - INSET - 4);
+      }
+    }
+    // Bars, beats, and the finer grid where it is at least 6 px apart.
+    const g = store.editGrid;
+    const fine = g > 0 && g < 1 && (xPos(1, w) - xPos(0, w)) / totalBeats * g >= 6 ? g : 1;
+    for (let k = 0; k * fine <= totalBeats + 1e-9; k++) {
+      const b = k * fine;
+      const isBar = Math.abs(b / 4 - Math.round(b / 4)) < 1e-9, isBeat = Math.abs(b - Math.round(b)) < 1e-9;
       if (!isBar && totalBeats > 64) continue;
-      ctx.fillStyle = `rgba(255,255,255,${isBar ? 0.13 : 0.04})`;
+      ctx.fillStyle = `rgba(255,255,255,${isBar ? 0.13 : isBeat ? 0.05 : 0.025})`;
       ctx.fillRect(xPos(b / totalBeats, w), 0, 1, h);
     }
     for (const lv of [0, 0.5, 1]) { ctx.fillStyle = `rgba(255,255,255,${lv === 0.5 ? 0.05 : 0.1})`; ctx.fillRect(0, yPos(lv, h), w, 1); }
@@ -113,7 +197,7 @@ function LaneCanvas({ clipID, kind, lanes, totalBeats, colorOut, colorIn, target
     }
     return null;
   };
-  const snapX = (x: number, alt: boolean) => (alt ? Math.min(1, Math.max(0, x)) : Math.min(1, Math.max(0, Math.round(x * totalBeats) / totalBeats)));
+  const snapX = (x: number, alt: boolean) => Math.min(1, Math.max(0, snapBeats(x * totalBeats, alt) / totalBeats));
   const snapY = (y: number, alt: boolean) => {
     const v = Math.min(1, Math.max(0, y));
     if (alt) return v;
@@ -307,9 +391,11 @@ export function TransitionEditor({ id }: { id: string }) {
     s.setLanes(id, l);
   };
   const posLabel = (x: number) => {
-    const beats = Math.round(x * totalBeats);
-    const bar = Math.floor(beats / 4) + 1, beat = beats % 4 + 1;
-    return beat === 1 ? L(`${bar}小節目`, `bar ${bar}`) : L(`${bar}小節目 ${beat}拍`, `bar ${bar} beat ${beat}`);
+    const beats = Math.round(x * totalBeats * 8) / 8;
+    const whole = Math.floor(beats + 1e-9);
+    const bar = Math.floor(whole / 4) + 1, beat = whole % 4 + 1, frac = beatFraction(beats - whole);
+    if (beat === 1 && !frac) return L(`${bar}小節目`, `bar ${bar}`);
+    return L(`${bar}小節目 ${beat}${frac ? ` ${frac}` : ''}拍`, `bar ${bar} beat ${beat}${frac ? ` ${frac}` : ''}`);
   };
   return (
     <div className="te-embedded">
@@ -347,12 +433,13 @@ export function TransitionEditor({ id }: { id: string }) {
               ...transitionPresets().map(p => ({ label: L(`「${p.title}」から始める`, `Start from “${p.title}”`), action: () => s.setLanes(id, Lanes.sampled(p.style, Shape.defaults(p.style))) })),
               ...(s.customTransitions.length ? [{ separator: true }, ...s.customTransitions.map(p => ({ label: p.name, action: () => s.applyCustomTransition(id, p) }))] : []),
             ])}>{L('ひな形', 'Start from')} ▾</button>
+            <GridSelect />
             <div className="spacer" />
             {selPoint && sel ? (
               <div className="te-sel">
                 <b>{Lane.title(sel.kind)} · {sel.incoming ? L('この曲', 'This') : L('前の曲', 'Prev')}</b>
                 <span className="mono">{posLabel(selPoint.x)}</span>
-                <span className="stepbtns"><button onClick={() => movePoint(-1 / totalBeats, 0)}>‹</button><button onClick={() => movePoint(1 / totalBeats, 0)}>›</button></span>
+                <span className="stepbtns" title={L('グリッドの1目盛りずつ動かす', 'Move by one grid step')}><button onClick={() => movePoint(-gridStep() / totalBeats, 0)}>‹</button><button onClick={() => movePoint(gridStep() / totalBeats, 0)}>›</button></span>
                 <span className="mono">{Math.round(selPoint.y * 100)}%</span>
                 <span className="stepbtns"><button onClick={() => movePoint(0, -0.05)}>−</button><button onClick={() => movePoint(0, 0.05)}>＋</button></span>
                 <button className="btn small" onClick={deleteSel}>🗑</button>

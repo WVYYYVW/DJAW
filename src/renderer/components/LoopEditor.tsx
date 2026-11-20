@@ -14,6 +14,7 @@ import { showContextMenu } from './ContextMenu';
 const YELLOW = 'rgb(255,214,10)', TEAL = 'rgb(64,200,224)', GREEN = 'rgb(48,209,88)', ORANGE = 'rgb(255,159,10)', BLUE = 'rgb(61,139,253)';
 const zooms = [4, 8, 16, 32, 64];
 const snaps: { bars: number; label: () => string }[] = [
+  { bars: 1 / 32, label: () => L('1/8拍', '⅛ beat') },
   { bars: 1 / 16, label: () => L('1/4拍', '¼ beat') },
   { bars: 1 / 4, label: () => L('1拍', '1 beat') },
   { bars: 1 / 2, label: () => L('2拍', '2 beats') },

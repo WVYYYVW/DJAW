@@ -5,7 +5,7 @@ import { ClipEdit, barAtSource, lastBar, timelineTimeOfBar, uuid } from '../../c
 import { MixStore } from './store';
 
 /** Shortest loop / jump: a quarter beat. */
-export const MIN_EDIT_BARS = 1 / 16;
+export const MIN_EDIT_BARS = 1 / 32;
 
 declare module './store' {
   interface MixStore {

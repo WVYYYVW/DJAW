@@ -712,3 +712,8 @@ button.update-chip.failed { background: rgba(255,110,90,0.18); color: #ffb3a6; }
 .update-chip .chip-bar > span { display: block; height: 100%; background: #a9cbff; }
 
 .help-dot { width: 17px; height: 17px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--dim); border: 1px solid var(--line2); cursor: help; }
+
+/* The editing grid selector (transition editor toolbar, FX lanes). */
+.grid-select { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.fx-wave-grid { position: absolute; top: 1px; right: 8px; z-index: 1; }
+.fx-wave-grid .tselect { height: 18px; font-size: 11px; }

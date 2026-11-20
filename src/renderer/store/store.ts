@@ -130,6 +130,8 @@ export class MixStore {
   showInspector = true;
   /** The detail panel under the arrangement, its tab and height; the browser on the left. */
   showPanel = true;
+  /** The grid of the transition editor and the FX lanes, in beats (1 = a beat = 1/4 bar; 0 = free). */
+  editGrid = 1;
   /** The detail panel fills the window (the arrangement is hidden meanwhile); not kept between launches. */
   panelMaximized = false;
   panelTab: PanelTab = 'transition';
@@ -201,6 +203,7 @@ export class MixStore {
     this.openCueEditorOnAdd = (s.openCueEditorOnAdd as boolean) ?? false;
     this.showMixWaveform = (s.showMixWaveform as boolean) ?? true;
     this.showPanel = (s.showPanel as boolean) ?? true;
+    this.editGrid = typeof s.editGrid === 'number' ? s.editGrid : 1;
     this.panelHeight = (s.panelHeight as number) ?? 330;
     this.showBrowser = (s.showBrowser as boolean) ?? true;
     this.customTransitions = (s.customTransitions as CustomTransition[]) ?? [];
@@ -215,7 +218,7 @@ export class MixStore {
 
   saveSettings() {
     const s = {
-      showPanel: this.showPanel, panelHeight: this.panelHeight, showBrowser: this.showBrowser,
+      showPanel: this.showPanel, panelHeight: this.panelHeight, showBrowser: this.showBrowser, editGrid: this.editGrid,
       showDecks: this.showDecks, showMixer: this.showMixer, exportNormalize: this.exportNormalize, embedMedia: this.embedMedia,
       openCueEditorOnAdd: this.openCueEditorOnAdd, showMixWaveform: this.showMixWaveform, customTransitions: this.customTransitions,
       recentDocuments: this.recentDocuments.slice(0, 10), defaultTransitionStyle: this.defaultTransitionStyle,

@@ -1,6 +1,6 @@
 // The FX tab's picture of a track: its waveform with what the effects do to it, and one lane per effect showing how
 // strongly it works bar by bar (like the fader / EQ lanes of the transition editor).
-//   Drag an effect to move it, its ends to change its length (snaps to beats; Alt: 1/16 bar) · click the waveform to
+//   Drag an effect to move it, its ends to change its length (snaps to the editing grid; Alt: free) · click the waveform to
 //   move the playhead there.
 import React, { useEffect, useRef } from 'react';
 import { L } from '../../core/i18n';
@@ -9,6 +9,7 @@ import { FX, FXShapes, fxStateAt } from '../../core/tempo';
 import { useSize, useStore, usePlayhead } from '../hooks';
 import { store } from '../store/store';
 import { clipColor } from '../format';
+import { GridSelect, snapBeats } from './GridSelect';
 
 const HEAD_W = 92;
 const WAVE_H = 96;
@@ -141,7 +142,9 @@ export function FXWave({ clip }: { clip: Clip }) {
   // Dragging an effect: its body moves it, its ends change its length.
   const drag = useRef<{ fx: string; mode: 'move' | 'start' | 'end'; x0: number; bar: number; bars: number; moved: boolean } | null>(null);
   const local = (e: React.PointerEvent) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
-  const snap = (b: number, fine: boolean) => { const q = fine ? 1 / 16 : 1 / 4; return Math.round(b / q) * q; };
+  // On the editing grid (in beats; bars here are 4 beats), free with Alt.
+  const snap = (b: number, free: boolean) => snapBeats(b * 4, free) / 4;
+  const minBars = () => Math.max(1 / 32, (store.editGrid || 1 / 8) / 4);
   const down = (e: React.PointerEvent) => {
     const { x, y } = local(e);
     if (x < HEAD_W) return;
@@ -183,14 +186,15 @@ export function FXWave({ clip }: { clip: Clip }) {
     const fine = e.altKey;
     s.updateFX(clip.id, d.fx, false, f => {
       if (d.mode === 'move') f.bar = Math.max(0, Math.min(total - d.bars, snap(d.bar + db, fine)));
-      else if (d.mode === 'start') { const end = d.bar + d.bars; const a = Math.max(0, Math.min(end - 0.25, snap(d.bar + db, fine))); f.bar = a; f.bars = end - a; }
-      else f.bars = Math.max(0.25, Math.min(total - d.bar, snap(d.bar + d.bars + db, fine) - d.bar));
+      else if (d.mode === 'start') { const end = d.bar + d.bars; const a = Math.max(0, Math.min(end - minBars(), snap(d.bar + db, fine))); f.bar = a; f.bars = end - a; }
+      else f.bars = Math.max(minBars(), Math.min(total - d.bar, snap(d.bar + d.bars + db, fine) - d.bar));
     });
   };
   const up = () => { drag.current = null; };
 
   return (
     <div className="fx-wave" ref={wrapRef}>
+      <div className="fx-wave-grid"><GridSelect /></div>
       <canvas ref={canvas} style={{ height }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} />
       <FXWavePlayhead clip={clip} xOf={xOf} height={height} total={total} />
     </div>
