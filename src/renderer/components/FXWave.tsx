@@ -198,8 +198,9 @@ export function FXWave({ clip }: { clip: Clip }) {
 }
 
 function FXWavePlayhead({ clip, xOf, height, total }: { clip: Clip; xOf: (bar: number) => number; height: number; total: number }) {
-  const t = usePlayhead(30);
+  usePlayhead(30);
   const s = store;
+  const t = s.playhead;
   if (s.index(clip.id) == null || t < clip.start || t > clipEnd(clip, s.masterBPM)) return null;
   const bar = barAtTimeline(clip, t, s.masterBPM);
   if (bar < 0 || bar > total) return null;

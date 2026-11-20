@@ -372,7 +372,9 @@ export function OverviewTab() {
 
 /** The playhead on its own layer (the tracks are not drawn again every frame). */
 function OverviewPlayhead({ xOf, height, from, to }: { xOf: (t: number) => number; height: number; from: number; to: number }) {
-  const t = usePlayhead(30);
+  // The clock wakes this up while playing; the position itself is read fresh (it can also change without a tick).
+  usePlayhead(30);
+  const t = store.playhead;
   if (t < from || t > to) return null;
   return <div className="overview-playhead" style={{ left: Math.round(xOf(t)), height }} />;
 }
