@@ -1,7 +1,7 @@
 // The sampler panel: 8 pads (keys Q–I) under the timeline. A pad pressed is heard at once; "place" puts it on the
 // mix at the playhead (snapped), and while recording, pads hit during playback are placed where they were hit.
 // The hits appear in the timeline's sampler lane, where they can be moved, rolled or removed.
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { L } from '../../core/i18n';
 import { PADS, padKeys, rollChoices, everyChoices, Sampler } from '../../core/sampler';
 import { useStore } from '../hooks';
@@ -9,6 +9,7 @@ import { droppedPaths } from '../dropped';
 import { clipColor } from '../format';
 import { showContextMenu } from './ContextMenu';
 import type { MixStore } from '../store/store';
+import { builtinSamples } from '../../core/builtinSamples';
 
 export const samplerSnaps: { value: number; label: () => string }[] = [
   { value: 0.25, label: () => L('1/16（1/4拍）', '1/16 (¼ beat)') },
@@ -37,6 +38,20 @@ export function hitMenu(s: MixStore, id: string) {
   ];
 }
 
+/** DJAW's own sounds as menu items, by group (a separator between groups). */
+function builtinItems(pick: (file: string) => void) {
+  const items: { label?: string; action?: () => void; separator?: boolean; enabled?: boolean }[] = [];
+  let group = '';
+  for (const b of builtinSamples) {
+    if (b.group() !== group) { if (group) items.push({ separator: true }); group = b.group(); items.push({ label: group, enabled: false }); }
+    items.push({ label: `　${b.title()}`, action: () => pick(b.file) });
+  }
+  return items;
+}
+
+/** Mixes whose empty sampler was filled once already (removing the pads afterwards is respected). */
+const kitOffered = new Set<string>();
+
 function Pad({ index }: { index: number }) {
   const s = useStore();
   const sample = s.samples[index];
@@ -46,7 +61,13 @@ function Pad({ index }: { index: number }) {
   const count = sample ? s.sampleHits.filter(h => h.sample === sample.id).length : 0;
   const menu = (e: React.MouseEvent) => {
     e.preventDefault();
-    if (!sample) { showContextMenu(e, [{ label: L('音を読み込む…', 'Load a Sound…'), action: () => s.chooseSamples(index) }]); return; }
+    if (!sample) {
+      showContextMenu(e, [
+        { label: L('音を読み込む…', 'Load a Sound…'), action: () => s.chooseSamples(index) },
+        { label: L('標準サンプル', 'Built-in Sounds'), submenu: builtinItems(f => void s.addBuiltinSamples([f])) },
+      ]);
+      return;
+    }
     showContextMenu(e, [
       { label: L('試聴', 'Audition'), action: () => s.auditionSample(sample.id) },
       { label: L('再生位置に置く', 'Place at the Playhead'), enabled: !missing, action: () => s.placeHit(sample.id) },
@@ -54,6 +75,7 @@ function Pad({ index }: { index: number }) {
       { label: L('名前を変更', 'Rename'), action: () => setRenaming(true) },
       { label: L('音量', 'Level'), submenu: [6, 3, 0, -3, -6, -9, -12].map(db => ({ label: `${db > 0 ? '+' : ''}${db} dB`, checked: sample.gainDB === db, action: () => s.setSampleGain(sample.id, db) })) },
       { label: L('別の音に差し替え…', 'Replace the Sound…'), action: () => s.chooseSamples(index) },
+      { label: L('標準サンプルに差し替え', 'Replace with a Built-in Sound'), submenu: builtinItems(f => void s.addBuiltinSamples([f], index)) },
       { separator: true },
       { label: count ? L(`パッドを削除（置いた${count}個も削除）`, `Remove the Pad (and its ${count} hit${count > 1 ? 's' : ''})`) : L('パッドを削除', 'Remove the Pad'), action: () => s.removeSample(sample.id) },
     ]);
@@ -114,6 +136,10 @@ function SelectedHit() {
 
 export function SamplerPanel() {
   const s = useStore();
+  // A new mix (never saved) starts with the standard kit on the pads; a saved one is left as it is (the button offers it).
+  useEffect(() => {
+    if (!s.samples.length && !s.documentPath && !kitOffered.has(s.projectID)) { kitOffered.add(s.projectID); void s.loadStandardKit(); }
+  }, [s.projectID]);
   return (
     <div className="sampler"
       onDragOver={e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }}
@@ -123,6 +149,14 @@ export function SamplerPanel() {
         <button className={'btn small rec' + (s.samplerRecording ? ' on' : '')} disabled={!s.samples.length}
           onClick={() => { s.samplerRecording = !s.samplerRecording; s.changed(); }}
           title={L('オンにして再生しながらパッドを叩くと、叩いた位置（スナップに合わせて）に置かれます', 'When on, pads hit during playback are placed where they were hit (on the snap)')}>● {L('録音', 'Record')}</button>
+        <button className={'btn small' + (s.samples.length ? '' : ' primary')}
+          title={L('DJAW 付属の音（すべて DJAW で作った音なので、ミックス・ライブ・SoundCloud などで自由に使えます）', 'Sounds that come with DJAW (all made for DJAW, free to use in mixes, live sets and uploads)')}
+          onClick={e => showContextMenu(e, [
+            { label: L('標準キットを空いたパッドに入れる', 'Fill the Empty Pads with the Standard Kit'), enabled: s.samples.length < PADS, action: () => void s.loadStandardKit() },
+            ...(s.samples.length >= PADS ? [{ label: L('（パッドがいっぱいです。差し替えはパッドを右クリック）', '(All pads are used: right-click a pad to replace it)'), enabled: false }] : []),
+            { separator: true },
+            ...builtinItems(f => void s.addBuiltinSamples([f])),
+          ])}>{L('標準サンプル', 'Built-in Sounds')} ▾</button>
         <select className="tselect small" value={s.samplerSnap} onChange={e => { s.samplerSnap = Number(e.target.value); s.changed(); }} title={L('置く位置を合わせる単位', 'What placed sounds snap to')}>
           {samplerSnaps.map(o => <option key={o.value} value={o.value}>{o.label()}</option>)}
         </select>

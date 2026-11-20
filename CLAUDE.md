@@ -131,6 +131,7 @@ Windows では WebCodecs（H.264）＋ mp4 マルチプレクサ、または ffm
 - E2E テスト（`.github/workflows/e2e.yml`、手動起動。リポジトリが公開になったので GitHub の機械の利用は無料）：`tests/e2e/smoke.cjs` が配布版を起動し、無音再生（`DJAW_MUTE=1`）で音が流れているか・解析・ステム・書き出し（WAV/M4A/映像）・保存・.djaw を引数で開く を確認。`tests/e2e/update.cjs` が 9.9.9 への自動更新、`tests/e2e/onnx-probe.cjs` が解析プロセス単体。スクリーンショットは下書きリリース `e2e-results` に上がる
 - 画面（0.3.5〜0.3.6）：ツールバーは3列のグリッドで再生バーが常にウィンドウ中央。詳細パネルは「大きく表示」（`panelMaximized`、Ctrl+Alt+F）でアレンジを隠して全面に（アレンジはマウントしたまま `display:none`）。タブの欄は段組み（`.panel-columns` が CSS columns、`.span-all` で全幅）。全体タブ `components/Overview.tsx`（各曲の波形を Automation.state で整形：フェーダー・EQ・フィルター・ステム。FX の帯・つなぎ・ミックス波形）、FX タブ上部の `components/FXWave.tsx`（波形＋FX ごとの強さのレーン、ドラッグで移動・長さ）
 - 曲の読み込み順（0.3.4〜）：保存済みの解析 → 全曲の音声と簡易解析（`analyzeQuick`＝モデルなし、波形・エネルギーのテンポ）→ AI の解析を1曲ずつミックス順（`loadAnalyses`、`addFiles`）。追加した曲は簡易テンポで並べ、AI の結果で `refineProvisional` が直す（手で触った曲は直さない）。読み込み中はミックス波形を止める（`holdMixWaveform`）
+- 標準サンプル（0.3.8〜）：`assets/samples/*.wav`（`scripts/make-samples.mjs` で合成。決まった乱数なので作り直しても同じ）、一覧と標準キットは `core/builtinSamples.ts`。asarUnpack で展開（`env.builtinSampleDir()`）。保存時は埋め込まず、別のインストール先のパスはファイル名で付け直す（`prepareSamples`）。新しいミックス（未保存）でサンプラーを開くと標準キットが入る
 - リリースの前に E2E を Mac・Windows で通すこと（Linux のクラウドだけの確認で Mac 版が壊れていた前例あり）
 - まだ Windows 実機で確認していないもの：AAC（Media Foundation）での M4A／映像書き出し、映像プレビューの別ウィンドウ、iTunes XML の実データ
 

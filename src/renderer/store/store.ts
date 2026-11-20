@@ -23,7 +23,7 @@ import { RenderSession } from '../../core/render/session';
 import { Automation } from '../../core/automation';
 import { analyze, analyzeQuick, cachedAnalysis, loudness as loadLoudness } from '../services/analysis';
 import { enginePath, ensurePcm } from '../services/decode';
-import { dataDir } from '../services/env';
+import { dataDir, isBuiltinSample } from '../services/env';
 import { Player } from '../services/player';
 import { Jobs } from '../services/jobs';
 import { MixPeaks } from '../../core/render/offline';
@@ -1886,7 +1886,8 @@ export class MixStore {
     try {
       if (this.embedMedia) {
         const ids = new Map<string, string>();
-        for (const c of [...this.clips, ...this.library, ...this.samples]) if (c.mediaID) ids.set(c.url, c.mediaID);
+        // DJAW's own sampler sounds come with every install: not embedded (found again when opened, store/sampler.ts).
+        for (const c of [...this.clips, ...this.library, ...this.samples]) if (c.mediaID && !isBuiltinSample(c.url)) ids.set(c.url, c.mediaID);
         const assign = <T extends { url: string; mediaID?: string | null }>(c: T): T => {
           let id = ids.get(c.url);
           if (!id) { id = uuid().slice(0, 8); ids.set(c.url, id); }
@@ -1894,7 +1895,7 @@ export class MixStore {
         };
         this.clips = this.clips.map(assign);
         this.library = this.library.map(assign);
-        this.samples = this.samples.map(assign);
+        this.samples = this.samples.map(c => (isBuiltinSample(c.url) ? (c.mediaID ? { ...c, mediaID: null } : c) : assign(c)));
         const media = [...ids.entries()].filter(([u]) => fs.existsSync(u)).map(([u, id]) => ({ id, file: u })).sort((a, b) => a.id.localeCompare(b.id));
         // Writing into the file the media is read from: copy those out of the old package first.
         await writeProjectAsync(this.makeProjectFile(target!), media, target!);

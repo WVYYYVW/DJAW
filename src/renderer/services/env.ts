@@ -16,3 +16,7 @@ export const dataDir = (...p: string[]) => path.join(env.userData, ...p);
 export const buildDir = (...p: string[]) => path.join(env.appRoot, 'build', ...p);
 // Native code reads the models from disk, so in the packaged app they are in app.asar.unpacked.
 export const modelPath = (name: string) => path.join(env.appRoot.replace(/app\.asar$/, 'app.asar.unpacked'), 'models', name);
+/** DJAW's own sampler sounds (assets/samples, unpacked so the render worker reads them like any file). */
+export const builtinSampleDir = () => path.join(env.appRoot.replace(/app\.asar$/, 'app.asar.unpacked'), 'assets', 'samples');
+/** Whether a file is one of them (wherever DJAW is installed: they are not embedded in saved mixes). */
+export const isBuiltinSample = (url: string) => /[\\/]assets[\\/]samples[\\/][^\\/]+\.wav$/.test(url) && path.dirname(url) === builtinSampleDir();

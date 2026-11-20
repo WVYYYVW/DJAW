@@ -9,6 +9,8 @@ import { fingerprint } from '../../core/analysis/cache';
 import { openPcmFile } from '../../core/render/source';
 import { ensurePcm } from '../services/decode';
 import { MixStore, audioExtensions } from './store';
+import { builtinByFile, standardKit } from '../../core/builtinSamples';
+import { builtinSampleDir } from '../services/env';
 
 declare module './store' {
   interface MixStore {
@@ -20,7 +22,11 @@ declare module './store' {
     selectedHit: string | null;
     /** Sample id → decoded PCM file and its length (seconds). */
     samplePcm: Map<string, { path: string; seconds: number }>;
-    addSamples(files: string[], pad?: number): Promise<void>;
+    addSamples(files: string[], pad?: number, names?: string[]): Promise<void>;
+    /** DJAW's own sounds (core/builtinSamples.ts) onto a pad, or the next free ones. */
+    addBuiltinSamples(files: string[], pad?: number): Promise<void>;
+    /** Fills the empty pads with the standard kit. */
+    loadStandardKit(): Promise<void>;
     chooseSamples(pad?: number): Promise<void>;
     removeSample(id: string): void;
     renameSample(id: string, name: string): void;
@@ -48,6 +54,14 @@ Object.defineProperty(P, 'samplePcm', {
   get(this: MixStore & { _samplePcm?: Map<string, { path: string; seconds: number }> }) { return (this._samplePcm ??= new Map()); },
 });
 
+/** A built-in sound saved with another install's path (another computer, another system): the same file here. */
+function relinkBuiltin(url: string): string | null {
+  const name = path.basename(url.replace(/\\/g, '/'));
+  if (!/[\\/]assets[\\/]samples[\\/]/.test(url) || !builtinByFile(name)) return null;
+  const here = path.join(builtinSampleDir(), name);
+  return fs.existsSync(here) ? here : null;
+}
+
 /** Short sounds only: longer files would be tracks. */
 const MAX_SECONDS = 60;
 
@@ -62,6 +76,10 @@ async function decode(file: string) {
 }
 
 P.prepareSamples = async function () {
+  // Built-in sounds saved on another computer point at that computer's copy: use this one's.
+  if (this.samples.some(s => !fs.existsSync(s.url) && relinkBuiltin(s.url))) {
+    this.samples = this.samples.map(s => { const here = !fs.existsSync(s.url) ? relinkBuiltin(s.url) : null; return here ? { ...s, url: here } : s; });
+  }
   for (const s of this.samples) {
     if (this.samplePcm.has(s.id) || !fs.existsSync(s.url)) continue;
     try { this.samplePcm.set(s.id, await decode(s.url)); } catch { /* shown as missing */ }
@@ -69,8 +87,9 @@ P.prepareSamples = async function () {
   this.changed();
 };
 
-P.addSamples = async function (files, pad) {
+P.addSamples = async function (files, pad, names) {
   const audio = files.filter(f => audioExtensions.has(path.extname(f).slice(1).toLowerCase()));
+  const nameOf = (f: string) => names?.[files.indexOf(f)] ?? path.basename(f, path.extname(f));
   if (!audio.length) return;
   const added: Sample[] = [];
   const problems: string[] = [];
@@ -78,7 +97,7 @@ P.addSamples = async function (files, pad) {
     try {
       const d = await decode(f);
       if (d.seconds > MAX_SECONDS) { problems.push(L(`${path.basename(f)}（${Math.round(d.seconds)}秒：サンプラーは${MAX_SECONDS}秒までです。曲として追加してください）`, `${path.basename(f)} (${Math.round(d.seconds)} s: the sampler takes up to ${MAX_SECONDS} s; add it as a track)`)); continue; }
-      const s = Sampler.newSample(f, path.basename(f, path.extname(f)), (this.samples.length + added.length) % 12);
+      const s = Sampler.newSample(f, nameOf(f), (this.samples.length + added.length) % 12);
       this.samplePcm.set(s.id, d);
       added.push(s);
     } catch (e) { problems.push(`${path.basename(f)}（${(e as Error).message}）`); }
@@ -100,6 +119,21 @@ P.addSamples = async function (files, pad) {
   }
   if (problems.length) this.alertMessage = L(`サンプラーに入れられなかったファイル：\n${problems.join('\n')}`, `Not added to the sampler:\n${problems.join('\n')}`);
   this.changed();
+};
+
+P.addBuiltinSamples = async function (files, pad) {
+  const dir = builtinSampleDir();
+  const ok = files.filter(f => builtinByFile(f) && fs.existsSync(path.join(dir, f)));
+  if (!ok.length) { this.alertMessage = L('標準サンプルが見つかりません（DJAW を入れ直してください）', 'The built-in sounds are missing (reinstall DJAW)'); this.changed(); return; }
+  await this.addSamples(ok.map(f => path.join(dir, f)), pad, ok.map(f => builtinByFile(f)!.title()));
+};
+
+P.loadStandardKit = async function () {
+  const free = PADS - this.samples.length;
+  if (free <= 0) return;
+  // The kit's sounds not on a pad yet, in kit order.
+  const have = new Set(this.samples.map(s => path.basename(s.url)));
+  await this.addBuiltinSamples(standardKit.filter(f => !have.has(f)).slice(0, free));
 };
 
 P.chooseSamples = async function (pad) {

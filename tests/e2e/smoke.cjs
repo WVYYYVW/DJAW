@@ -198,6 +198,11 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
       return { samples: s.samples.length, hit: !!hit, loop: !!loop, duration: s.mixDuration };
     }, horn);
     check('sampler hit and loop', edit.samples === 1 && edit.hit && edit.loop, edit);
+    // DJAW's own sounds (assets/samples, unpacked from the app): one onto a free pad, decoded and playable.
+    await ev(() => window.djaw.addBuiltinSamples(['laser.wav', 'gabber-kick.wav']));
+    const builtin = await until(() => window.djaw.samples.length === 3 && window.djaw.samples.every(x => window.djaw.samplePcm.has(x.id)), 30000);
+    const kit = await ev(() => window.djaw.samples.map(x => ({ name: x.name, ok: window.djaw.samplePcm.has(x.id), seconds: window.djaw.samplePcm.get(x.id)?.seconds })));
+    check('built-in sampler sounds', builtin && kit.slice(1).every(k => k.ok && k.seconds > 0.3), kit);
     // An effect on the first track, so the FX tab and the overview have something to show.
     await ev(() => { const s = window.djaw; s.addFX(s.clips[0].id, 'lowPass', Math.round(s.clips[0].mixInBar) + 2, 4); });
     for (const tab of ['overview', 'mix', 'track', 'transition', 'cue', 'loop', 'fx', 'sampler', 'deck']) {
@@ -271,7 +276,7 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
     await until(() => window.djaw.clips.length === 3 && window.djaw.pending.length === 0, 60000);
     const after = await ev(() => JSON.stringify(window.djaw.clips.map(c => [c.title, Math.round(c.start * 1000), c.edits?.length ?? 0])));
     const samplerBack = await ev(() => [window.djaw.samples.length, window.djaw.sampleHits.length]);
-    check('save and reopen', saved && before === after && samplerBack[0] === 1 && samplerBack[1] === 1, { before, after, samplerBack });
+    check('save and reopen', saved && before === after && samplerBack[0] === 3 && samplerBack[1] === 1, { before, after, samplerBack });
 
     // Undo / redo keep the mix consistent.
     const undo = await ev(() => { const s = window.djaw; const n = s.clips.length; s.selectedClipID = s.clips[2].id; s.deleteSelected(); const m = s.clips.length; s.undo(); const k = s.clips.length; return [n, m, k]; });
