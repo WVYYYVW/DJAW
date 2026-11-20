@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { L } from '../../core/i18n';
 import { Snap, snapUnits, clipEnd } from '../../core/models';
 import { useStore, usePlayhead } from '../hooks';
-import { CloudChip } from './CloudSheet';
 import { store } from '../store/store';
 import { Fmt, Theme, clipColor } from '../format';
 import { Icon, IconName } from './Icons';
@@ -75,7 +74,7 @@ export function Toolbar() {
       <Toggle icon="browser" on={s.showBrowser} onClick={() => s.toggle('showBrowser')} title={L('ブラウザ（ミックス順・ライブラリ）の表示切替（Ctrl+Alt+B）', 'Show or hide the browser (Ctrl+Alt+B)')} />
       <div className="doc-title" title={s.documentPath ?? ''}>
         <span className="brand">DJAW</span>
-        <span className="doc-name">{s.documentTitle}</span>{s.isDirty && !s.isCloudDocument() ? <span className="edited" title={L('保存されていない変更があります', 'Unsaved changes')}>●</span> : null}<CloudChip />
+        <span className="doc-name">{s.documentTitle}</span>{s.isDirty ? <span className="edited" title={L('保存されていない変更があります', 'Unsaved changes')}>●</span> : null}
       </div>
       </div>
       <div className="transport">
@@ -93,7 +92,6 @@ export function Toolbar() {
       </span>}
       <div className="group">
         <Action icon="film" label={L('映像', 'Visuals')} title={L('映像プレビュー：書き出す映像を、再生に合わせてその場で確認（Ctrl+Alt+V）', 'Visuals preview: see the video visuals live with playback (Ctrl+Alt+V)')} onClick={() => { s.showVisualPreview = true; s.changed(); }} />
-        <Action icon="cloud" label={L('クラウド', 'Cloud')} title={L('クラウド（MEGA）：Windows と Mac でミックスを共有（Ctrl+Shift+O）', 'Cloud (MEGA): share mixes between Windows and Mac (Ctrl+Shift+O)')} onClick={() => { s.showCloud = true; s.changed(); }} />
         <Action icon="list" label={L('演奏手順', 'How to Play')} disabled={!s.clips.length} title={L('このセットを DJ 機材で実際に演奏する手順と、曲リスト（SoundCloud の概要用）（Ctrl+Shift+P）', 'Steps to play this set live on DJ gear, and the track list (for SoundCloud descriptions) (Ctrl+Shift+P)')} onClick={() => { s.showPerformanceGuide = true; s.changed(); }} />
         <Action icon="export" label={L('書き出し', 'Export')} primary disabled={!s.clips.length} title={L('ミックスを書き出し（Ctrl+E）', 'Export the mix (Ctrl+E)')} onClick={() => { s.showExport = true; s.changed(); }} />
       </div>

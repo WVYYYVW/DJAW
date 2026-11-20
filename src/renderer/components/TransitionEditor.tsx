@@ -1,11 +1,11 @@
 // Large editor to draw the fader / EQ / effect / stem moves of one transition by hand
 // (mac/DJAW/Views/TransitionEditorView.swift).
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { L } from '../../core/i18n';
 import {
   AutoPoint, AutoPt, Clip, Lane, LaneKind, Lanes, Shape, TransitionLanes, clipEnd, effectiveLanes, pt, transitionPresets,
 } from '../../core/models';
-import { useStore, usePlayhead } from '../hooks';
+import { useStore, usePlayhead, useSize } from '../hooks';
 import { store } from '../store/store';
 import { Fmt, clipColor } from '../format';
 import { showContextMenu } from './ContextMenu';
@@ -246,6 +246,15 @@ export function TransitionEditor({ id }: { id: string }) {
   const i = s.index(id);
   const [target, setTarget] = useState<Target>('mirror');
   const [page, setPage] = useState(0);
+  // The lanes grow to fill the editor when there is room (a tall or maximized panel), up to 3× their usual height.
+  const [lanesRef, lanesSize] = useSize<HTMLDivElement>();
+  const lanesEl = useRef<HTMLDivElement | null>(null);
+  const [overhead, setOverhead] = useState(60);
+  const baseHeight = (kind: string) => (kind === 'volume' ? 120 : page === 2 ? 64 : 84);
+  const laneScale = (ks: readonly string[]) => {
+    const sum = ks.reduce((a, k) => a + baseHeight(k), 0);
+    return sum > 0 && lanesSize.height > 0 ? Math.max(1, Math.min(3, (lanesSize.height - overhead) / sum)) : 1;
+  };
   const [sel, setSel] = useState<Sel | null>(null);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -256,12 +265,24 @@ export function TransitionEditor({ id }: { id: string }) {
     window.addEventListener('keydown', key, true);
     return () => window.removeEventListener('keydown', key, true);
   });
+  // What the lanes area holds besides the lanes themselves (ruler, stem status, gaps, padding), measured after drawing.
+  useLayoutEffect(() => {
+    const el = lanesEl.current;
+    if (!el || !el.lastElementChild) return;
+    let lanesSum = 0;
+    el.querySelectorAll<HTMLElement>('canvas.lane-canvas').forEach(c => { lanesSum += c.offsetHeight; });
+    const content = el.lastElementChild.getBoundingClientRect().bottom - el.getBoundingClientRect().top + el.scrollTop + 10;
+    const o = Math.ceil(content - lanesSum);
+    if (lanesSum > 0 && Math.abs(o - overhead) > 2) setOverhead(o);
+  });
   if (i == null || i === 0) return null;
   const prev = s.clips[i - 1], clip = s.clips[i];
   const lanes = effectiveLanes(clip);
   const totalBeats = Math.max(1, clip.transitionBars * 4);
   const range: [number, number] = [clip.start, Math.max(clip.start + 0.001, Math.min(clipEnd(prev, s.masterBPM), clipEnd(clip, s.masterBPM)))];
   const kinds = page === 1 ? Lane.effects : page === 2 ? Lane.stems : Lane.mixer;
+  const scale = laneScale(kinds);
+  const laneHeight = (kind: string) => Math.floor(baseHeight(kind) * scale);
   const colorA = clipColor(prev.colorIndex), colorB = clipColor(clip.colorIndex);
   const selPoint = sel ? Lanes.points(lanes, sel.kind, sel.incoming).find(p => p.id === sel.id) : null;
   function deleteSel() {
@@ -338,7 +359,7 @@ export function TransitionEditor({ id }: { id: string }) {
               </div>
             ) : <span className="caption">{L('◆を上下にドラッグで曲線を曲げる・空いた所をクリックで点を追加・点をドラッグで移動・ダブルクリックで削除／直線に戻す（Alt で細かく）', 'Drag ◆ to bend · click empty space to add a point · drag points to move · double-click to delete / straighten (Alt: fine)')}</span>}
           </div>
-          <div className="te-lanes">
+          <div className="te-lanes" ref={el => { lanesEl.current = el; lanesRef(el); }}>
             <div className="te-lane-row"><div className="te-lane-head" /><BarRuler totalBeats={totalBeats} range={range} /></div>
             {page === 2 && <StemStatus id={id} />}
             {kinds.map(kind => (
@@ -353,7 +374,7 @@ export function TransitionEditor({ id }: { id: string }) {
                     { label: L('この線をリセット', 'Reset this lane'), action: () => s.setLanes(id, (Lane.isEffect(kind) || Lane.isStem(kind)) ? Lanes.clear(lanes, kind) : Lanes.applyTemplate(lanes, 'linear', kind)) },
                   ])}>{L('形', 'Shape')} ▾</button>
                 </div>
-                <LaneCanvas clipID={id} kind={kind} lanes={lanes} totalBeats={totalBeats} colorOut={colorA} colorIn={colorB} target={target} sel={sel} setSel={setSel} range={range} height={kind === 'volume' ? 120 : page === 2 ? 64 : 84} />
+                <LaneCanvas clipID={id} kind={kind} lanes={lanes} totalBeats={totalBeats} colorOut={colorA} colorIn={colorB} target={target} sel={sel} setSel={setSel} range={range} height={laneHeight(kind)} />
               </div>
             ))}
           </div>

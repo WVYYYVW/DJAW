@@ -182,13 +182,36 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
       return { samples: s.samples.length, hit: !!hit, loop: !!loop, duration: s.mixDuration };
     }, horn);
     check('sampler hit and loop', edit.samples === 1 && edit.hit && edit.loop, edit);
-    for (const tab of ['mix', 'track', 'transition', 'cue', 'loop', 'fx', 'sampler', 'deck']) {
+    // An effect on the first track, so the FX tab and the overview have something to show.
+    await ev(() => { const s = window.djaw; s.addFX(s.clips[0].id, 'lowPass', Math.round(s.clips[0].mixInBar) + 2, 4); });
+    for (const tab of ['overview', 'mix', 'track', 'transition', 'cue', 'loop', 'fx', 'sampler', 'deck']) {
       await ev(([t, i]) => { const s = window.djaw; s.selectedClipID = s.clips[i].id; s.openPanel(t); }, [tab, tab === 'transition' ? 1 : 0]);
       await win.waitForTimeout(600);
       await shot('03-panel-' + tab);
     }
     const panelErrors = errors.length;
     check('panel tabs open without errors', panelErrors === 0, errors.slice(0, 5));
+    // The panel maximized (the arrangement hidden), the overview drawn, the tabs without sideways scrolling.
+    await ev(() => { window.djaw.openPanel('overview'); window.djaw.togglePanelMaximized(true); });
+    await win.waitForTimeout(800);
+    await shot('03-overview-maximized');
+    const big = await ev(() => {
+      const arr = document.querySelector('.arrangement');
+      const c = document.querySelector('.overview-canvas canvas');
+      let ink = 0;
+      if (c && c.width) { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; for (let k = 3; k < d.length; k += 64) if (d[k] > 0) ink++; }
+      return { hidden: !!arr && getComputedStyle(arr).display === 'none', panel: Math.round(document.querySelector('.detail-panel').getBoundingClientRect().height), window: innerHeight, ink };
+    });
+    const sideways = [];
+    for (const tab of ['track', 'mix', 'fx']) {
+      await ev(t => window.djaw.openPanel(t), tab);
+      await win.waitForTimeout(400);
+      if (await ev(() => { const b = document.querySelector('.panel-body'); return b.scrollWidth > b.clientWidth + 1; })) sideways.push(tab);
+    }
+    await ev(() => window.djaw.togglePanelMaximized(false));
+    await win.waitForTimeout(400);
+    const back = await ev(() => getComputedStyle(document.querySelector('.arrangement')).display !== 'none' && document.querySelector('.timeline-area').clientHeight > 100);
+    check('panel maximize, overview, no sideways scrolling', big.hidden && big.panel > big.window * 0.8 && big.ink > 200 && !sideways.length && back && errors.length === panelErrors, { ...big, sideways, back });
 
     // Export a WAV (the save dialog answers with a temp path).
     const wav = path.join(work, 'export.wav');

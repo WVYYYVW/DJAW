@@ -452,27 +452,7 @@ select { height: 24px; border-radius: 5px; background: var(--raised); border: 1p
 .music-foot .small { font-size: 10px; }
 
 /* Cloud (MEGA) */
-.cloud-sheet { width: min(720px, 94vw); max-height: 88vh; display: flex; flex-direction: column; }
-.cloud-root { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
-.cloud-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: 11px; }
-.cloud-sheet .pill, .cloud-item .pill { margin-left: 6px; font-size: 9px; padding: 1px 6px; border-radius: 8px; background: rgba(255,255,255,0.12); }
 .warn-text { color: #f0a63a; }
-.cloud-list { flex: 1; min-height: 120px; overflow-y: auto; margin: 10px 0; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; }
-.cloud-list-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.08); position: sticky; top: 0; background: var(--panel, #1b1c20); }
-.cloud-empty { padding: 16px; }
-.cloud-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); }
-.cloud-item:hover { background: rgba(255,255,255,0.04); }
-.cloud-item.open { background: rgba(61,139,253,0.12); }
-.cloud-item-main { flex: 1; min-width: 0; }
-.cloud-item-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cloud-sheet .small, .cloud-item .small { font-size: 11px; }
-.cloud-bar { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; padding: 5px 12px; font-size: 12px; background: rgba(61,139,253,0.1); border-bottom: 1px solid rgba(61,139,253,0.25); }
-.cloud-msg { display: inline-flex; align-items: center; gap: 8px; }
-.cloud-msg.warn { color: #f0a63a; }
-.cloud-msg.ok { color: #3fb950; }
-.cloud-msg progress { width: 90px; }
-.cloud-chip { margin-left: 8px; font-size: 10px; padding: 1px 7px; border-radius: 9px; border: 1px solid rgba(255,255,255,0.18); background: transparent; color: inherit; opacity: 0.85; cursor: pointer; }
-.cloud-chip.warn { border-color: #f0a63a; color: #f0a63a; }
 
 .gpu-status { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font-size: 11px; padding: 6px 8px; border-radius: 6px; background: rgba(255,255,255,0.04); }
 .gpu-status .gpu-title { font-weight: 600; }
@@ -593,9 +573,12 @@ select { height: 24px; border-radius: 5px; background: var(--raised); border: 1p
 .panel-body > * { flex: 1; min-width: 0; }
 .panel-empty { display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 13px; padding: 20px; text-align: center; }
 /* A row of cards that scroll sideways, each scrolling on its own (like Ableton's device chain). */
-.panel-columns { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; overflow-x: auto; overflow-y: hidden; height: 100%; }
-.panel-columns > * { flex: none; width: 310px; max-height: 100%; overflow-y: auto; }
-.panel-columns > .iheader { width: 260px; background: rgba(255, 255, 255, 0.035); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+/* The sections of a tab flow into as many columns as fit (no sideways scrolling), each column packed from the top;
+   the panel scrolls down when they do not fit its height. */
+.panel-body:has(> .panel-columns) { display: block; overflow-x: hidden; overflow-y: auto; }
+.panel-columns { columns: 270px; column-gap: 10px; padding: 10px 12px 0; }
+.panel-columns > * { break-inside: avoid; margin: 0 0 10px; min-width: 0; }
+.panel-columns > .iheader { background: rgba(255, 255, 255, 0.035); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
 .panel-split { display: flex; height: 100%; }
 .panel-props { flex: none; width: 330px; overflow-y: auto; padding: 10px 10px 16px 12px; display: flex; flex-direction: column; gap: 10px; border-right: 1px solid var(--line); }
 .panel-editor { flex: 1; min-width: 0; display: flex; }
@@ -682,3 +665,27 @@ select:not([multiple]) { -webkit-appearance: none; appearance: none; box-sizing:
   background-repeat: no-repeat !important; background-position: right 7px center !important; }
 select option { background: #26282d; color: var(--text); }
 .transport .tselect { height: 24px; font-size: 12px; background-color: rgba(255, 255, 255, 0.04); border: 1px solid var(--line2); }
+
+/* The arrangement (bar + timeline) as one column, so it can be hidden while the detail panel is maximized. */
+.arrangement { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.arrangement.hidden { display: none; }
+.detail-panel.maximized { flex: 1; min-height: 0; border-top: none; }
+.panel-max { gap: 5px; color: var(--dim); }
+.panel-max.on { color: #a9cbff; background: var(--accent-soft); }
+
+/* Overview tab: the whole mix with its automation and effects. */
+.overview { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.overview-bar { display: flex; align-items: center; gap: 12px; padding: 6px 12px; border-bottom: 1px solid var(--line); font-size: 11.5px; flex-wrap: wrap; }
+.overview-bar .legend-item { display: inline-flex; align-items: center; gap: 5px; color: rgba(236,236,240,0.8); white-space: nowrap; }
+.overview-bar .sw { width: 12px; height: 9px; border-radius: 2px; display: inline-block; }
+.overview-bar .fxsw { background: linear-gradient(90deg, hsl(281,72%,60%), hsl(209,72%,60%), hsl(43,72%,60%)); }
+.overview-bar .line { width: 14px; height: 2px; background: #fff; display: inline-block; }
+.overview-bar .dim { font-size: 11px; }
+.overview-canvas { flex: 1; min-height: 0; position: relative; overflow: hidden; cursor: crosshair; }
+.overview-canvas canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.overview-playhead { position: absolute; top: 0; width: 1.5px; background: #ff5a4f; pointer-events: none; }
+
+/* FX tab: the track's waveform and one lane per effect, across the whole panel. */
+.panel-columns > .span-all { column-span: all; }
+.fx-wave { position: relative; width: 100%; background: rgba(255,255,255,0.025); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; touch-action: none; }
+.fx-wave canvas { display: block; width: 100%; }

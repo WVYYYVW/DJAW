@@ -8,7 +8,6 @@ import './store/simplify';
 import './store/profiles';
 import './store/video';
 import './store/stems';
-import './store/cloud';
 import './store/libraryFolders';
 import './store/sampler';
 import './store/loops';

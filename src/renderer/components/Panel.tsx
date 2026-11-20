@@ -19,8 +19,10 @@ import { CueEditor } from './CueEditor';
 import { LoopEditor } from './LoopEditor';
 import { SamplerPanel } from './SamplerPanel';
 import { DeckPanel } from './DeckPanel';
+import { OverviewTab } from './Overview';
 
 const tabs: { id: PanelTab; icon: IconName; title: () => string; key?: string }[] = [
+  { id: 'overview', icon: 'wave', title: () => L('全体', 'Overview'), key: 'Ctrl+Alt+O' },
   { id: 'mix', icon: 'mix', title: () => L('ミックス', 'Mix') },
   { id: 'track', icon: 'track', title: () => L('曲', 'Track') },
   { id: 'transition', icon: 'transition', title: () => L('つなぎ', 'Transition'), key: 'Ctrl+T' },
@@ -136,7 +138,7 @@ function DeckTabPanel() {
   );
 }
 
-export function DetailPanel({ maxHeight }: { maxHeight: number }) {
+export function DetailPanel({ maxHeight, maximized = false }: { maxHeight: number; maximized?: boolean }) {
   const s = useStore();
   // Canvases inside size themselves when drawn: draw again when the window changes size.
   const [, redraw] = useReducer((n: number) => n + 1, 0);
@@ -150,6 +152,7 @@ export function DetailPanel({ maxHeight }: { maxHeight: number }) {
   };
   let body: React.ReactNode;
   switch (s.panelTab) {
+    case 'overview': body = <OverviewTab />; break;
     case 'mix': body = <MixInspector />; break;
     case 'track': body = <TrackTab />; break;
     case 'transition': body = <TransitionTab />; break;
@@ -168,9 +171,9 @@ export function DetailPanel({ maxHeight }: { maxHeight: number }) {
     return null;
   };
   return (
-    <div className="detail-panel" style={{ height }}>
-      <div className="panel-resize" onPointerDown={resize} title={L('ドラッグで高さを変更', 'Drag to resize')} />
-      <div className="panel-tabs">
+    <div className={'detail-panel' + (maximized ? ' maximized' : '')} style={maximized ? undefined : { height }}>
+      {!maximized && <div className="panel-resize" onPointerDown={resize} onDoubleClick={() => s.togglePanelMaximized(true)} title={L('ドラッグで高さを変更（ダブルクリックで最大化）', 'Drag to resize (double-click to maximize)')} />}
+      <div className="panel-tabs" onDoubleClick={e => { if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('spacer')) s.togglePanelMaximized(); }}>
         {tabs.map(t => (
           <button key={t.id} className={'panel-tab' + (s.panelTab === t.id ? ' on' : '')} onClick={() => s.openPanel(t.id)} title={t.title() + (t.key ? `（${t.key}）` : '')}>
             <Icon name={t.icon} size={14} />{t.title()}{count(t.id) ? <span className="tab-count">{count(t.id)}</span> : null}
@@ -178,7 +181,11 @@ export function DetailPanel({ maxHeight }: { maxHeight: number }) {
         ))}
         <div className="spacer" />
         <ClipBadge />
-        <button className="tbtn icon small" title={L('パネルを隠す（Ctrl+Alt+I）', 'Hide the panel (Ctrl+Alt+I)')} onClick={() => s.toggle('showPanel')}><Icon name="chevronDown" size={14} /></button>
+        <button className={'tbtn small panel-max' + (maximized ? ' on' : '')} onClick={() => s.togglePanelMaximized()}
+          title={maximized ? L('元の大きさに戻す（Ctrl+Alt+F／タブの空いた所をダブルクリック）', 'Restore (Ctrl+Alt+F / double-click the tab bar)') : L('大きく表示：アレンジを隠してパネルをウィンドウいっぱいに（Ctrl+Alt+F／タブの空いた所をダブルクリック）', 'Maximize: fill the window with the panel, hiding the arrangement (Ctrl+Alt+F / double-click the tab bar)')}>
+          <Icon name={maximized ? 'restore' : 'maximize'} size={14} />{maximized ? L('元に戻す', 'Restore') : L('大きく表示', 'Maximize')}
+        </button>
+        {!maximized && <button className="tbtn icon small" title={L('パネルを隠す（Ctrl+Alt+I）', 'Hide the panel (Ctrl+Alt+I)')} onClick={() => s.toggle('showPanel')}><Icon name="chevronDown" size={14} /></button>}
       </div>
       <div className="panel-body">{body}</div>
     </div>

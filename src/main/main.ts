@@ -78,7 +78,6 @@ function buildMenu() {
       submenu: [
         item(L('新規ミックス', 'New Mix'), 'new', 'CmdOrCtrl+N'),
         item(L('開く…', 'Open…'), 'open', 'CmdOrCtrl+O'),
-        item(L('クラウドのミックス（MEGA）…', 'Cloud Mixes (MEGA)…'), 'cloud', 'CmdOrCtrl+Shift+O'),
         {
           label: L('最近使ったミックスを開く', 'Open Recent'),
           submenu: recent.length ? recent.map(p => item(path.basename(p, '.djaw'), 'openRecent', undefined, p)) : [{ label: L('なし', 'None'), enabled: false }],
@@ -90,7 +89,6 @@ function buildMenu() {
         sep,
         item(L('保存', 'Save'), 'save', 'CmdOrCtrl+S'),
         item(L('別名で保存…', 'Save As…'), 'saveAs', 'CmdOrCtrl+Shift+S'),
-        item(L('クラウド（MEGA）に保存…', 'Save to Cloud (MEGA)…'), 'saveToCloud', 'CmdOrCtrl+Alt+S'),
         item(L('曲の音声をファイルに含めて保存（切替）', 'Include Audio When Saving (toggle)'), 'toggleEmbed'),
         sep,
         item(L('書き出し…', 'Export…'), 'export', 'CmdOrCtrl+E'),
@@ -153,6 +151,8 @@ function buildMenu() {
         sep,
         item(L('ブラウザ（切替）', 'Browser (toggle)'), 'toggleBrowser', 'CmdOrCtrl+Alt+B'),
         item(L('詳細パネル（切替）', 'Detail Panel (toggle)'), 'toggleInspector', 'CmdOrCtrl+Alt+I'),
+        item(L('詳細パネルを大きく表示（切替）', 'Maximize Detail Panel (toggle)'), 'maximizePanel', 'CmdOrCtrl+Alt+F'),
+        item(L('全体ビュー（EQ・フェーダー・FX・つなぎを一望）', 'Overview (EQ, faders, FX and transitions at a glance)'), 'overview', 'CmdOrCtrl+Alt+O'),
         item(L('デッキ', 'Decks'), 'toggleDecks', 'CmdOrCtrl+Shift+D'),
         item(L('ミキサー（切替）', 'Mixer (toggle)'), 'toggleMixer', 'CmdOrCtrl+Shift+X'),
         item(L('ミックス波形（切替）', 'Mix Waveform (toggle)'), 'toggleMixWaveform'),

@@ -27,7 +27,7 @@ import { dataDir } from '../services/env';
 import { Player } from '../services/player';
 import { Jobs } from '../services/jobs';
 import { MixPeaks } from '../../core/render/offline';
-import { resolveRelative } from '../../core/cloud';
+import { resolveRelative } from '../../core/paths';
 import { MixWaveformChange, MixWaveformInputs, mixWaveformChange, provisionalPeaks, splicePeaks } from '../../core/render/mixWaveform';
 import type { MixMessage } from '../../workers/render.worker';
 import { Fmt } from '../format';
@@ -45,7 +45,7 @@ export interface PendingTrack { id: string; url: string; name: string; stage?: s
 export type ExportPhase = { kind: 'idle' } | { kind: 'rendering'; progress: number } | { kind: 'done'; path: string } | { kind: 'failed'; message: string };
 export type InspectorTab = 'transition' | 'deck' | 'fx' | 'mixer';
 /** Tabs of the detail panel under the arrangement (Ableton's detail view). */
-export type PanelTab = 'mix' | 'track' | 'transition' | 'cue' | 'loop' | 'fx' | 'sampler' | 'deck';
+export type PanelTab = 'overview' | 'mix' | 'track' | 'transition' | 'cue' | 'loop' | 'fx' | 'sampler' | 'deck';
 export type AddDestination = { kind: 'library'; folder?: string | null } | { kind: 'mix'; index: number | null };
 
 export interface Snapshot { clips: Clip[]; library: Clip[]; masterBPM: number; gridOffset: number; libraryFolders?: LibraryFolder[]; samples?: Sample[]; sampleHits?: SampleHit[] }
@@ -130,6 +130,8 @@ export class MixStore {
   showInspector = true;
   /** The detail panel under the arrangement, its tab and height; the browser on the left. */
   showPanel = true;
+  /** The detail panel fills the window (the arrangement is hidden meanwhile); not kept between launches. */
+  panelMaximized = false;
   panelTab: PanelTab = 'transition';
   panelHeight = 330;
   showBrowser = true;
@@ -1450,6 +1452,13 @@ export class MixStore {
   zoomToFit() { this.fitRequest++; this.changed(); }
   requestScroll(t: number) { this.scrollRequest = { id: (this.scrollRequest?.id ?? 0) + 1, time: t }; this.changed(); }
   setSnap(s: SnapUnit) { this.snap = s; this.changed(); }
+  /** The detail panel over the whole arrangement area, or back to its height. */
+  togglePanelMaximized(on = !this.panelMaximized) {
+    this.panelMaximized = on;
+    if (on && !this.showPanel) { this.showPanel = true; this.saveSettings(); }
+    this.changed();
+  }
+
   toggle(key: 'showPanel' | 'showBrowser' | 'showInspector' | 'showDecks' | 'showMixer' | 'followPlayhead' | 'showMixWaveform' | 'exportNormalize' | 'embedMedia' | 'openCueEditorOnAdd') {
     (this as Record<string, unknown>)[key] = !(this as Record<string, unknown>)[key];
     this.saveSettings();
@@ -1630,7 +1639,6 @@ export class MixStore {
     this.macAnalyses = null; this.macProfiles = null;
     this.isDirty = false;
     this.removeAutosave();
-    this.cloudDidOpen();
     this.changed();
     this.emitClock();
   }
@@ -1727,9 +1735,7 @@ export class MixStore {
       }
       this.isDirty = asRecovery;
       if (!asRecovery) this.noteRecent(file);
-      this.cloudDidOpen();
-      // In the cloud folder, missing tracks are usually still on their way (shown in the cloud bar instead).
-      if (this.missingFiles.size && !this.isCloudDocument()) this.alertMessage = L(`${this.missingFiles.size}個の音声ファイルが見つかりません。移動または削除された可能性があります。`, `${this.missingFiles.size} audio file(s) could not be found. They may have been moved or deleted.`);
+      if (this.missingFiles.size) this.alertMessage = L(`${this.missingFiles.size}個の音声ファイルが見つかりません。移動または削除された可能性があります。`, `${this.missingFiles.size} audio file(s) could not be found. They may have been moved or deleted.`);
       this.changed();
       this.emitClock();
       await this.loadAnalyses();
@@ -1874,8 +1880,6 @@ export class MixStore {
       if (!r) return false;
       target = r;
     }
-    // In the cloud folder: tracks copied once into it, the mix itself without audio (see store/cloud.ts).
-    if (this.isCloudPath(target!)) return this.saveCloud(target!, false);
     try {
       if (this.embedMedia) {
         const ids = new Map<string, string>();
@@ -1918,8 +1922,6 @@ export class MixStore {
 
   private writeAutosave() {
     if (!this.isDirty || (!this.clips.length && !this.library.length)) return;
-    // A mix in the cloud folder is saved there by itself (so the other computer gets it).
-    if (this.cloudAutoSave && this.isCloudDocument()) void this.saveCloud(this.documentPath!, true);
     try {
       fs.mkdirSync(path.dirname(MixStore.autosavePath), { recursive: true });
       fs.writeFileSync(MixStore.autosavePath, encodeProject(this.makeProjectFile(this.documentPath, this.documentPath)));

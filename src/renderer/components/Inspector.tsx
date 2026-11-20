@@ -20,6 +20,7 @@ import { Fmt, clipColor } from '../format';
 import { NumberField } from './Toolbar';
 import { ArtworkThumb } from './TrackProfileSheet';
 import { showContextMenu } from './ContextMenu';
+import { FXWave } from './FXWave';
 
 export function Section({ title, footer, children }: { title?: React.ReactNode; footer?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -359,6 +360,7 @@ export function FXTab({ clip }: { clip: Clip }) {
   const s = useStore();
   return (
     <>
+      <div className="span-all"><FXWave clip={clip} /></div>
       <Section title={L('エフェクトを追加', 'Add an Effect')} footer={L('再生位置に置きます（再生位置がこの曲の外なら、出口の手前）。タイムラインの曲を右クリック ▸「ここにエフェクト」でも追加できます。', 'Placed at the playhead (or before the mix-out when the playhead is outside this track). You can also right-click the track ▸ “Add Effect Here”.')}>
         <div className="fx-grid">
           {fxKinds.map(k => (

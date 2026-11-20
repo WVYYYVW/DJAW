@@ -19,7 +19,6 @@ import { AutoArrangeSheet } from './components/AutoArrangeSheet';
 import { PerformanceGuideSheet } from './components/PerformanceGuideSheet';
 import { VisualPreviewWindow } from './components/VisualPreview';
 import { MusicLibrarySheet } from './components/MusicLibrarySheet';
-import { CloudBar, CloudSheet } from './components/CloudSheet';
 import { TrackProfileSheet } from './components/TrackProfileSheet';
 import { padKeys } from '../core/sampler';
 
@@ -79,8 +78,6 @@ export function App() {
         case 'musicLibrary': s.showMusicLibrary = true; s.changed(); break;
         case 'save': await s.save(false); break;
         case 'saveAs': await s.save(true); break;
-        case 'cloud': s.showCloud = true; s.changed(); break;
-        case 'saveToCloud': await s.saveToCloudAs(); break;
         case 'toggleEmbed': s.toggle('embedMedia'); break;
         case 'export': if (s.clips.length) { s.showExport = true; s.changed(); } break;
         case 'copyTrackList': s.copyTrackList(); break;
@@ -111,6 +108,9 @@ export function App() {
         case 'toggleDecks': if (s.showPanel && s.panelTab === 'deck') s.toggle('showPanel'); else s.openPanel('deck'); break;
         case 'loopEditor': if (sel && s.index(sel) != null) s.openPanel('loop'); break;
         case 'panelTab': s.openPanel(arg as never); break;
+        case 'maximizePanel': s.togglePanelMaximized(); break;
+        // The overview is best seen big: it opens maximized (the same command goes back).
+        case 'overview': if (s.panelTab === 'overview' && s.panelMaximized && s.showPanel) s.togglePanelMaximized(false); else { s.openPanel('overview'); s.togglePanelMaximized(true); } break;
         case 'toggleMixer': s.toggle('showMixer'); break;
         case 'toggleMixWaveform': s.toggle('showMixWaveform'); break;
         case 'toggleSampler': if (s.showPanel && s.panelTab === 'sampler') s.toggle('showPanel'); else s.openPanel('sampler'); break;
@@ -143,7 +143,7 @@ export function App() {
       if (e.defaultPrevented || isTextField(e.target)) return;
       if (s.showExport || s.alertMessage) return;
       // Sheets take the keys while open.
-      if (s.showShortcuts || s.showAutoArrange || s.showPerformanceGuide || s.profileEditorTarget || s.showMusicLibrary || s.showCloud) return;
+      if (s.showShortcuts || s.showAutoArrange || s.showPerformanceGuide || s.profileEditorTarget || s.showMusicLibrary) return;
       // Space in the Transition tab plays the transition (from a little before it, unless already near).
       if (e.key === ' ' && s.focusArea === 'panel' && s.showPanel && s.panelTab === 'transition' && !s.isPlaying && s.selectedClipID && (s.index(s.selectedClipID) ?? 0) > 0) {
         const c = s.clip(s.selectedClipID)!;
@@ -217,18 +217,19 @@ export function App() {
   return (
     <div className="app" key={lang}>
       <Toolbar />
-      <CloudBar />
       <div className="body">
         {s.showBrowser && <Sidebar />}
         <div className="main" ref={mainRef}>
-          <ArrangementBar />
-          <div className="timeline-area"><Timeline /></div>
-          {s.showPanel && mainSize.height > 0 && <DetailPanel maxHeight={Math.max(170, Math.min(mainSize.height - 280, mainSize.height * 0.58))} />}
+          {/* While the panel is maximized the arrangement stays mounted (its scroll and zoom are kept), only hidden. */}
+          <div className={'arrangement' + (s.showPanel && s.panelMaximized ? ' hidden' : '')}>
+            <ArrangementBar />
+            <div className="timeline-area"><Timeline /></div>
+          </div>
+          {s.showPanel && mainSize.height > 0 && <DetailPanel maximized={s.panelMaximized} maxHeight={Math.max(170, Math.min(mainSize.height - 280, mainSize.height * 0.58))} />}
         </div>
       </div>
       {s.showAutoArrange && <AutoArrangeSheet />}
       {s.showMusicLibrary && <MusicLibrarySheet />}
-      {s.showCloud && <CloudSheet />}
       {s.showExport && <ExportSheet />}
       {s.showPerformanceGuide && <PerformanceGuideSheet />}
       <VisualPreviewWindow />
