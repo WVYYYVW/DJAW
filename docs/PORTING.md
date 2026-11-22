@@ -212,4 +212,4 @@ JSON                  ProjectFile（キーはソート、日付は ISO8601）
 - **多言語**：`L(ja, en)` の英語を鍵にした表（`src/core/locales/<lang>.json`）。英語がテンプレート文字列の呼び出しには、組み立て時に `scripts/i18n.mjs` が鍵と値を足す。
   自動ミックスのメモのように保存される文は `captureLanguages()` で全言語の印を残し、表示時に `localize()` で今の言語にする。
   鍵の抽出は `node scripts/i18n.mjs extract`、訳の結合は `node scripts/i18n-merge.mjs`（`_parts/c<N>_*.json`、200 個ずつ）。
-- **保存サイズ**：埋め込む非圧縮の音声（WAV・AIFF）は FLAC（`core/flac.ts`、固定予測＋ライス符号、ビット単位で元と一致）にして入れる。MP3 などはそのまま。
+- **保存サイズ**：埋め込む非圧縮の音声（WAV）は FLAC（`core/flac.ts`、固定予測＋ライス符号、ビット単位で元と一致）にして入れる。MP3 などはそのまま。

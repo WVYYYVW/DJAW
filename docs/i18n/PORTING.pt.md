@@ -214,4 +214,4 @@ Em `~/Downloads` do Mac do usuário (peça uma cópia se precisar):
 - **Idiomas**: tabelas com o texto em inglês de `L(ja, en)` como chave (`src/core/locales/<lang>.json`). Nas chamadas cujo inglês é um template, `scripts/i18n.mjs` acrescenta a chave e os valores na compilação.
   Textos salvos, como as notas da mixagem automática, são criados com `captureLanguages()`, que guarda marcadores para todos os idiomas, e `localize()` os mostra no idioma atual.
   Extrair chaves: `node scripts/i18n.mjs extract`; juntar traduções: `node scripts/i18n-merge.mjs` (`_parts/c<N>_*.json`, 200 por parte).
-- **Tamanho dos arquivos**: o áudio embutido sem compressão (WAV, AIFF) é guardado em FLAC (`core/flac.ts`, preditores fixos + codificação Rice, idêntico bit a bit ao original). MP3 e similares ficam como estão.
+- **Tamanho dos arquivos**: o áudio embutido sem compressão (WAV) é guardado em FLAC (`core/flac.ts`, preditores fixos + codificação Rice, idêntico bit a bit ao original). MP3 e similares ficam como estão.

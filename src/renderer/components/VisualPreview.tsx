@@ -25,6 +25,14 @@ export function toggleFullScreen(win: Window) {
   else void (d.getElementById('djaw-visuals-root') ?? d.documentElement).requestFullscreen().catch(() => {});
 }
 
+/**
+ * Runs `f` on the preview window unless it is closed or closing: a window that has gone away throws ("illegal
+ * access") on any use, and React's clean-ups can run just after it went.
+ */
+function onWindow(win: Window, f: () => void) {
+  try { if (!win.closed) f(); } catch { /* the window has gone */ }
+}
+
 function Preview({ win }: { win: Window }) {
   const s = useStore();
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -38,7 +46,7 @@ function Preview({ win }: { win: Window }) {
     let idle = 0;
     const moved = () => { d.body.style.cursor = ''; win.clearTimeout(idle); if (fullRef.current) idle = win.setTimeout(() => { d.body.style.cursor = 'none'; }, 2000); };
     d.addEventListener('mousemove', moved);
-    return () => { d.removeEventListener('fullscreenchange', change); d.removeEventListener('mousemove', moved); win.clearTimeout(idle); };
+    return () => onWindow(win, () => { d.removeEventListener('fullscreenchange', change); d.removeEventListener('mousemove', moved); win.clearTimeout(idle); });
   }, [win]);
   useEffect(() => {
     const live = new LiveFeatures();
@@ -46,6 +54,7 @@ function Preview({ win }: { win: Window }) {
     void s.player.setTap(true);
     let painter: VisualPainter | null = null, key = '', raf = 0, lastDraw = 0;
     const draw = (now: number) => {
+      if (win.closed) return;
       raf = win.requestAnimationFrame(draw);
       if (now - lastDraw < 1000 / 31) return;
       lastDraw = now;
@@ -70,7 +79,7 @@ function Preview({ win }: { win: Window }) {
     };
     raf = win.requestAnimationFrame(draw);
     return () => {
-      win.cancelAnimationFrame(raf);
+      onWindow(win, () => win.cancelAnimationFrame(raf));
       void s.player.setTap(false);
       s.player.onTap = undefined;
     };
@@ -122,9 +131,10 @@ export function VisualPreviewWindow() {
     w.addEventListener('beforeunload', closed);
     setWin(w);
     return () => {
-      w.removeEventListener('beforeunload', closed);
+      onWindow(w, () => w.removeEventListener('beforeunload', closed));
       setWin(null);
-      if (!w.closed) w.close();
+      // Closed after React has taken the picture out of it (the clean-ups above still use the window).
+      setTimeout(() => { if (!store.showVisualPreview) onWindow(w, () => w.close()); }, 0);
     };
   }, [s.showVisualPreview]);
   if (!win || !s.showVisualPreview) return null;

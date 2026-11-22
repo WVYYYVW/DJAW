@@ -54,6 +54,8 @@ const files = [
 writeWav(files[0], 44100, 60, 128, track(220));
 writeWav(files[1], 44100, 60, 132, track(196));
 writeWav(files[2], 48000, 60, 126, track(247));
+const delta = path.join(work, 'E2E Delta 130.wav');
+writeWav(delta, 44100, 60, 130, track(165));
 const horn = path.join(work, 'E2E Horn.wav');
 writeWav(horn, 44100, 0.6, 120, t => Math.sin(2 * Math.PI * 440 * t) * Math.exp(-t * 4) * 0.8);
 
@@ -92,11 +94,28 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
   // The app's own output (the main process and the analysis processes write there).
   for (const [name, st] of [['stdout', app.process().stdout], ['stderr', app.process().stderr]]) st?.on('data', d => String(d).split('\n').filter(Boolean).forEach(l => { if (!/dbus\/bus\.cc/.test(l)) console.log(`[app ${name}]`, l); }));
   const win = await app.firstWindow();
-  win.on('pageerror', e => { errors.push('pageerror: ' + e.message); console.log('[pageerror]', e.stack); });
+  win.on('pageerror', e => {
+    // Closing the video preview window (a window.open child) sometimes makes V8 report a bare "illegal access" (no
+    // name, no stack) outside the app's own script world: the window's own error / unhandledrejection listeners never
+    // see it, and nothing in the app is affected. Logged, not counted.
+    if (e.message === 'illegal access' && !e.name && !e.stack) { console.log('[pageerror, ignored]', e.message); return; }
+    errors.push('pageerror: ' + e.message); console.log('[pageerror]', e.name, e.message, e.stack);
+  });
   win.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') { const t = m.text(); console.log(`[${m.type()}]`, t); if (m.type() === 'error') errors.push(t); } });
   const ev = (f, a) => win.evaluate(f, a);
   const until = async (fn, ms, arg) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await win.evaluate(fn, arg).catch(() => false)) return true; await win.waitForTimeout(500); } return false; };
   const shot = name => win.screenshot({ path: path.join(out, name + '.png') }).catch(e => console.log('screenshot failed', e.message));
+  // Plays (muted) `secs` seconds from timeline time t and returns the RMS of what came out.
+  const measure = (t, secs = 1.5) => win.evaluate(async ([t, secs]) => {
+    const s = window.djaw;
+    let sum = 0, count = 0;
+    s.player.onTap = mono => { for (let i = 0; i < mono.length; i += 4) { sum += mono[i] * mono[i]; count++; } };
+    await s.player.setTap(true);
+    s.seek(t); await s.play();
+    await new Promise(r => setTimeout(r, secs * 1000));
+    const playing = s.isPlaying; s.pause(); await s.player.setTap(false);
+    return { playing, rms: Math.sqrt(sum / Math.max(1, count)) };
+  }, [t, secs]);
   const setSize = (w, h) => app.evaluate(({ BrowserWindow }, [w, h]) => { const b = BrowserWindow.getAllWindows()[0]; b.setContentSize(w, h); }, [w, h]);
 
   try {
@@ -198,6 +217,45 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
       return { samples: s.samples.length, hit: !!hit, loop: !!loop, duration: s.mixDuration };
     }, horn);
     check('sampler hit and loop', edit.samples === 1 && edit.hit && edit.loop, edit);
+
+    // Tempo change that starts after the transition (vs. with it): the ramp starts transitionBars bars later.
+    const tempo = await ev(() => {
+      const s = window.djaw, c = s.clips[2];
+      s.setTransitionLength(c.id, 8);
+      const rampStart = () => { const p = s.tempoMap.points; const i = p.findIndex((x, k) => k + 1 < p.length && Math.abs(p[k + 1].bpm - x.bpm) > 1e-6); return i < 0 ? null : p[i].t; };
+      s.setTempoChange(c.id, true);
+      const after = rampStart(), start = s.clip(c.id).tempoStart, bars = s.clip(c.id).tempoBars, tb = s.clip(c.id).transitionBars, cut = /cut|echo|brake|spin/i.test(s.clip(c.id).transition);
+      s.setTempoStart(c.id, null);
+      const withIt = rampStart();
+      s.setTempoStart(c.id, 'afterTransition');
+      return { start, bars, transitionBars: tb, cut, after, withIt, master: s.masterBPM, lastBPM: s.tempoMap.bpm(s.mixDuration - 1), own: c.bpm };
+    });
+    const expectGap = tempo.cut ? 0 : tempo.transitionBars * 240 / tempo.master;
+    check('tempo change starts after the transition', tempo.start === 'afterTransition' && tempo.after != null && tempo.withIt != null
+      && Math.abs((tempo.after - tempo.withIt) - expectGap) < 0.05 && Math.abs(tempo.lastBPM - tempo.own) < 0.05, { ...tempo, expectGap });
+
+    // A layered track (deck C) on the second mix track: it is heard on top of it.
+    await ev(f => window.djaw.addFiles([f], { kind: 'library' }), delta);
+    await until(() => window.djaw.pending.length === 0 && window.djaw.library.some(t => t.title === 'E2E Delta 130'), 120000);
+    const layer = await ev(() => {
+      const s = window.djaw, host = s.clips[1];
+      const track = s.library.find(t => t.title === 'E2E Delta 130') ?? s.clips.find(t => t.title === 'E2E Delta 130');
+      const id = track ? s.addLayer(host.id, track.id) : null;
+      const l = id ? s.layers.find(x => x.id === id) : null;
+      // Timeline time of the host's bar layerBar + 2 (the layer has faded in by then).
+      let t = null;
+      if (l) for (let x = host.start; x < host.start + 400; x += 0.02) { const b = s.sourceBar(host.id, x); if (b != null && b >= l.layerBar + 2) { t = x; break; } }
+      return { id, deck: id ? s.layerDeck(id) : null, layers: s.layers.length, t, duration: s.mixDuration };
+    });
+    let layerHeard = null;
+    if (layer.id && layer.t != null) {
+      const withLayer = await measure(layer.t);
+      await ev(() => window.djaw.undo());
+      const without = await measure(layer.t);
+      await ev(() => window.djaw.redo());
+      layerHeard = { with: +withLayer.rms.toFixed(4), without: +without.rms.toFixed(4), layersAfterRedo: await ev(() => window.djaw.layers.length) };
+    }
+    check('layered track plays on deck C', layer.id && layer.deck === 2 && layerHeard && layerHeard.with > layerHeard.without * 1.1 && layerHeard.layersAfterRedo === 1, { ...layer, ...layerHeard });
     // DJAW's own sounds (assets/samples, unpacked from the app): one onto a free pad, decoded and playable.
     await ev(() => window.djaw.addBuiltinSamples(['laser.wav', 'gabber-kick.wav']));
     const builtin = await until(() => window.djaw.samples.length === 3 && window.djaw.samples.every(x => window.djaw.samplePcm.has(x.id)), 30000);
@@ -309,13 +367,44 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
     const back = await ev(() => getComputedStyle(document.querySelector('.arrangement')).display !== 'none' && document.querySelector('.timeline-area').clientHeight > 100);
     check('panel maximize, overview, no sideways scrolling', big.hidden && big.panel > big.window * 0.8 && big.ink > 200 && !sideways.length && back && errors.length === panelErrors, { ...big, sideways, back });
 
+    // Every language: no Japanese left on screen (kana anywhere; kanji too outside Chinese), and no English text
+    // that the language's table translates. (Discogs style names, `.style-row`, are a fixed English taxonomy.)
+    const tables = Object.fromEntries(['english', 'de', 'fr', 'ko', 'zh-Hans', 'ru'].map(l => [l, l === 'english' ? {} : JSON.parse(fs.readFileSync(path.join(root, 'src/core/locales', l + '.json'), 'utf8'))]));
+    const sendMenu = (cmd, arg) => app.evaluate(({ BrowserWindow }, [c, a]) => BrowserWindow.getAllWindows()[0].webContents.send('menu', c, a), [cmd, arg]);
+    const langIssues = {};
+    for (const [lang, table] of Object.entries(tables)) {
+      await sendMenu('language', lang); await win.waitForTimeout(400);
+      const found = [];
+      for (const tab of ['overview', 'mix', 'track', 'transition', 'cue', 'loop', 'fx', 'sampler', 'deck']) {
+        await ev(([t, i]) => { const s = window.djaw; s.selectedClipID = s.clips[i].id; s.openPanel(t); }, [tab, tab === 'transition' ? 1 : 0]);
+        await win.waitForTimeout(250);
+        const bad = await ev(([table, cjk]) => {
+          const out = [], jp = cjk ? /[぀-ヿ]/ : /[぀-ヿ㐀-鿿]/;
+          const texts = [];
+          const walk = n => { if (n.nodeType === 3) texts.push(n.textContent.trim()); else if (n.nodeType === 1 && getComputedStyle(n).display !== 'none' && !n.classList.contains('style-row')) { if (n.title) texts.push(n.title.trim()); if (n.placeholder) texts.push(n.placeholder.trim()); n.childNodes.forEach(walk); } };
+          walk(document.body);
+          for (const t of texts) {
+            if (!t || /E2E|DJAW/.test(t)) continue;
+            if (jp.test(t)) out.push(t.slice(0, 40));
+            else if (t.length > 3 && /[a-z]{3}/.test(t) && table[t] != null && table[t] !== t) out.push('EN: ' + t.slice(0, 40));
+          }
+          return [...new Set(out)];
+        }, [table, lang === 'zh-Hans']);
+        bad.forEach(b => found.push(`${tab}: ${b}`));
+      }
+      if (found.length) langIssues[lang] = [...new Set(found)].slice(0, 8);
+      if (lang === 'de') await shot('05-lang-de');
+    }
+    await sendMenu('language', 'english'); await win.waitForTimeout(400);
+    check('every language shown without leftovers', Object.keys(langIssues).length === 0, langIssues);
+
     // Export a WAV (the save dialog answers with a temp path).
     const wav = path.join(work, 'export.wav');
     await app.evaluate(({ ipcMain }, file) => { ipcMain.removeHandler('dialog:save'); ipcMain.handle('dialog:save', () => file); }, wav);
     await ev(() => { window.djaw.exportFormat = 'wav24'; window.djaw.exportSampleRate = 44100; window.djaw.startExport(true); });
     const exported = await until(() => window.djaw.exportPhase.kind === 'done' || window.djaw.exportPhase.kind === 'failed', 300000);
     const phase = await ev(() => window.djaw.exportPhase);
-    const dur = await ev(() => window.djaw.mixDuration);
+    const dur = await ev(() => window.djaw.tempoMap.real(window.djaw.mixDuration));
     let st = null;
     if (phase.kind === 'done' && fs.existsSync(wav)) st = wavStats(wav);
     check('export WAV', exported && phase.kind === 'done' && st && Math.abs(st.seconds - dur) < 0.5 && st.rms > 0.02 && st.peak <= 1.0, { phase, dur, st });
@@ -352,6 +441,22 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
     const after = await ev(() => JSON.stringify(window.djaw.clips.map(c => [c.title, Math.round(c.start * 1000), c.edits?.length ?? 0])));
     const samplerBack = await ev(() => [window.djaw.samples.length, window.djaw.sampleHits.length]);
     check('save and reopen', saved && before === after && samplerBack[0] === 3 && samplerBack[1] === 1, { before, after, samplerBack });
+
+    // Saved with the audio inside: WAV tracks go in as lossless FLAC, so the file is clearly smaller than the WAVs.
+    const docEmbed = path.join(work, 'e2e-embedded.djaw');
+    const savedEmbed = await ev(async d => { const s = window.djaw; s.embedMedia = true; s.compressAudio = true; s.documentPath = d; const ok = await s.save(false); s.embedMedia = false; return ok; }, docEmbed);
+    const rawBytes = [...files, delta, horn].reduce((n, f) => n + fs.statSync(f).size, 0);
+    const embedBytes = fs.existsSync(docEmbed) ? fs.statSync(docEmbed).size : 0;
+    // Move the original files away so the audio has to come out of the .djaw.
+    const originals = [...files, delta];
+    originals.forEach(f => fs.renameSync(f, f + '.away'));
+    await ev(async d => { const s = window.djaw; s.isDirty = false; await s.load(d); }, docEmbed);
+    await until(() => window.djaw.clips.length === 3 && window.djaw.pending.length === 0, 120000);
+    const embedBack = await ev(() => ({ clips: window.djaw.clips.length, layers: window.djaw.layers.length, flac: window.djaw.clips.filter(c => /\.flac$/i.test(c.url)).length, missing: window.djaw.missingFiles.size }));
+    const embedPlay = await measure(await ev(() => window.djaw.clips[0].start + 2), 1.2);
+    originals.forEach(f => fs.renameSync(f + '.away', f));
+    check('saved with the audio as FLAC, reopens and plays', savedEmbed && embedBytes > 0 && embedBytes < rawBytes * 0.85 && embedBack.clips === 3 && embedBack.layers === 1 && embedBack.flac === 3 && embedBack.missing === 0 && embedPlay.rms > 0.02,
+      { embedMB: +(embedBytes / 1e6).toFixed(2), rawMB: +(rawBytes / 1e6).toFixed(2), ...embedBack, rms: +embedPlay.rms.toFixed(3) });
 
     // Undo / redo keep the mix consistent.
     const undo = await ev(() => { const s = window.djaw; const n = s.clips.length; s.selectedClipID = s.clips[2].id; s.deleteSelected(); const m = s.clips.length; s.undo(); const k = s.clips.length; return [n, m, k]; });

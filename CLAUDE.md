@@ -135,6 +135,12 @@ Windows では WebCodecs（H.264）＋ mp4 マルチプレクサ、または ffm
 - Windows のコード署名（0.3.9〜準備）：Certum「Open Source Code Signing in the cloud」（SimplySign）。リリースの Windows ジョブで `scripts/certum-login.ps1` が SimplySign Desktop を入れて自動ログイン（ユーザー名＋TOTP を SendKeys）、`scripts/sign-win.cjs`（electron-builder の `win.signtoolOptions.sign`）が signtool で署名、`signtool verify /pa` で確認。secret `CERTUM_USERNAME`・`CERTUM_OTP`（otpauth:// の URI ごと、または Base32）が無いときは署名しない。ps1 の TOTP は E2E で `-SelfTest`（RFC 6238 の値）
 - 映像プレビューの全画面：HTML Fullscreen API（`VisualPreview.tsx` の `toggleFullScreen`）。Electron では Esc で自動で抜けないので自前で処理
 - つなぎエディタ（0.3.10〜）：レーンの後ろに成分の波形（`laneWave`：上＝前の曲・下＝この曲。LOW＝低音、MID/HIGH＝低音以外、ステムは分離した WAV を `services/stemPeaks.ts` で読んで表示）。編集グリッド `store.editGrid`（拍単位、0＝なし、設定に保存）は `components/GridSelect.tsx` でつなぎエディタと FX レーンが共有。説明文と選んだ点の操作は高さ固定の `.te-selbar` 行に置く（0.3.12。ツールバーの高さが変わるとレーンが動き、ダブルクリックがずれる）
+- 0.4.0（2026-11-23）：
+  - 重ねる曲（デッキ C／D）：`core/layers.ts`（`placeLayers`・`layerDecks`）、`store/layers.ts`、`ProjectFile.layers`。描画は重ねる曲ごとに 1 曲だけの RenderSession を作って足す（`session.ts`）。`layerParts`（全部／ボーカル／伴奏）はステム
+  - テンポ変更の開始位置 `Clip.tempoStart`（新しく作ると `'afterTransition'`、未設定＝つなぎと同時＝0.3 までの動き）。ループ中のつなぎ `Clip.outPass`
+  - 多言語（11 言語）：表は `src/core/locales/<lang>.json`（英語の文が鍵）。**L(...) を足したり英語を変えたら** `node scripts/i18n.mjs extract` → 増えた鍵の訳を `_parts/c<N>_*.json`（200 個ずつ、最後の部分は残り全部）に足して `node scripts/i18n-merge.mjs`（全言語 n/n になること）。保存される文（自動ミックスのメモ・候補名）は `captureLanguages` で作り、表示で `localize`。サンプラーの標準音の名前は `sampleName()` で今の言語に
+  - 保存：WAV は FLAC（`core/flac.ts`、`Jobs.flac`、`cache/flac/`）にして埋め込む。設定 `compressAudio`・`embedLibraryAudio`・`reopenLast`・`keepInLibrary`
+  - E2E の smoke に、テンポ変更・重ねる曲・全言語の表示（日本語や訳し漏れの英語が残っていないか）・FLAC で埋め込んだ .djaw を元ファイルなしで開く、を追加。映像プレビューを閉じた直後に Playwright が報告する名前なしの "illegal access" はアプリの外（window の error にも来ない）なので数えない
 - リリースの前に E2E を Mac・Windows で通すこと（Linux のクラウドだけの確認で Mac 版が壊れていた前例あり）
 - まだ Windows 実機で確認していないもの：AAC（Media Foundation）での M4A／映像書き出し、映像プレビューの別ウィンドウ、iTunes XML の実データ
 

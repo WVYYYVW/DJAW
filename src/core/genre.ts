@@ -1,5 +1,5 @@
 // Genre families and the genre / vocal analysis result (mac/DJAW/Audio/GenreAnalyzer.swift, model-independent part).
-import { L } from './i18n';
+import { L, currentLanguage } from './i18n';
 
 export type MixGenre = 'house' | 'techno' | 'trance' | 'ukg' | 'bass' | 'dnb' | 'breaks' | 'hard' | 'breakcore' | 'hiphop' | 'pop' | 'chill' | 'band';
 export const mixGenres: MixGenre[] = ['house', 'techno', 'trance', 'ukg', 'bass', 'dnb', 'breaks', 'hard', 'breakcore', 'hiphop', 'pop', 'chill', 'band'];
@@ -22,7 +22,10 @@ export const Genre = {
       case 'band': return L('バンド・生演奏', 'Band / Live');
     }
   },
+  /** A short tag (English DJ shorthand in Japanese and English; the first part of the title in other languages). */
   short(g: MixGenre): string {
+    const lang = currentLanguage();
+    if (lang !== 'japanese' && lang !== 'english') return Genre.title(g).split(/\s*[／/]\s*/)[0];
     return ({ house: 'House', techno: 'Techno', trance: 'Trance', ukg: 'UKG', bass: 'Bass', dnb: 'DnB', breaks: 'Breaks', hard: 'Hard',
       breakcore: 'Breakcore', hiphop: 'Hip-Hop', pop: 'Pop', chill: 'Chill', band: 'Band' } as Record<MixGenre, string>)[g];
   },

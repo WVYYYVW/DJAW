@@ -9,6 +9,7 @@ import { droppedPaths } from '../dropped';
 import { clipColor } from '../format';
 import { showContextMenu } from './ContextMenu';
 import type { MixStore } from '../store/store';
+import { sampleName } from '../store/sampler';
 import { builtinSamples } from '../../core/builtinSamples';
 
 export const samplerSnaps: { value: number; label: () => string }[] = [
@@ -26,7 +27,7 @@ export function hitMenu(s: MixStore, id: string) {
   if (!h) return [];
   const sample = s.samples.find(x => x.id === h.sample);
   return [
-    { label: sample?.name ?? '', enabled: false },
+    { label: sample ? sampleName(sample) : '', enabled: false },
     { label: L('試聴', 'Audition'), action: () => sample && s.auditionSample(sample.id) },
     { label: L('再生位置へ移動', 'Move to the Playhead'), action: () => s.moveHit(id, s.snapBeat(s.playheadBeat())) },
     { separator: true },
@@ -85,7 +86,7 @@ function Pad({ index }: { index: number }) {
     <div className={'pad' + (sample ? '' : ' empty') + (over ? ' over' : '')}
       style={sample ? { borderColor: color, background: clipColor(sample.colorIndex, 0.18) } : undefined}
       title={sample
-        ? L(`${sample.name}\nクリック／${padKeys[index]} キーで鳴らす。録音中に再生しながら叩くと、その位置に置かれます。\n右クリック：置く・名前・音量・差し替え`, `${sample.name}\nClick or press ${padKeys[index]} to play it. While recording, pads hit during playback are placed where they were hit.\nRight-click: place, rename, level, replace`)
+        ? L(`${sampleName(sample)}\nクリック／${padKeys[index]} キーで鳴らす。録音中に再生しながら叩くと、その位置に置かれます。\n右クリック：置く・名前・音量・差し替え`, `${sampleName(sample)}\nClick or press ${padKeys[index]} to play it. While recording, pads hit during playback are placed where they were hit.\nRight-click: place, rename, level, replace`)
         : L('クリックまたは音声ファイルをドロップして読み込み', 'Click or drop an audio file to load it')}
       onMouseDown={e => { if (e.button === 0 && !renaming) s.triggerPad(index); }}
       onContextMenu={menu}
@@ -98,10 +99,10 @@ function Pad({ index }: { index: number }) {
           onMouseDown={e => { e.stopPropagation(); }} onClick={e => { e.stopPropagation(); s.placeHit(sample.id); }}>＋</button>}
       </div>
       {renaming && sample
-        ? <input className="pad-rename" autoFocus defaultValue={sample.name} onMouseDown={e => e.stopPropagation()}
+        ? <input className="pad-rename" autoFocus defaultValue={sampleName(sample)} onMouseDown={e => e.stopPropagation()}
             onBlur={e => { s.renameSample(sample.id, e.target.value); setRenaming(false); }}
             onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(false); }} />
-        : <div className="pad-name">{sample ? sample.name : '＋'}</div>}
+        : <div className="pad-name">{sample ? sampleName(sample) : '＋'}</div>}
       {sample && <div className="pad-info">{missing ? L('ファイルなし', 'Missing') : `${count ? L(`${count}か所`, `${count} placed`) : ''}${sample.gainDB ? `  ${sample.gainDB > 0 ? '+' : ''}${sample.gainDB} dB` : ''}`}</div>}
     </div>
   );
@@ -115,7 +116,7 @@ function SelectedHit() {
   const pos = s.grid.position(Sampler.timeOfBeat(h.beat, s.masterBPM, s.gridOffset));
   return (
     <div className="sampler-hit">
-      <div className="hit-title"><span className="dot" style={{ background: sample ? clipColor(sample.colorIndex) : undefined }} />{sample?.name}<span className="dim">  {L(`小節 ${pos.bar}.${pos.beat}`, `Bar ${pos.bar}.${pos.beat}`)}</span></div>
+      <div className="hit-title"><span className="dot" style={{ background: sample ? clipColor(sample.colorIndex) : undefined }} />{sample ? sampleName(sample) : null}<span className="dim">  {L(`小節 ${pos.bar}.${pos.beat}`, `Bar ${pos.bar}.${pos.beat}`)}</span></div>
       <div className="hit-row">
         <label>{L('連打', 'Roll')}</label>
         <select value={h.repeats ?? 0} onChange={e => s.setHitRoll(h.id, Number(e.target.value))}>

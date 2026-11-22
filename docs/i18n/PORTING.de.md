@@ -214,4 +214,4 @@ In `~/Downloads` auf dem Mac des Nutzers (bei Bedarf um Kopie bitten):
 - **Sprachen**: Tabellen mit dem englischen Text von `L(ja, en)` als Schlüssel (`src/core/locales/<lang>.json`). Bei Aufrufen, deren Englisch ein Template ist, ergänzt `scripts/i18n.mjs` beim Build Schlüssel und Werte.
   Gespeicherte Texte wie Auto-Mix-Notizen entstehen mit `captureLanguages()`, das Markierungen für alle Sprachen behält; `localize()` zeigt sie in der aktuellen Sprache.
   Schlüssel extrahieren: `node scripts/i18n.mjs extract`; Übersetzungen zusammenführen: `node scripts/i18n-merge.mjs` (`_parts/c<N>_*.json`, je 200).
-- **Dateigröße**: eingebettetes unkomprimiertes Audio (WAV, AIFF) wird als FLAC gespeichert (`core/flac.ts`, feste Prädiktoren + Rice-Kodierung, bitgenau gleich wie die Quelle). MP3 und Ähnliches bleiben unverändert.
+- **Dateigröße**: eingebettetes unkomprimiertes Audio (WAV) wird als FLAC gespeichert (`core/flac.ts`, feste Prädiktoren + Rice-Kodierung, bitgenau gleich wie die Quelle). MP3 und Ähnliches bleiben unverändert.

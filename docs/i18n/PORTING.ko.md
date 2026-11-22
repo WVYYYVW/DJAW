@@ -214,4 +214,4 @@ JSON                  ProjectFile (키 정렬, 날짜는 ISO8601)
 - **다국어**: `L(ja, en)`의 영어를 키로 한 표 (`src/core/locales/<lang>.json`). 영어가 템플릿 문자열인 호출에는 빌드 시 `scripts/i18n.mjs`가 키와 값을 붙임.
   자동 믹스 메모처럼 저장되는 문장은 `captureLanguages()`로 모든 언어의 표시를 남기고, 표시할 때 `localize()`로 현재 언어로.
   키 추출은 `node scripts/i18n.mjs extract`, 번역 결합은 `node scripts/i18n-merge.mjs` (`_parts/c<N>_*.json`, 200개씩).
-- **저장 크기**: 내장하는 비압축 오디오 (WAV·AIFF)는 FLAC (`core/flac.ts`, 고정 예측 + 라이스 부호, 원본과 비트 단위로 일치)으로 넣습니다. MP3 등은 그대로.
+- **저장 크기**: 내장하는 비압축 오디오 (WAV)는 FLAC (`core/flac.ts`, 고정 예측 + 라이스 부호, 원본과 비트 단위로 일치)으로 넣습니다. MP3 등은 그대로.

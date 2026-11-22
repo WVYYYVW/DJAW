@@ -214,4 +214,4 @@ On the user's Mac `~/Downloads` (ask for a copy if needed):
 - **Languages**: tables keyed by the English text of `L(ja, en)` (`src/core/locales/<lang>.json`). For calls whose English is a template string, `scripts/i18n.mjs` adds the key and values at build time.
   Saved text such as auto-mix notes is made with `captureLanguages()`, which keeps markers for every language, and `localize()` shows it in the current language.
   Extract keys with `node scripts/i18n.mjs extract`, join translations with `node scripts/i18n-merge.mjs` (`_parts/c<N>_*.json`, 200 per part).
-- **File size**: embedded uncompressed audio (WAV, AIFF) is stored as FLAC (`core/flac.ts`, fixed predictors + Rice coding, bit-identical to the source). MP3 and the like are kept as they are.
+- **File size**: embedded uncompressed audio (WAV) is stored as FLAC (`core/flac.ts`, fixed predictors + Rice coding, bit-identical to the source). MP3 and the like are kept as they are.

@@ -214,4 +214,4 @@ JSON                  ProjectFile（键排序，日期为 ISO8601）
 - **多语言**：以 `L(ja, en)` 的英文为键的表（`src/core/locales/<lang>.json`）。英文是模板字符串的调用，由 `scripts/i18n.mjs` 在构建时补上键和值。
   自动混音备注等会被保存的文字用 `captureLanguages()` 留下所有语言的标记，显示时用 `localize()` 转为当前语言。
   抽取键：`node scripts/i18n.mjs extract`；合并译文：`node scripts/i18n-merge.mjs`（`_parts/c<N>_*.json`，每份 200 条）。
-- **保存大小**：嵌入的未压缩音频（WAV、AIFF）转为 FLAC（`core/flac.ts`，固定预测＋莱斯编码，与原数据逐位一致）。MP3 等保持原样。
+- **保存大小**：嵌入的未压缩音频（WAV）转为 FLAC（`core/flac.ts`，固定预测＋莱斯编码，与原数据逐位一致）。MP3 等保持原样。

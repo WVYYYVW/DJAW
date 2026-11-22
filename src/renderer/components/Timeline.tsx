@@ -13,6 +13,7 @@ import { Automation } from '../../core/automation';
 import { Structure } from '../../core/analysis/structure';
 import { normalizeGain } from '../../core/render/offline';
 import { store, MixStore } from '../store/store';
+import { sampleName } from '../store/sampler';
 import { Fmt, Theme, clipColor, hsb } from '../format';
 import { droppedPaths } from '../dropped';
 import { showContextMenu, MenuItem } from './ContextMenu';
@@ -875,7 +876,7 @@ class TimelineView {
       if (r.w > 26) {
         ctx.save();
         ctx.beginPath(); ctx.rect(r.x + 3, r.y, r.w - 5, r.h); ctx.clip();
-        this.text(ctx, sample.name + (n > 1 ? ` ×${n}` : ''), r.x + 5, r.y + 6, '600 10px system-ui', 'rgba(255,255,255,0.92)');
+        this.text(ctx, sampleName(sample) + (n > 1 ? ` ×${n}` : ''), r.x + 5, r.y + 6, '600 10px system-ui', 'rgba(255,255,255,0.92)');
         ctx.restore();
       }
     }
@@ -1211,7 +1212,7 @@ class TimelineView {
     }
     if (h.kind === 'samplerLane') {
       const beat = store.snapBeat(Sampler.beatOfTime(t, store.masterBPM, store.gridOffset));
-      items.push({ label: L('ここに置く', 'Place Here'), enabled: store.samples.length > 0, submenu: store.samples.map(x => ({ label: x.name, action: () => { this.lastSample = x.id; store.placeHit(x.id, beat); } })) });
+      items.push({ label: L('ここに置く', 'Place Here'), enabled: store.samples.length > 0, submenu: store.samples.map(x => ({ label: sampleName(x), action: () => { this.lastSample = x.id; store.placeHit(x.id, beat); } })) });
       items.push({ label: L('サンプラーに音を読み込む…', 'Load Sounds into the Sampler…'), action: () => store.chooseSamples() });
       items.push({ label: L('サンプラーのパッドを開く', 'Open the Sampler Pads'), action: () => store.openPanel('sampler') });
       showContextMenu(e, items);

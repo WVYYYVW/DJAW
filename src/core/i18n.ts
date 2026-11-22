@@ -38,6 +38,12 @@ export function setLanguage(lang: AppLanguage, systemLocale = 'ja') {
   current = lang === 'system' ? languageForLocale(systemLocale) : (languages.some(x => x.id === lang) ? lang : 'english') as Exclude<AppLanguage, 'system'>;
 }
 
+/** `fn`'s text in every language (to recognise a stored text that was made in another language). */
+export function inEveryLanguage(fn: () => string): string[] {
+  const keep = current;
+  try { return languages.map(x => { current = x.id; return fn(); }); } finally { current = keep; }
+}
+
 /** The language in effect ('system' resolved). */
 export function currentLanguage(): Exclude<AppLanguage, 'system'> { return current; }
 /** BCP-47 tag of the language in effect (for <html lang>, number formats). */
