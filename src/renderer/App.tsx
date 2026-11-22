@@ -93,7 +93,6 @@ export function App() {
         case 'togglePlay': s.togglePlay(); break;
         case 'toStart': if (!isTextField(document.activeElement)) { s.seek(0); s.requestScroll(0); } break;
         case 'previewTransition': if (sel && (s.index(sel) ?? 0) > 0) s.previewTransition(sel); break;
-        case 'toggleFollow': s.toggle('followPlayhead'); break;
         case 'selectPrev': s.selectAdjacent(-1); break;
         case 'selectNext': s.selectAdjacent(1); break;
         case 'moveEarlier': s.moveSelectedInOrder(-1); break;
@@ -114,6 +113,7 @@ export function App() {
         case 'overview': if (s.panelTab === 'overview' && s.panelMaximized && s.showPanel) s.togglePanelMaximized(false); else { s.openPanel('overview'); s.togglePanelMaximized(true); } break;
         case 'toggleMixer': s.toggle('showMixer'); break;
         case 'toggleMixWaveform': s.toggle('showMixWaveform'); break;
+        case 'toggleSamplerLane': s.toggle('showSamplerLane'); break;
         case 'toggleSampler': if (s.showPanel && s.panelTab === 'sampler') s.toggle('showPanel'); else s.openPanel('sampler'); break;
         case 'shortcuts': s.showShortcuts = true; s.changed(); break;
         case 'language': {

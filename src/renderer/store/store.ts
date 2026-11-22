@@ -9,10 +9,10 @@ import { LibraryFolder,
   Take, TransitionLanes, TransitionPreset, TransitionShape, TransitionStyle, TransitionTake, Waveform, EQBand,
   barAtSource, barLabel, barSource, clipEnd, clipLength, effectiveLanes, keepsLanding, landingBar, lastBar,
   lastSoundTime, newClip, projectFormatID, projectVersion, resetToWholeTrack, sourceTimeAtBar, sourceTimeAtTimeline,
-  timelineTimeOfBar, transitionPresets, transitionShape, uuid, Lanes, semitoneShift, Loudness,
-} from '../../core/models';
+  timelineTimeOfBar, transitionPresets, transitionShape, uuid, Lanes, semitoneShift, Loudness, TempoStart, } from '../../core/models';
 import { FX, OutroFX, TempoMap, outro } from '../../core/tempo';
 import { layout, separateNeighbourColors, updateCutNudges } from '../../core/layout';
+import { endWithLayers, layerDecks, placeLayers } from '../../core/layers';
 import { extractMediaAsync, mediaFolder, readProject, writeProjectAsync, unpackedName, encodeProject } from '../../core/project';
 import { BandEnergies, TempoOption, TrackAnalysis, onsetOffset, structureFor, structureTrusted } from '../../core/analysis/analyzer';
 import { Key, MusicalKey, Structure, TrackStructure } from '../../core/analysis/structure';
@@ -48,7 +48,7 @@ export type InspectorTab = 'transition' | 'deck' | 'fx' | 'mixer';
 export type PanelTab = 'overview' | 'mix' | 'track' | 'transition' | 'cue' | 'loop' | 'fx' | 'sampler' | 'deck';
 export type AddDestination = { kind: 'library'; folder?: string | null } | { kind: 'mix'; index: number | null };
 
-export interface Snapshot { clips: Clip[]; library: Clip[]; masterBPM: number; gridOffset: number; libraryFolders?: LibraryFolder[]; samples?: Sample[]; sampleHits?: SampleHit[] }
+export interface Snapshot { clips: Clip[]; library: Clip[]; layers?: Clip[]; masterBPM: number; gridOffset: number; libraryFolders?: LibraryFolder[]; samples?: Sample[]; sampleHits?: SampleHit[] }
 
 const settingsFile = () => dataDir('settings.json');
 function loadSettings(): Record<string, unknown> {
@@ -59,6 +59,9 @@ export class MixStore {
   // MARK: Document
   clips: Clip[] = [];
   library: Clip[] = [];
+  /** Tracks played on top of mix tracks (decks C / D; core/layers.ts). */
+  layers: Clip[] = [];
+  private layerCache: { revision: number; placed: Clip[]; decks: Map<string, 2 | 3 | null> } | null = null;
   /** Folders of the library (saved with the mix). */
   libraryFolders: LibraryFolder[] = [];
   /** The sampler's pads and the hits placed on the mix (store/sampler.ts). */
@@ -132,6 +135,11 @@ export class MixStore {
   showPanel = true;
   /** The grid of the transition editor and the FX lanes, in beats (1 = a beat = 1/4 bar; 0 = free). */
   editGrid = 1;
+  /** The browser on the left: its width (px) and the share of its height the mix order takes (the library has the rest). */
+  browserWidth = 264;
+  /** Whether the timeline shows the sampler lane (when there is something to show). */
+  showSamplerLane = true;
+  browserSplit = 0.45;
   /** The detail panel fills the window (the arrangement is hidden meanwhile); not kept between launches. */
   panelMaximized = false;
   panelTab: PanelTab = 'transition';
@@ -187,7 +195,7 @@ export class MixStore {
   readonly player = new Player();
   private undoStack: Snapshot[] = [];
   private redoStack: Snapshot[] = [];
-  private colorCounter = 0;
+  colorCounter = 0;
   private autosaveTimer: ReturnType<typeof setTimeout> | null = null;
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
   private playingKey = '';
@@ -205,6 +213,9 @@ export class MixStore {
     this.showPanel = (s.showPanel as boolean) ?? true;
     this.editGrid = typeof s.editGrid === 'number' ? s.editGrid : 1;
     this.panelHeight = (s.panelHeight as number) ?? 330;
+    this.browserWidth = typeof s.browserWidth === 'number' ? s.browserWidth : 264;
+    this.showSamplerLane = (s.showSamplerLane as boolean) ?? true;
+    this.browserSplit = typeof s.browserSplit === 'number' ? s.browserSplit : 0.45;
     this.showBrowser = (s.showBrowser as boolean) ?? true;
     this.customTransitions = (s.customTransitions as CustomTransition[]) ?? [];
     this.recentDocuments = ((s.recentDocuments as string[]) ?? []).filter(p => fs.existsSync(p));
@@ -219,6 +230,7 @@ export class MixStore {
   saveSettings() {
     const s = {
       showPanel: this.showPanel, panelHeight: this.panelHeight, showBrowser: this.showBrowser, editGrid: this.editGrid,
+      browserWidth: this.browserWidth, browserSplit: this.browserSplit, showSamplerLane: this.showSamplerLane,
       showDecks: this.showDecks, showMixer: this.showMixer, exportNormalize: this.exportNormalize, embedMedia: this.embedMedia,
       openCueEditorOnAdd: this.openCueEditorOnAdd, showMixWaveform: this.showMixWaveform, customTransitions: this.customTransitions,
       recentDocuments: this.recentDocuments.slice(0, 10), defaultTransitionStyle: this.defaultTransitionStyle,
@@ -250,7 +262,17 @@ export class MixStore {
   get grid() { return new Grid(this.masterBPM, this.gridOffset); }
   get beatLength() { return 60 / this.masterBPM; }
   get barLength() { return 240 / this.masterBPM; }
-  get mixDuration() { return this.clips.reduce((m, c) => Math.max(m, clipEnd(c, this.masterBPM)), 0); }
+  get mixDuration() { return endWithLayers(this.clips.reduce((m, c) => Math.max(m, clipEnd(c, this.masterBPM)), 0), this.placedLayers, this.masterBPM); }
+  /** The layered tracks placed on their mix tracks (start, played range), and their decks (C / D). */
+  get placedLayers(): Clip[] {
+    if (this.layerCache && this.layerCache.revision === this.revision) return this.layerCache.placed;
+    const placed = placeLayers(this.layers, this.clips, this.masterBPM);
+    this.layerCache = { revision: this.revision, placed, decks: layerDecks(placed, this.masterBPM) };
+    return placed;
+  }
+  layerDeck(id: string): 2 | 3 | null { void this.placedLayers; return this.layerCache?.decks.get(id) ?? null; }
+  isLayer(id: string) { return this.layers.some(l => l.id === id); }
+  placedLayer(id: string) { return this.placedLayers.find(l => l.id === id) ?? null; }
   get tempoMap(): TempoMap {
     if (this.tempoCache && this.tempoCache.revision === this.revision) return this.tempoCache.map;
     const m = TempoMap.build(this.clips, this.masterBPM);
@@ -264,7 +286,7 @@ export class MixStore {
   get selectedIndex() { return this.selectedClipID ? this.index(this.selectedClipID) : null; }
   get selectedClip() { const i = this.selectedIndex; return i == null ? null : this.clips[i]; }
   index(id: string) { const i = this.clips.findIndex(c => c.id === id); return i < 0 ? null : i; }
-  clip(id: string) { return this.clips.find(c => c.id === id) ?? this.library.find(c => c.id === id) ?? null; }
+  clip(id: string) { return this.clips.find(c => c.id === id) ?? this.library.find(c => c.id === id) ?? this.layers.find(c => c.id === id) ?? null; }
   isInMix(id: string) { return this.index(id) != null; }
   libraryIndex(id: string) { const i = this.library.findIndex(c => c.id === id); return i < 0 ? null : i; }
   get allTrackIDs() { return [...this.clips.map(c => c.id), ...this.library.map(c => c.id)]; }
@@ -281,7 +303,7 @@ export class MixStore {
   // MARK: Undo
 
   snapshot(): Snapshot {
-    return structuredClone({ clips: this.clips, library: this.library, masterBPM: this.masterBPM, gridOffset: this.gridOffset, libraryFolders: this.libraryFolders, samples: this.samples, sampleHits: this.sampleHits });
+    return structuredClone({ clips: this.clips, library: this.library, layers: this.layers, masterBPM: this.masterBPM, gridOffset: this.gridOffset, libraryFolders: this.libraryFolders, samples: this.samples, sampleHits: this.sampleHits });
   }
 
   pushUndo() {
@@ -311,6 +333,7 @@ export class MixStore {
   restore(s: Snapshot) {
     this.clips = s.clips;
     this.library = s.library;
+    this.layers = s.layers ?? [];
     this.libraryFolders = s.libraryFolders ?? this.libraryFolders;
     this.samples = s.samples ?? this.samples;
     this.sampleHits = s.sampleHits ?? this.sampleHits;
@@ -340,13 +363,19 @@ export class MixStore {
       const c = structuredClone(this.clips[i]);
       change(c);
       this.clips = this.clips.map((x, k) => (k === i ? c : x));
-    } else {
-      const k = this.libraryIndex(id);
-      if (k == null) return;
+    } else if (this.libraryIndex(id) != null) {
+      const k = this.libraryIndex(id)!;
       if (undoable) this.pushUndo(); else this.markDirty();
       const c = structuredClone(this.library[k]);
       change(c);
       this.library = this.library.map((x, j) => (j === k ? c : x));
+    } else {
+      const k = this.layers.findIndex(l => l.id === id);
+      if (k < 0) return;
+      if (undoable) this.pushUndo(); else this.markDirty();
+      const c = structuredClone(this.layers[k]);
+      change(c);
+      this.layers = this.layers.map((x, j) => (j === k ? c : x));
     }
     this.changed();
   }
@@ -467,7 +496,7 @@ export class MixStore {
       this.changed();
       return;
     }
-    const loaded = [...this.clips.map(c => c.url), ...this.library.map(c => c.url), ...this.pending.map(p => p.url)];
+    const loaded = [...this.clips.map(c => c.url), ...this.library.map(c => c.url), ...this.layers.map(c => c.url), ...this.pending.map(p => p.url)];
     const byPath = new Map(loaded.map(u => [MixStore.pathKey(u), u]));
     const byFp = new Map<string, string>();
     for (const u of loaded) { const fp = this.fingerprints.get(u) ?? fingerprint(u); if (fp) { this.fingerprints.set(u, fp); byFp.set(fp, u); } }
@@ -548,7 +577,7 @@ export class MixStore {
       this.selectedClipID = added[0];
       if (this.openCueEditorOnAdd && !this.cueEditorTarget && analyzed[0]) this.openCueEditor(analyzed[0]);
     } else if (dupes[0]?.existing) {
-      const c = [...this.clips, ...this.library].find(x => x.url === dupes[0].existing);
+      const c = [...this.clips, ...this.library, ...this.layers].find(x => x.url === dupes[0].existing);
       if (c) { this.selectedClipID = c.id; if (this.isInMix(c.id)) this.requestScroll(c.start); }
     }
     if (wasEmpty && this.clips.length) this.fitRequest++;
@@ -807,6 +836,19 @@ export class MixStore {
     if (owner != null) this.setTrackTempo(this.clips[owner].id, bpm); else this.setMasterBPM(bpm);
   }
 
+  setTempoStart(id: string, start: TempoStart | null) { this.updateClip(id, true, c => { c.tempoStart = start; }); this.finishTimingEdit(); }
+  /** Turns a tempo change on (back to this track's own speed, starting after the transition) or off. */
+  setTempoChange(id: string, on: boolean) {
+    const c = this.clip(id);
+    if (!c) return;
+    if (!on) { this.updateClip(id, true, x => { x.tempo = null; x.tempoStart = null; }); this.finishTimingEdit(); return; }
+    this.updateClip(id, true, x => {
+      x.tempo = Math.round(x.bpm * 100) / 100;
+      x.tempoStart = 'afterTransition';
+      if (x.tempoBars == null) x.tempoBars = 8;
+    });
+    this.finishTimingEdit();
+  }
   setTempoBars(id: string, bars: number | null) { this.updateClip(id, true, c => { c.tempoBars = bars == null ? null : Math.max(0, bars); }); this.finishTimingEdit(); }
   setSpinBeats(id: string, beats: number) { this.updateClip(id, true, c => { c.spinBeats = beats; }); }
   setTempoSync(id: string, on: boolean) { this.updateClip(id, true, c => { c.tempoSync = on; }); this.finishTimingEdit(); }
@@ -1362,8 +1404,10 @@ export class MixStore {
     const tempo = TempoMap.build(clips, this.masterBPM);
     const paths: Record<string, string> = {};
     for (const c of clips) { const p = this.pcmPaths.get(c.url); if (p) paths[c.url] = p; }
-    const stems = this.stemPaths(clips);
-    return { clips, master: this.masterBPM, tempo: { reference: tempo.reference, points: tempo.points }, gridOffset: this.gridOffset, paths, stems, sampler: this.samplerMessage() };
+    const layers = placeLayers(this.layers, clips, this.masterBPM).filter(c => !this.missingFiles.has(c.url) && this.pcmPaths.has(c.url));
+    for (const c of layers) { const p = this.pcmPaths.get(c.url); if (p) paths[c.url] = p; }
+    const stems = { ...this.stemPaths(clips), ...this.stemPaths(layers.map(l => ({ ...l }))) };
+    return { clips, layers, master: this.masterBPM, tempo: { reference: tempo.reference, points: tempo.points }, gridOffset: this.gridOffset, paths, stems, sampler: this.samplerMessage() };
   }
 
   playableClips() { return this.clips.filter(c => !this.missingFiles.has(c.url) && this.pcmPaths.has(c.url)); }
@@ -1375,7 +1419,7 @@ export class MixStore {
     if (this.playhead >= this.mixDuration - 0.05) this.playhead = 0;
     try {
       const mix = this.mixMessage();
-      this.playingKey = RenderSession.structureKey(mix.clips, mix.master);
+      this.playingKey = RenderSession.structureKey([...mix.clips, ...(mix.layers ?? [])], mix.master);
       this.isPlaying = true;
       this.changed();
       await this.player.start(mix, this.playhead);
@@ -1413,7 +1457,7 @@ export class MixStore {
     if (!this.isPlaying) return;
     const time = t ?? this.player.currentTime;
     const mix = this.mixMessage();
-    this.playingKey = RenderSession.structureKey(mix.clips, mix.master);
+    this.playingKey = RenderSession.structureKey([...mix.clips, ...(mix.layers ?? [])], mix.master);
     this.playhead = time;
     this.player.start(mix, time);
   }
@@ -1421,7 +1465,7 @@ export class MixStore {
   /** Takes over the current mix while playing: levels / curves live, timing changes restart from where we are. */
   private syncPlayback() {
     const mix = this.mixMessage();
-    const key = RenderSession.structureKey(mix.clips, mix.master);
+    const key = RenderSession.structureKey([...mix.clips, ...(mix.layers ?? [])], mix.master);
     if (key === this.playingKey) { this.player.update(mix); return; }
     if (this.restartTimer) clearTimeout(this.restartTimer);
     this.restartTimer = setTimeout(() => { this.restartTimer = null; this.restartPlayback(null); }, 60);
@@ -1465,7 +1509,7 @@ export class MixStore {
     this.changed();
   }
 
-  toggle(key: 'showPanel' | 'showBrowser' | 'showInspector' | 'showDecks' | 'showMixer' | 'followPlayhead' | 'showMixWaveform' | 'exportNormalize' | 'embedMedia' | 'openCueEditorOnAdd') {
+  toggle(key: 'showPanel' | 'showBrowser' | 'showInspector' | 'showDecks' | 'showMixer' | 'followPlayhead' | 'showMixWaveform' | 'showSamplerLane' | 'exportNormalize' | 'embedMedia' | 'openCueEditorOnAdd') {
     (this as Record<string, unknown>)[key] = !(this as Record<string, unknown>)[key];
     this.saveSettings();
     this.changed();
@@ -1535,7 +1579,7 @@ export class MixStore {
       return;
     }
     const mix = this.mixMessage(clips);
-    const inputs: MixWaveformInputs = { clips, master: mix.master, tempo: new TempoMap(mix.tempo.reference, mix.tempo.points), gridOffset: mix.gridOffset, sampleRate: 44100, stems: this.stemSignature() };
+    const inputs: MixWaveformInputs = { clips, layers: mix.layers, master: mix.master, tempo: new TempoMap(mix.tempo.reference, mix.tempo.points), gridOffset: mix.gridOffset, sampleRate: 44100, stems: this.stemSignature() };
     // Only part of the mix changed: re-render that stretch and move the rest along.
     const old = this.mixPeaks, before = this.mixPeaksInputs;
     // (Sampler hits stay on the grid when tracks move, so with any placed the whole mix is drawn again.)
@@ -1605,7 +1649,7 @@ export class MixStore {
       if (this.isPlaying || this.isInteracting) { this.scheduleExactMixRender(sig); return; }
       const clips = this.playableClips();
       const mix = this.mixMessage(clips);
-      const inputs: MixWaveformInputs = { clips, master: mix.master, tempo: new TempoMap(mix.tempo.reference, mix.tempo.points), gridOffset: mix.gridOffset, sampleRate: 44100, stems: this.stemSignature() };
+      const inputs: MixWaveformInputs = { clips, layers: mix.layers, master: mix.master, tempo: new TempoMap(mix.tempo.reference, mix.tempo.points), gridOffset: mix.gridOffset, sampleRate: 44100, stems: this.stemSignature() };
       const job = Jobs.peaks(mix, () => {});
       this.peaksJob = job;
       job.promise.then(r => {
@@ -1635,7 +1679,7 @@ export class MixStore {
     if (!(await this.confirmDiscard())) return;
     this.pause();
     this.projectID = uuid();
-    this.clips = []; this.library = []; this.libraryFolders = []; this.samples = []; this.sampleHits = [];
+    this.clips = []; this.library = []; this.layers = []; this.libraryFolders = []; this.samples = []; this.sampleHits = [];
     this.notes = ''; this.loudnessMode = 'off';
     this.masterBPM = 124; this.gridOffset = 0;
     this.documentPath = null;
@@ -1693,6 +1737,7 @@ export class MixStore {
       };
       const clips = f.clips.map(unpack);
       const library = (f.library ?? []).map(unpack);
+      const layers = (f.layers ?? []).map(unpack);
       const samples = (f.samples ?? []).map(unpack);
       if (extracting.length) {
         // Unpacking the audio of a large mix takes a while: show the tracks as "reading" meanwhile.
@@ -1705,6 +1750,7 @@ export class MixStore {
       }
       this.clips = clips;
       this.library = library;
+      this.layers = layers.filter(l => clips.some(c => c.id === l.layerOf));
       this.libraryFolders = f.libraryFolders ?? [];
       this.samples = samples;
       this.sampleHits = (f.sampleHits ?? []).filter(h => samples.some(x => x.id === h.sample));
@@ -1718,7 +1764,7 @@ export class MixStore {
       this.colorCounter = Math.max(-1, ...[...this.clips, ...this.library].map(c => c.colorIndex)) + 1;
       this.documentPath = asRecovery ? base : file;
       this.undoStack = []; this.redoStack = [];
-      this.missingFiles = new Set([...this.clips, ...this.library].map(c => c.url).filter(u => !fs.existsSync(u)));
+      this.missingFiles = new Set([...this.clips, ...this.library, ...this.layers].map(c => c.url).filter(u => !fs.existsSync(u)));
       this.macAnalyses = f.analyses ?? null;
       this.macProfiles = f.profiles ?? null;
       TrackProfiles.importBlobs(f.profiles);
@@ -1760,7 +1806,7 @@ export class MixStore {
    * The mix waveform is drawn once step 2 is done.
    */
   async loadAnalyses() {
-    const urls = [...new Set([...this.clips, ...this.library].map(c => c.url))].filter(u => !this.missingFiles.has(u) && !this.waveforms.has(u));
+    const urls = [...new Set([...this.clips, ...this.library, ...this.layers].map(c => c.url))].filter(u => !this.missingFiles.has(u) && !this.waveforms.has(u));
     const items: (PendingTrack & { saved: boolean })[] = urls.map(u => ({ id: uuid(), url: u, name: path.basename(u, path.extname(u)), saved: false }));
     if (!items.length) { this.runPendingAutoMix(); return; }
     this.pending = [...this.pending, ...items];
@@ -1768,7 +1814,7 @@ export class MixStore {
     const show = (url: string, a: TrackAnalysis) => {
       this.rememberAnalysis(url, a);
       // The saved tempo / grid wins; rebuild the structure on that grid.
-      const c = [...this.clips, ...this.library].find(x => x.url === url);
+      const c = [...this.clips, ...this.library, ...this.layers].find(x => x.url === url);
       if (c && Math.abs(c.bpm - a.bpm) > 0.01 && a.energies) {
         const st = structureFor(a.energies, c.bpm, c.firstBeat);
         if (st) this.structures.set(url, st);
@@ -1870,8 +1916,9 @@ export class MixStore {
       defaultTransitionBars: this.defaultTransitionBars, defaultTransitionStyle: this.defaultTransitionStyle,
       library: this.library.map(withRel), libraryFolders: this.libraryFolders.length ? this.libraryFolders : null,
       samples: this.samples.length ? this.samples.map(withRel) : null, sampleHits: this.sampleHits.length ? this.sampleHits : null, snap: this.snap, clips: this.clips.map(withRel), projectID: this.projectID,
+      layers: this.layers.filter(l => this.clips.some(c => c.id === l.layerOf)).map(withRel),
       loudnessMode: this.loudnessMode, analyses: this.macAnalyses,
-      profiles: (TrackProfiles.blobs([...this.clips, ...this.library].map(c => c.url)) as Record<string, unknown> | null) ?? this.macProfiles,
+      profiles: (TrackProfiles.blobs([...this.clips, ...this.library, ...this.layers].map(c => c.url)) as Record<string, unknown> | null) ?? this.macProfiles,
     };
   }
 
@@ -1890,7 +1937,7 @@ export class MixStore {
       if (this.embedMedia) {
         const ids = new Map<string, string>();
         // DJAW's own sampler sounds come with every install: not embedded (found again when opened, store/sampler.ts).
-        for (const c of [...this.clips, ...this.library, ...this.samples]) if (c.mediaID && !isBuiltinSample(c.url)) ids.set(c.url, c.mediaID);
+        for (const c of [...this.clips, ...this.library, ...this.layers, ...this.samples]) if (c.mediaID && !isBuiltinSample(c.url)) ids.set(c.url, c.mediaID);
         const assign = <T extends { url: string; mediaID?: string | null }>(c: T): T => {
           let id = ids.get(c.url);
           if (!id) { id = uuid().slice(0, 8); ids.set(c.url, id); }

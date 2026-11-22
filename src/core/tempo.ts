@@ -102,7 +102,7 @@ export class TempoMap {
       if (i === 0) return;
       const target = c.tempo;
       if (!(target != null && target > 20 && Math.abs(target - current) > 0.0001)) return;
-      const anchor = timelineTimeOfBar(c, c.mixInBar, m);
+      const anchor = timelineTimeOfBar(c, c.mixInBar + tempoStartBars(c), m);
       const bars = Math.max(0, tempoRampBars(c));
       const last = pts[pts.length - 1].t;
       const r0 = Math.max(anchor, last);
@@ -113,6 +113,14 @@ export class TempoMap {
     });
     return new TempoMap(m, pts);
   }
+}
+
+/** This track's bars from where it comes in to where its tempo change starts. */
+export function tempoStartBars(c: Clip) {
+  const s = c.tempoStart;
+  if (s === 'afterTransition') return Style.isCutLike(c.transition) ? 0 : Math.max(0, c.transitionBars);
+  if (typeof s === 'number' && s > 0) return s;
+  return 0;
 }
 
 /** Bars the tempo change into this track takes (0 = instant at the switch). */

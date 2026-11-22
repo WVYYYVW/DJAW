@@ -8,6 +8,28 @@ import { store } from '../store/store';
 import { Player } from '../services/player';
 import { Fmt, Theme, clipColor } from '../format';
 import { showContextMenu } from './ContextMenu';
+import { Structure, sectionTitle } from '../../core/analysis/structure';
+
+/** Colours of the track's sections (the same as the Track tab's structure bar). */
+export const sectionColors = { intro: 'rgba(255,255,255,0.28)', drop: 'rgb(255,159,10)', breakdown: 'rgb(64,200,224)', outro: 'rgba(255,255,255,0.16)' } as const;
+
+/** The track's structure (intro / drop / break / outro) as a band, with the names where they fit. */
+function drawSections(ctx: CanvasRenderingContext2D, clip: Clip, x: (s: number) => number, y: number, h: number, w: number, labels: boolean) {
+  const st = store.structures.get(clip.url);
+  if (!st) return;
+  ctx.font = '700 9px system-ui'; ctx.textBaseline = 'middle';
+  for (const sec of st.sections) {
+    const a = Math.max(0, x(Structure.timeOfBar(st, sec.start))), b = Math.min(w, x(Structure.timeOfBar(st, sec.end)));
+    if (b <= a) continue;
+    ctx.fillStyle = sectionColors[sec.kind];
+    ctx.globalAlpha = 0.85; ctx.fillRect(a, y, Math.max(1, b - a - 1), h); ctx.globalAlpha = 1;
+    if (!labels) continue;
+    const name = sectionTitle(sec.kind);
+    if (ctx.measureText(name).width + 6 > b - a) continue;
+    ctx.fillStyle = sec.kind === 'drop' || sec.kind === 'breakdown' ? '#000' : 'rgba(255,255,255,0.85)';
+    ctx.fillText(name, a + 3, y + h / 2 + 0.5);
+  }
+}
 
 const GREEN = 'rgb(48,209,88)', ORANGE = 'rgb(255,159,10)', PURPLE = 'rgb(191,90,242)', TEAL = 'rgb(64,200,224)';
 
@@ -128,6 +150,7 @@ function CueOverview({ clip, wf, position, outgoingBars, onSeek }: { clip: Clip;
     const x = (s: number) => s / duration * w;
     ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.roundRect(0, 0, w, h, 6); ctx.fill();
     if (wf) drawWave(ctx, { x: 0, y: 4, w, h: h - 8 }, wf, 0, duration, clipColor(clip.colorIndex));
+    drawSections(ctx, clip, x, h - 22, 9, w, true);
     const sIn = Math.max(0, sourceTimeAtBar(clip, clip.mixInBar));
     const sOut = sourceTimeAtBar(clip, clip.mixOutBar);
     const sEnd = Math.min(duration, sourceTimeAtBar(clip, clip.mixOutBar + (outgoingBars ?? 0)));
@@ -193,6 +216,7 @@ function CueDetail({ clip, wf, position, outgoingBars, preview, onSeek, onResume
       }
     }
     if (wf) drawWave(ctx, { x: 0, y: 18, w, h: h - 36 }, wf, s0, s1, clipColor(clip.colorIndex));
+    drawSections(ctx, clip, x, h - 33, 12, w, true);
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     if (sIn > s0) ctx.fillRect(0, 0, x(sIn), h);
     if (outgoingBars != null) {

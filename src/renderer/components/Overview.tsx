@@ -317,8 +317,9 @@ export function OverviewTab() {
     // On the label of a transition (just above deck B) or in an overlap: the transition editor.
     const tr = hitTransition(x);
     if (tr > 0 && y < laneY(1) && y > laneY(0) + laneH) { s.selectedClipID = s.clips[tr].id; s.openPanel('transition'); return; }
+    // On a track: that track's settings (Track tab).
     const i = hitClip(x, y);
-    if (i != null && i >= 0) { s.selectedClipID = s.clips[i].id; s.openPanel('fx'); }
+    if (i != null && i >= 0) { s.selectedClipID = s.clips[i].id; s.openPanel('track'); }
   };
   // Wheel: zoom with Ctrl / ⌘ around the pointer, otherwise scroll (native, so it can be non-passive).
   const wrapEl = useRef<HTMLDivElement | null>(null);
@@ -360,7 +361,7 @@ export function OverviewTab() {
         <span className="legend-item"><span className="sw" style={{ background: 'rgba(80,220,120,0.8)' }} />{L('EQ ブースト', 'EQ boost')}</span>
         <span className="legend-item"><span className="sw fxsw" />{L('FX（濃いほど強い）', 'FX (darker = stronger)')}</span>
         <div className="spacer" />
-        <span className="help-dot" title={L('クリックで再生位置を移動・Ctrl（⌘）＋ホイールで拡大・ホイールで左右に移動・曲をダブルクリックで FX、つなぎの名札をダブルクリックでつなぎエディタ', 'Click: move the playhead · Ctrl (⌘) + wheel: zoom · wheel: scroll · double-click a track: its FX · double-click a transition label: the transition editor')}>?</span>
+        <span className="help-dot" title={L('クリックで再生位置を移動・Ctrl（⌘）＋ホイールで拡大・ホイールで左右に移動・曲をダブルクリックでその曲の設定、つなぎの名札をダブルクリックでつなぎエディタ', 'Click: move the playhead · Ctrl (⌘) + wheel: zoom · wheel: scroll · double-click a track: its settings · double-click a transition label: the transition editor')}>?</span>
         <button className="btn small" disabled={!view} onClick={() => setView(null)}>{L('全体を表示', 'Show All')}</button>
       </div>
       <div className="overview-canvas" ref={el => { wrapEl.current = el; wrapRef(el); }} onClick={onClick} onDoubleClick={onDouble}>

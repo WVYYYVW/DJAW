@@ -3,7 +3,7 @@
 import { L } from './i18n';
 import { Automation, Curve } from './automation';
 import { Clip, Edit, Style, barAtSource, barAtTimeline, clipEnd, keepsKey, playSegments, sourceTimeAtBar, timelineTimeOfBar, timelineTimeOfSource } from './models';
-import { FX, TempoMap } from './tempo';
+import { FX, TempoMap, tempoRampBars, tempoStartBars } from './tempo';
 
 export interface GuideStep { time: number; position: string; deck: string | null; text: string; isPrep?: boolean }
 export interface GuideTrack { number: number; deck: string; title: string; setup: string[]; steps: GuideStep[] }
@@ -199,17 +199,24 @@ function transitionSteps(i: number, clips: Clip[], master: number, tempo: TempoM
   }
   if (c.tempo != null) {
     const target = c.tempo;
-    const from = tempo.bpm(Math.max(0, start - 0.01));
+    // Where the change starts (where the track comes in, after the transition, or some bars later) and how long it takes.
+    const t0 = Math.max(start, timelineTimeOfBar(c, c.mixInBar + tempoStartBars(c), master));
+    const from = tempo.bpm(Math.max(0, t0 - 0.01));
     if (Math.abs(target - from) > 0.01) {
-      const bars = c.tempoBars ?? c.transitionBars;
-      const t1 = start + bars * 240 / Math.max(master, 1);
-      const pa0 = pitch(prev, tempo, Math.max(0, start - 0.01)), pa1 = pitch(prev, tempo, t1);
-      const pb0 = pitch(c, tempo, start + 0.001), pb1 = pitch(c, tempo, t1);
+      const bars = Math.max(0, tempoRampBars(c));
+      const t1 = t0 + bars * 240 / Math.max(master, 1);
+      // After the transition only this track is still playing: one pitch fader.
+      const prevPlaying = clipEnd(prev, master) > t0 + 0.01;
+      const pa0 = pitch(prev, tempo, Math.max(0, t0 - 0.01)), pa1 = pitch(prev, tempo, t1);
+      const pb0 = pitch(c, tempo, t0 + 0.001), pb1 = pitch(c, tempo, t1);
       const text = bars <= 0.01
         ? L(`BPM を ${F.bpm(from)} → ${F.bpm(target)} に一気に変更（デッキ${dIn} ピッチ ${pitchText(pb1)}）`, `Tempo jumps ${F.bpm(from)} → ${F.bpm(target)} (deck ${dIn} pitch ${pitchText(pb1)})`)
-        : L(`BPM を ${fmt(bars)}小節かけて ${F.bpm(from)} → ${F.bpm(target)} へ：両方のピッチフェーダーを同時に動かす（${dOut} ${pitchText(pa0)}→${pitchText(pa1)}、${dIn} ${pitchText(pb0)}→${pitchText(pb1)}）`,
-          `Tempo ${F.bpm(from)} → ${F.bpm(target)} over ${fmt(bars)} bars: move both pitch faders together (${dOut} ${pitchText(pa0)}→${pitchText(pa1)}, ${dIn} ${pitchText(pb0)}→${pitchText(pb1)})`);
-      steps.push({ time: tempo.real(start), position: at(start), deck: null, text });
+        : prevPlaying
+          ? L(`BPM を ${fmt(bars)}小節かけて ${F.bpm(from)} → ${F.bpm(target)} へ：両方のピッチフェーダーを同時に動かす（${dOut} ${pitchText(pa0)}→${pitchText(pa1)}、${dIn} ${pitchText(pb0)}→${pitchText(pb1)}）`,
+            `Tempo ${F.bpm(from)} → ${F.bpm(target)} over ${fmt(bars)} bars: move both pitch faders together (${dOut} ${pitchText(pa0)}→${pitchText(pa1)}, ${dIn} ${pitchText(pb0)}→${pitchText(pb1)})`)
+          : L(`BPM を ${fmt(bars)}小節かけて ${F.bpm(from)} → ${F.bpm(target)} へ：デッキ${dIn} のピッチフェーダーを ${pitchText(pb0)} → ${pitchText(pb1)} にゆっくり動かす`,
+            `Tempo ${F.bpm(from)} → ${F.bpm(target)} over ${fmt(bars)} bars: slowly move deck ${dIn}'s pitch fader ${pitchText(pb0)} → ${pitchText(pb1)}`);
+      steps.push({ time: tempo.real(t0), position: at(t0), deck: null, text });
     }
   }
   const sw = Automation.switchTime(clips, i, master);

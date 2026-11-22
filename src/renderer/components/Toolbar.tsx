@@ -106,7 +106,7 @@ export function Toolbar() {
   );
 }
 
-/** The strip above the arrangement: the whole-mix overview, zoom and follow. */
+/** The strip above the arrangement: the whole-mix overview and zoom (the view always follows the playhead while playing). */
 export function ArrangementBar() {
   const s = useStore();
   return (
@@ -119,7 +119,7 @@ export function ArrangementBar() {
         <button className="tbtn icon small" onClick={() => s.zoom(1.4)} title={L('拡大（Ctrl+＋）', 'Zoom in (Ctrl+＋)')}><Icon name="zoomIn" size={15} /></button>
       </div>
       <Toggle icon="wave" on={s.showMixWaveform} onClick={() => s.toggle('showMixWaveform')} title={L('MIX レーン：書き出しと同じ処理で作った最終的な波形', 'MIX lane: the final waveform, rendered exactly like an export')} />
-      <Toggle icon="follow" on={s.followPlayhead} onClick={() => s.toggle('followPlayhead')} title={L('再生中に表示を再生位置に追従させる', 'Keep the playhead in view while playing')} />
+      <Toggle icon="pads" on={s.showSamplerLane} onClick={() => s.toggle('showSamplerLane')} title={L('サンプラーのレーンを表示（置いた音の位置）', 'Show the sampler lane (where the sounds are placed)')} />
     </div>
   );
 }

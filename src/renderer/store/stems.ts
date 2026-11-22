@@ -43,6 +43,8 @@ P.tracksNeedingStems = function () {
   this.clips.forEach((c, i) => {
     if (RenderSession.usesStems(c, this.clips[i + 1]) && !out.includes(c.url)) out.push(c.url);
   });
+  // Layered tracks playing only their vocals or only the rest.
+  for (const l of this.layers) if (RenderSession.usesStems(l) && !out.includes(l.url)) out.push(l.url);
   return out;
 };
 

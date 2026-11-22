@@ -17,6 +17,7 @@ export class Cancelled extends Error {
 
 export interface MixInput {
   clips: Clip[];
+  layers?: Clip[] | null;
   master: number;
   tempo: TempoMap;
   gridOffset: number;
@@ -30,7 +31,7 @@ export interface MixInput {
 /** Gain that brings the loudest sample to −1 dBFS (at most +12 dB). */
 export const normalizeGain = (peak: number) => (peak > 0.0001 ? Math.min(Math.pow(10, -1 / 20) / peak, 4) : 1);
 
-export const mixEndReal = (m: MixInput) => m.tempo.real(Math.max(0, ...m.clips.map(c => clipEnd(c, m.master))));
+export const mixEndReal = (m: MixInput) => m.tempo.real(Math.max(0, ...[...m.clips, ...(m.layers ?? [])].map(c => clipEnd(c, m.master))));
 
 const tick = () => new Promise<void>(r => setImmediate(r));
 

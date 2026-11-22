@@ -215,6 +215,15 @@ export interface Clip {
   keyShift?: number | null;
   tempo?: number | null;
   tempoBars?: number | null;
+  /** Where the tempo change starts: where this track comes in (null, the old behaviour), after the transition, or a
+   *  number of this track's bars after it comes in. */
+  tempoStart?: TempoStart | null;
+  /** A layered track (played on top of a track of the mix, on deck C or D): the mix track it rides on… */
+  layerOf?: string | null;
+  /** …and that track's bar where this one's `mixInBar` lands. It plays until its `mixOutBar`. */
+  layerBar?: number | null;
+  /** Which part of a layered track plays (vocals / instrumental need its stems). */
+  layerParts?: LayerParts | null;
   spinBeats?: number | null;
   fx?: ClipFX[] | null;
   genre?: MixGenre | null;
@@ -227,6 +236,9 @@ export interface Clip {
   landingLock?: boolean | null;
   takes?: TransitionTake[] | null;
 }
+
+export type TempoStart = 'mixIn' | 'afterTransition' | number;
+export type LayerParts = 'all' | 'vocals' | 'instrumental';
 
 export function newClip(p: { url: string; title: string; artist: string; duration: number; bpm: number; firstBeat: number; trimEnd: number }): Clip {
   return {
@@ -899,6 +911,7 @@ export interface TakeSnapshot {
   lanes?: TransitionLanes | null;
   tempo?: number | null;
   tempoBars?: number | null;
+  tempoStart?: TempoStart | null;
   spinBeats?: number | null;
   inNudge?: number | null;
   fadeInBeats: number;
@@ -928,6 +941,7 @@ export const Take = {
       lanes: clip.transition === 'custom' ? clip.lanes ?? null : null,
       tempo: clip.tempo ?? null,
       tempoBars: clip.tempoBars ?? null,
+      tempoStart: clip.tempoStart ?? null,
       spinBeats: clip.spinBeats ?? null,
       inNudge: clip.inNudge ?? null,
       fadeInBeats: clip.fadeInBeats,
@@ -954,6 +968,7 @@ export const Take = {
     clip.lanes = c.lanes;
     clip.tempo = c.tempo;
     clip.tempoBars = c.tempoBars;
+    clip.tempoStart = c.tempoStart ?? null;
     clip.spinBeats = c.spinBeats;
     clip.inNudge = c.inNudge;
     clip.fadeInBeats = c.fadeInBeats;
@@ -1017,6 +1032,8 @@ export interface ProjectFile {
   library?: Clip[] | null;
   snap: SnapUnit;
   clips: Clip[];
+  /** Tracks played on top of mix tracks (decks C / D); see core/layers.ts. */
+  layers?: Clip[] | null;
   projectID?: string | null;
   media?: MediaEntry[] | null;
   /** Mac analyses (LZFSE binary plists, base64) — kept untouched so the Mac app can still use them. */

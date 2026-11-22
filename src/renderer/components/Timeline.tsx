@@ -114,7 +114,7 @@ class TimelineView {
   get scrollX() { return this.scroller.scrollLeft; }
   get mixLaneSpace() { return store.showMixWaveform ? MIX_LANE + 10 : 0; }
   /** The sampler lane: shown with the sampler panel, or whenever sounds are placed. */
-  get showsSamplerLane() { return (store.showPanel && store.panelTab === 'sampler') || store.samples.length > 0 || store.sampleHits.length > 0; }
+  get showsSamplerLane() { return store.showSamplerLane && ((store.showPanel && store.panelTab === 'sampler') || store.samples.length > 0 || store.sampleHits.length > 0); }
   get samplerLaneSpace() { return this.showsSamplerLane ? SAMPLER_LANE + 8 : 0; }
   get samplerLaneTop() { return this.lanesBottom + 8 + this.mixLaneSpace; }
   get laneHeight() { return Math.max(46, (this.height - LANES_TOP - LANE_GAP - 14 - this.mixLaneSpace - this.samplerLaneSpace) / 2); }

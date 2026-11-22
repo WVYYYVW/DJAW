@@ -234,3 +234,29 @@ test('sampler hits land on their beat, the same from the start or the middle', a
   const b = await render(Sampler.timeOfBeat(9, 120, gridOffset) - 0.01);
   for (let i = 0; i < b.out.length; i++) assert.equal(b.out[i], a.out[b.start - a.start + i], `frame ${b.start + i} differs`);
 });
+
+test('a layered track plays on its mix track’s bar, at the mix tempo, for its own bars', async () => {
+  const { placeLayers } = await import('../src/core/layers');
+  const { timelineTimeOfBar } = await import('../src/core/models');
+  const master = 120;
+  const host = clip('host', 120, 40);
+  const layer = clip('layer', 100, 40, 0.3);
+  Object.assign(layer, { id: 'L1', layerOf: host.id, layerBar: 4, mixInBar: 2, mixOutBar: 6, fadeInBeats: 0, fadeOutBeats: 0 });
+  const { clips: laid, gridOffset } = layout([host], master, 0);
+  const tempo = TempoMap.build(laid, master);
+  const placed = placeLayers([layer], laid, master);
+  const sources: Record<string, Float32Array> = { host: new Float32Array(40 * sr), layer: clickTrack(100, 40, 0.6) };
+  const session = await RenderSession.create({
+    clips: laid, layers: placed, master, tempo, gridOffset, sampleRate: sr,
+    open: c => new MemorySource(sr, sources[c.url]), pool: new StretchPool(sr),
+  });
+  const out = new Float32Array(20 * sr);
+  let p = 0;
+  while (p < out.length) { const n = session.renderNext(); out.set(session.L.subarray(0, Math.min(n, out.length - p)), p); p += n; }
+  session.stop();
+  const got = onsets(out);
+  const t0 = timelineTimeOfBar(laid[0], 4, master);
+  // 4 bars of the layered track = 16 off-beat clicks, half a second apart at 120 BPM, from the host's bar 4.
+  assert.equal(got.length, 16, `clicks: ${got.map(t => t.toFixed(3)).join(' ')}`);
+  got.forEach((t, k) => assert.ok(Math.abs(t - (t0 + 0.25 + k * 0.5)) < 0.0015, `click ${k} at ${t.toFixed(4)}, want ${(t0 + 0.25 + k * 0.5).toFixed(4)}`));
+});

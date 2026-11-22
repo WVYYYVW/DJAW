@@ -120,7 +120,6 @@ function buildMenu() {
         item(L('先頭へ戻る', 'Go to Start'), 'toStart', 'Home'),
         item(L('選択した曲のつなぎを試聴', 'Preview Selected Transition'), 'previewTransition', 'CmdOrCtrl+P'),
         sep,
-        item(L('再生位置に追従（切替）', 'Follow Playhead (toggle)'), 'toggleFollow'),
       ],
     },
     {
@@ -156,6 +155,7 @@ function buildMenu() {
         item(L('デッキ', 'Decks'), 'toggleDecks', 'CmdOrCtrl+Shift+D'),
         item(L('ミキサー（切替）', 'Mixer (toggle)'), 'toggleMixer', 'CmdOrCtrl+Shift+X'),
         item(L('ミックス波形（切替）', 'Mix Waveform (toggle)'), 'toggleMixWaveform'),
+        item(L('サンプラーのレーン（切替）', 'Sampler Lane (toggle)'), 'toggleSamplerLane'),
         item(L('サンプラー', 'Sampler'), 'toggleSampler', 'CmdOrCtrl+Shift+B'),
         sep,
         {

@@ -72,6 +72,7 @@ function TrackTab() {
         <Section title={L('曲の構成', 'Structure')}><StructureSummary clip={clip} />{!s.structures.get(clip.url) && <div className="caption">{L('解析中…', 'Analysing…')}</div>}</Section>
         <MixerTab clip={clip} index={i} />
         <DeckTab clip={clip} index={i} />
+        <TempoChangeSection clip={clip} index={i} />
       </div>
     );
   }

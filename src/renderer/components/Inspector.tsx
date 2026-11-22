@@ -282,24 +282,36 @@ export function TempoChangeSection({ clip, index }: { clip: Clip; index: number 
   const before = s.tempoBefore(index);
   const own = clip.tempo != null;
   const bpmHere = clip.tempo ?? before;
-  const rateNow = rate(clip, bpmHere);
+  const rateBefore = rate(clip, before), rateNow = rate(clip, bpmHere);
+  const startValue = clip.tempoStart == null || clip.tempoStart === 'mixIn' ? 'mixIn' : clip.tempoStart === 'afterTransition' ? 'afterTransition' : String(clip.tempoStart);
   return (
     <Section title={L('テンポ（ミックスBPM）', 'Tempo (Mix BPM)')}>
-      <label className="check"><input type="checkbox" checked={own} onChange={e => s.setTrackTempo(clip.id, e.target.checked ? Math.round(clip.bpm * 100) / 100 : null)} /> {L('この曲からテンポを変える', 'Change tempo from this track')}</label>
+      <label className="check"><input type="checkbox" checked={own} onChange={e => s.setTempoChange(clip.id, e.target.checked)} /> {L('この曲でテンポを変える', 'Change the tempo in this track')}</label>
       {own ? <>
-        <Row label={L('この曲からの BPM', 'BPM from here')}>
+        <div className="tempo-summary">
+          <span className="mono">{Fmt.ratePercent(rateBefore)}</span><span className="dim">→</span><span className="mono">{Fmt.ratePercent(rateNow)}</span>
+          <span className="dim">({Fmt.bpm(before)} → {Fmt.bpm(bpmHere)} BPM)</span>
+        </div>
+        <Row label={L('変えた後の BPM', 'BPM after')}>
           <NumberField value={clip.tempo!} min={40} max={220} onCommit={v => s.setTrackTempo(clip.id, v)} />
-          <button className="btn small" onClick={() => s.setTrackTempo(clip.id, Math.round(clip.bpm * 100) / 100)}>{L('この曲の速さ', 'This track’s tempo')}</button>
+          <button className="btn small" title={L('この曲の元の速さ（ピッチ 0.0%）にする', 'This track at its own speed (pitch 0.0%)')} onClick={() => s.setTrackTempo(clip.id, Math.round(clip.bpm * 100) / 100)}>{L('元の速さ 0.0%', 'Own speed 0.0%')}</button>
         </Row>
-        <Row label={L('変え方', 'Change')}>
-          <select value={clip.tempoBars == null ? -1 : clip.tempoBars} onChange={e => s.setTempoBars(clip.id, Number(e.target.value) < 0 ? null : Number(e.target.value))}>
-            <option value={-1}>{L('つなぎの長さで', 'Over the transition')}</option>
-            <option value={0}>{L('切替の瞬間に', 'Instantly')}</option>
-            {[1, 2, 4, 8, 16, 32].map(n => <option key={n} value={n}>{L(`${n}小節かけて`, `Over ${n} bars`)}</option>)}
+        <Row label={L('始める所', 'Starts')}>
+          <select value={startValue} onChange={e => { const v = e.target.value; s.setTempoStart(clip.id, v === 'mixIn' ? null : v === 'afterTransition' ? 'afterTransition' : Number(v)); }}>
+            <option value="afterTransition">{L('つなぎが終わってから', 'After the transition')}</option>
+            <option value="mixIn">{L('曲が入る所から', 'Where the track comes in')}</option>
+            {[1, 2, 4, 8, 16, 32, 64].map(n => <option key={n} value={String(n)}>{L(`入ってから ${n}小節後`, `${n} bars after it comes in`)}</option>)}
           </select>
         </Row>
-        <div className="caption">{L(`この曲は ${Fmt.ratePercent(rateNow)} で再生されます。BPM が大きく変わるときは、つなぎ方を「カットイン」「ブレーキ」「バックスピン」にすると自然です。`, `This track plays at ${Fmt.ratePercent(rateNow)}. For big tempo jumps, Cut In, Brake or Backspin sound natural.`)}</div>
-      </> : <div className="caption">{L(`前の曲と同じ ${Fmt.bpm(before)} BPM で再生（この曲の速さ ${Fmt.ratePercent(rate(clip, before))}）`, `Plays at the previous ${Fmt.bpm(before)} BPM (this track at ${Fmt.ratePercent(rate(clip, before))})`)}</div>}
+        <Row label={L('かける長さ', 'Takes')}>
+          <select value={clip.tempoBars == null ? -1 : clip.tempoBars} onChange={e => s.setTempoBars(clip.id, Number(e.target.value) < 0 ? null : Number(e.target.value))}>
+            <option value={-1}>{L('つなぎの長さ', 'The transition length')}</option>
+            <option value={0}>{L('一瞬で', 'Instantly')}</option>
+            {[1, 2, 4, 8, 16, 32, 64].map(n => <option key={n} value={n}>{L(`${n}小節`, `${n} bars`)}</option>)}
+          </select>
+        </Row>
+        <div className="caption">{L('ミックス全体のテンポがこの曲の所から変わり、後の曲もこの BPM で続きます。BPM が大きく変わるときは、つなぎ方を「カットイン」「ブレーキ」「バックスピン」にすると自然です。', 'The whole mix changes tempo from here, and the tracks after carry on at this BPM. For big tempo jumps, Cut In, Brake or Backspin sound natural.')}</div>
+      </> : <div className="caption">{L(`前の曲と同じ ${Fmt.bpm(before)} BPM で再生（この曲の速さ ${Fmt.ratePercent(rateBefore)}）。チェックを入れると、例えば ${Fmt.ratePercent(rateBefore)} から元の速さ 0.0% へ、つなぎの後に小節単位で戻せます。`, `Plays at the previous ${Fmt.bpm(before)} BPM (this track at ${Fmt.ratePercent(rateBefore)}). Tick the box to bring it back, e.g. from ${Fmt.ratePercent(rateBefore)} to its own speed 0.0%, over some bars after the transition.`)}</div>}
     </Section>
   );
 }

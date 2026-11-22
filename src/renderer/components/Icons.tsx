@@ -13,7 +13,6 @@ const paths: Record<string, React.ReactNode> = {
   wave: <path d="M1.5 8h1.5M4.5 5v6M7 3v10M9.5 5.5v5M12 6.5v3M14.5 8h0" />,
   browser: <><rect x="2" y="2.5" width="12" height="11" rx="1.5" /><path d="M6.2 2.5v11" /></>,
   panel: <><rect x="2" y="2.5" width="12" height="11" rx="1.5" /><path d="M2 9.5h12" /></>,
-  follow: <><path d="M3 8h8M8 5l3 3-3 3" /><path d="M13.5 3v10" /></>,
   zoomIn: <><circle cx="7" cy="7" r="4" /><path d="M10 10l3.5 3.5M5 7h4M7 5v4" /></>,
   zoomOut: <><circle cx="7" cy="7" r="4" /><path d="M10 10l3.5 3.5M5 7h4" /></>,
   fit: <path d="M2.5 8h11M5 5.5 2.5 8 5 10.5M11 5.5l2.5 2.5L11 10.5" />,

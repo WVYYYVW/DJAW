@@ -49,7 +49,9 @@ function Preview({ win }: { win: Window }) {
       raf = win.requestAnimationFrame(draw);
       if (now - lastDraw < 1000 / 31) return;
       lastDraw = now;
-      const [W, H] = fullRef.current ? [1920, 1080] : [960, 540];
+      // Drawn at full HD when shown large (full screen, or the window maximized / enlarged), otherwise at half.
+      const shown = canvas.current ? canvas.current.clientWidth * (win.devicePixelRatio || 1) : 0;
+      const [W, H] = fullRef.current || shown > 1100 ? [1920, 1080] : [960, 540];
       const k = painterKey() + W;
       const tempo = store.tempoMap;
       if (!painter || k !== key) {
@@ -77,7 +79,8 @@ function Preview({ win }: { win: Window }) {
     <div id="djaw-visuals-root" style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#000', color: '#ddd', font: '13px "Yu Gothic UI", "Segoe UI", system-ui, sans-serif' }}>
       <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         onDoubleClick={() => toggleFullScreen(win)} title={full ? '' : L('ダブルクリックで全画面', 'Double-click for full screen')}>
-        <canvas ref={canvas} width={960} height={540} style={{ width: full ? '100%' : undefined, height: full ? '100%' : undefined, objectFit: 'contain', maxWidth: '100%', maxHeight: '100%', aspectRatio: '16 / 9' }} />
+        {/* Fills the window (also when it is maximized with the title bar's button), letterboxed at 16:9. */}
+        <canvas ref={canvas} width={960} height={540} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
       </div>
       {!full && <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 10, background: '#111' }}>
         <label>{L('映像', 'Visuals')}{' '}

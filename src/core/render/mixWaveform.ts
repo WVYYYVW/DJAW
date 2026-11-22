@@ -7,6 +7,7 @@ import { TAIL } from './session';
 
 export interface MixWaveformInputs {
   clips: Clip[];
+  layers?: Clip[] | null;
   master: number;
   tempo: TempoMap;
   gridOffset: number;
@@ -15,7 +16,7 @@ export interface MixWaveformInputs {
   stems: string;
 }
 
-const endReal = (i: MixWaveformInputs) => i.tempo.real(Math.max(0, ...i.clips.map(c => clipEnd(c, i.master))));
+const endReal = (i: MixWaveformInputs) => i.tempo.real(Math.max(0, ...[...i.clips, ...(i.layers ?? [])].map(c => clipEnd(c, i.master))));
 
 /** A clip as far as the sound is concerned (names, colours, notes and saved takes don't matter). */
 function audible(c: Clip): string {
@@ -39,6 +40,20 @@ export interface MixWaveformChange {
 /** Which stretch of the mix differs between two renders' inputs; null = render everything again. */
 export function mixWaveformChange(a: MixWaveformInputs, b: MixWaveformInputs): MixWaveformChange | null {
   if (a.master !== b.master || a.gridOffset !== b.gridOffset || a.sampleRate !== b.sampleRate || a.stems !== b.stems) return null;
+  const main = mainChange(a, b);
+  // Layered tracks changed: render again from the earliest change (theirs or the mix's) to the end.
+  const la = new Map((a.layers ?? []).map(c => [c.id, c])), lb = new Map((b.layers ?? []).map(c => [c.id, c]));
+  const changed = [...new Set([...la.keys(), ...lb.keys()])].flatMap(id => {
+    const x = la.get(id), y = lb.get(id);
+    return x && y && audible(x) === audible(y) ? [] : [x, y].filter((c): c is Clip => !!c);
+  });
+  if (!changed.length) return main;
+  const ref = Math.min(...changed.map(c => c.start));
+  const fromReal = Math.max(0, Math.min(a.tempo.real(ref), b.tempo.real(ref), main ? main.fromReal : Infinity));
+  return { fromReal, toReal: endReal(b) + 0.3, shiftReal: 0, exact: true };
+}
+
+function mainChange(a: MixWaveformInputs, b: MixWaveformInputs): MixWaveformChange | null {
   const x = a.clips.map(audible), y = b.clips.map(audible);
   // Unchanged tracks at the start.
   let p = 0;

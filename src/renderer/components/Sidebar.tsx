@@ -1,6 +1,6 @@
 // Mix order (drag to reorder; transitions follow automatically) and the library of prepared tracks
 // (mac/DJAW/Views/SidebarView.swift).
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { L } from '../../core/i18n';
 import { Clip, Style, barLabel } from '../../core/models';
 import { Key } from '../../core/analysis/structure';
@@ -143,14 +143,30 @@ export function Sidebar() {
     else if (d.ids && d.ids.length > 1) s.addToMixMany(d.ids, k);
     else s.addToMix(d.id, k);
   };
+  // Drag the right edge for the width, and the line between the two lists for their shares (double-click: back to normal).
+  const sideRef = useRef<HTMLDivElement>(null);
+  const dragResize = (e: React.PointerEvent, kind: 'width' | 'split') => {
+    e.preventDefault();
+    const el = sideRef.current!;
+    const box = el.getBoundingClientRect();
+    const move = (ev: PointerEvent) => {
+      if (kind === 'width') s.browserWidth = Math.round(Math.max(200, Math.min(Math.min(640, window.innerWidth * 0.5), ev.clientX - box.left)));
+      else s.browserSplit = Math.max(0.1, Math.min(0.9, (ev.clientY - box.top) / Math.max(1, box.height)));
+      s.changed();
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); document.body.style.cursor = ''; s.saveSettings(); };
+    document.body.style.cursor = kind === 'width' ? 'ew-resize' : 'ns-resize';
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
   return (
-    <div className="sidebar"
+    <div className="sidebar" ref={sideRef} style={{ width: s.browserWidth }}
       onDragOver={e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }}
       onDrop={e => {
         const files = droppedPaths(e.dataTransfer);
         if (files.length) { e.preventDefault(); s.addFiles(files, { kind: 'library' }); }
       }}>
-      <div className="side-section">
+      <div className="side-section mix-order" style={{ flexBasis: `${s.browserSplit * 100}%` }}>
         <div className="side-head">
           <span>{L('ミックス順（ドラッグで並べ替え）', 'Mix order (drag to reorder)')}</span>
         </div>
@@ -171,7 +187,11 @@ export function Sidebar() {
           </div>
         </div>
       </div>
+      <div className="side-split" onPointerDown={e => dragResize(e, 'split')} onDoubleClick={() => { s.browserSplit = 0.45; s.changed(); s.saveSettings(); }}
+        title={L('ドラッグでミックス順とライブラリの高さの割合を変更（ダブルクリックで元に戻す）', 'Drag to share the height between the mix order and the library (double-click to reset)')} />
       <LibrarySection />
+      <div className="side-resize" onPointerDown={e => dragResize(e, 'width')} onDoubleClick={() => { s.browserWidth = 264; s.changed(); s.saveSettings(); }}
+        title={L('ドラッグで幅を変更（ダブルクリックで元に戻す）', 'Drag to change the width (double-click to reset)')} />
     </div>
   );
 }

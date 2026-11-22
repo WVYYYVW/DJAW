@@ -719,3 +719,15 @@ button.update-chip.failed { background: rgba(255,110,90,0.18); color: #ffb3a6; }
 .grid-select { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
 .fx-wave-grid { position: absolute; top: 1px; right: 8px; z-index: 1; }
 .fx-wave-grid .tselect { height: 18px; font-size: 11px; }
+
+/* Tempo change: the pitch before → after. */
+.tempo-summary { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; font-size: 15px; font-weight: 600; margin: 2px 0 6px; }
+.tempo-summary .dim { font-size: 12px; font-weight: 400; }
+
+/* The browser: adjustable width (right edge) and mix order / library shares (the line between them). */
+.sidebar { position: relative; }
+.side-section.mix-order { flex: 0 0 auto; max-height: none; min-height: 60px; }
+.side-section.grow { min-height: 60px; flex: 1 1 0; border-top: none; }
+.side-split { flex: none; height: 7px; margin: -3px 0; position: relative; z-index: 3; cursor: ns-resize; background: linear-gradient(var(--line), var(--line)) center / 100% 1px no-repeat; }
+.side-split:hover, .side-resize:hover { background-color: rgba(61, 139, 253, 0.35); }
+.side-resize { position: absolute; top: 0; bottom: 0; right: -4px; width: 7px; cursor: ew-resize; z-index: 6; }

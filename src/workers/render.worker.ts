@@ -17,6 +17,8 @@ const pool = new StretchPool(SR);
 
 export interface MixMessage {
   clips: Clip[];
+  /** Layered tracks, placed (core/layers.ts). */
+  layers?: Clip[] | null;
   master: number;
   tempo: { reference: number; points: TempoPoint[] };
   gridOffset: number;
@@ -33,7 +35,7 @@ const samplerPaths = new WeakMap<object, Record<string, string>>();
 let previewSampler: object | null = null;
 
 const mixInput = (m: MixMessage) => ({
-  clips: m.clips, master: m.master, tempo: new TempoMap(m.tempo.reference, m.tempo.points), gridOffset: m.gridOffset,
+  clips: m.clips, layers: m.layers ?? null, master: m.master, tempo: new TempoMap(m.tempo.reference, m.tempo.points), gridOffset: m.gridOffset,
   sampleRate: SR, pool, open: (c: Clip) => openPcmFile(m.paths[c.url] ?? c.url),
   openStems: (c: Clip) => {
     const f = m.stems?.[c.url];
@@ -120,7 +122,7 @@ self.onmessage = async (e: MessageEvent) => {
         break;
       case 'play': await startPreview(m); break;
       case 'update':
-        if (session && !session.update(m.clips, m.master)) postMessage({ type: 'restart' });
+        if (session && !session.update(m.clips, m.master, m.layers)) postMessage({ type: 'restart' });
         else if (session && m.sampler) {
           if (previewSampler) samplerPaths.set(previewSampler, { ...(samplerPaths.get(previewSampler) ?? {}), ...m.sampler.paths });
           session.updateSampler(m.sampler.input);

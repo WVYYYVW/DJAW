@@ -235,7 +235,7 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
     await win.waitForTimeout(800);
     // The middle points of the low lane (the 4th): where the cursor turns into a hand.
     const middlePoints = async () => {
-      const r = await ev(() => { const c = document.querySelectorAll('canvas.lane-canvas')[3]; if (!c) return null; const b = c.getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; });
+      const r = await ev(() => { const c = document.querySelectorAll('canvas.lane-canvas')[3]; if (!c) return null; c.scrollIntoView({ block: 'center' }); const b = c.getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; });
       if (!r) return [];
       const found = [];
       for (let x = r[0] + 40; x < r[0] + r[2] - 40; x += 6) {
@@ -264,6 +264,22 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
     await ev(d => { const s = window.djaw; while (s.undoStack.length > d) s.undo(); }, undoDepth);
     check('points of a preset transition can be deleted', presetDelete.before > 0 && presetDelete.afterDouble === presetDelete.before - 1
       && (presetDelete.before < 2 || presetDelete.afterKey === presetDelete.before - 2), presetDelete);
+    // The video preview window fills its window when that is enlarged (maximized with the title bar's button).
+    const previewFill = { opened: false };
+    try {
+      await ev(() => { window.djaw.showVisualPreview = true; window.djaw.changed(); });
+      const t0 = Date.now();
+      let pv = null;
+      while (!pv && Date.now() - t0 < 10000) { pv = app.windows().find(p => p !== win); if (!pv) await win.waitForTimeout(200); }
+      if (pv) {
+        previewFill.opened = true;
+        await app.evaluate(({ BrowserWindow }) => { for (const b of BrowserWindow.getAllWindows()) if (b.webContents.getURL() === 'about:blank') b.setContentSize(1600, 1000); });
+        await pv.waitForTimeout(1200);
+        Object.assign(previewFill, await pv.evaluate(() => { const c = document.querySelector('canvas'); return c ? { shownW: Math.round(c.clientWidth), shownH: Math.round(c.clientHeight), drawW: c.width, winW: innerWidth } : {}; }));
+      }
+      await ev(() => { window.djaw.showVisualPreview = false; window.djaw.changed(); });
+    } catch (e) { previewFill.error = String(e); }
+    check('video preview fills an enlarged window', previewFill.opened && previewFill.shownW >= previewFill.winW - 2 && previewFill.drawW === 1920, previewFill);
     // The panel maximized (the arrangement hidden), the overview drawn, the tabs without sideways scrolling.
     await ev(() => { window.djaw.openPanel('overview'); window.djaw.togglePanelMaximized(true); });
     await win.waitForTimeout(800);

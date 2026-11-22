@@ -49,6 +49,7 @@ function parse(json: string): ProjectFile {
   const fix = (c: Clip) => { c.url = urlToPath(c.url); return c; };
   f.clips = (f.clips ?? []).map(fix);
   f.library = (f.library ?? []).map(fix);
+  if (f.layers) f.layers = f.layers.map(fix);
   return f;
 }
 
@@ -58,6 +59,7 @@ export function encodeProject(p: ProjectFile): string {
   const fix = (c: Clip) => { c.url = pathToUrl(c.url); return c; };
   out.clips = out.clips.map(fix);
   if (out.library) out.library = out.library.map(fix);
+  if (out.layers) out.layers = out.layers.map(fix);
   return JSON.stringify(sortKeys(out), null, 2);
 }
 

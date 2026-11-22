@@ -291,6 +291,8 @@ export interface SessionOptions {
   /** Sampler plays and how to open a sample's audio (left out when rendering single tracks). */
   sampler?: { input: SamplerInput; open: (sample: string) => AudioSource | null } | null;
   pool: StretchPool;
+  /** Layered tracks, placed (core/layers.ts placeLayers): each renders as a track on its own, added to the mix. */
+  layers?: Clip[] | null;
 }
 
 export class RenderSession {
@@ -313,6 +315,9 @@ export class RenderSession {
   absoluteFrame: number;
   readonly startFrame: number;
   private readonly ownKey: string;
+  /** One session per layered track (no neighbours, so only its own fades, levels and effects apply). */
+  private layerSessions: RenderSession[] = [];
+  private layerKey = '';
   readonly L = new Float32Array(CHUNK);
   readonly R = new Float32Array(CHUNK);
 
@@ -344,6 +349,10 @@ export class RenderSession {
       else this.waiting.push({ index: i, frame });
     }
     this.waiting.sort((a, b) => a.frame - b.frame);
+    if (o.layers?.length && !o.indices) {
+      this.layerKey = RenderSession.structureKey(o.layers, o.master);
+      this.layerSessions = o.layers.map(l => new RenderSession({ ...o, clips: [l], layers: null, sampler: null, fixed: undefined, indices: undefined }));
+    }
   }
 
   /** Creates a session, preparing enough time-stretch units for the busiest moment of the mix. */
@@ -356,8 +365,8 @@ export class RenderSession {
   static maxConcurrent(o: SessionOptions) {
     const t0 = o.from ?? 0;
     const ev: [number, number][] = [];
-    for (const i of o.indices ?? o.clips.map((_, k) => k)) {
-      const c = o.clips[i];
+    const all = o.indices ? o.indices.map(i => o.clips[i]) : [...o.clips, ...(o.layers ?? [])];
+    for (const c of all) {
       if (!c) continue;
       const e = o.tempo.real(clipEnd(c, o.master)) + TAIL;
       if (e <= o.tempo.real(t0)) continue;
@@ -403,6 +412,7 @@ export class RenderSession {
     this.stemSources.clear();
     this.sampler?.close();
     this.sampler = null;
+    for (const l of this.layerSessions) l.stop();
   }
 
   /** New sampler plays while playing (pads hit live, hits moved): taken over without starting again. */
@@ -416,18 +426,30 @@ export class RenderSession {
   /** Timeline (reference) time of the next frame. */
   get time() { return this.tempo.referenceAtReal(this.absoluteFrame / this.sampleRate); }
   get renderedFrames() { return this.absoluteFrame - this.startFrame; }
-  get activeVoices() { return this.voices.length; }
+  get activeVoices(): number { return this.voices.length + this.layerSessions.reduce((a: number, l) => a + l.activeVoices, 0); }
 
   /** Length of the next step: up to the next multiple of 512 frames (shorter when a track comes in sooner). */
-  get nextChunk() {
+  get nextChunk(): number {
     let n = CHUNK - (((this.absoluteFrame % CHUNK) + CHUNK) % CHUNK);
     const w = this.waiting[0];
     if (w && w.frame > this.absoluteFrame && w.frame - this.absoluteFrame < n) n = w.frame - this.absoluteFrame;
+    for (const l of this.layerSessions) n = Math.min(n, l.nextChunk);
     return n;
   }
 
   /** Renders the next step into L / R; returns the number of frames. */
   renderNext(): number {
+    const n = this.nextChunk;
+    this.renderOwn(n);
+    for (const l of this.layerSessions) {
+      l.renderOwn(n);
+      for (let k = 0; k < n; k++) { this.L[k] += l.L[k]; this.R[k] += l.R[k]; }
+    }
+    return n;
+  }
+
+  /** This session's own tracks (and sampler) for the next `n` frames, into L / R. */
+  private renderOwn(n: number) {
     while (this.waiting.length && this.waiting[0].frame <= this.absoluteFrame) {
       const w = this.waiting.shift()!;
       this.addVoice(w.index, 0, this.clips[w.index].start);
@@ -436,7 +458,6 @@ export class RenderSession {
       for (const v of this.voices) if (v.endFrame < this.absoluteFrame) this.pool.give(v.stretcher);
       this.voices = this.voices.filter(v => v.endFrame >= this.absoluteFrame);
     }
-    const n = this.nextChunk;
     const sr = this.sampleRate;
     const t = this.tempo.referenceAtReal((this.absoluteFrame + n / 2) / sr);
     const bpm = this.tempo.bpm(t);
@@ -449,20 +470,22 @@ export class RenderSession {
     }
     this.sampler?.render(this.absoluteFrame, n, this.L, this.R);
     this.absoluteFrame += n;
-    return n;
   }
 
   /** Takes over changed levels / EQ / effects / curves without starting again. False when audio moves in time. */
-  update(clips: Clip[], master: number): boolean {
+  update(clips: Clip[], master: number, layers?: Clip[] | null): boolean {
     if (master !== this.master || clips.length !== this.clips.length || RenderSession.structureKey(clips, master) !== this.ownKey) return false;
+    const ls = layers ?? [];
+    if (ls.length !== this.layerSessions.length || (ls.length && RenderSession.structureKey(ls, master) !== this.layerKey)) return false;
     this.clips = clips;
     this.ends = clips.map(c => clipEnd(c, master));
+    this.layerSessions.forEach((l, k) => l.update([ls[k]], master));
     return true;
   }
 
   /** Whether a track's transitions use its stems (then it plays from its four stems). */
   static usesStems(c: Clip, next?: Clip) {
-    return (c.transition === 'custom' && !!c.lanes && Lanes.usesStemsIncoming(c.lanes))
+    return (!!c.layerParts && c.layerParts !== 'all') || (c.transition === 'custom' && !!c.lanes && Lanes.usesStemsIncoming(c.lanes))
       || (!!next && next.transition === 'custom' && !!next.lanes && Lanes.usesStemsOutgoing(next.lanes));
   }
 
@@ -476,7 +499,7 @@ export class RenderSession {
     });
     for (const c of clips) {
       parts.push(c.id, c.url, c.start, c.trimStart, c.trimEnd, c.playLength ?? null, c.edits ?? null, c.bpm, c.firstBeat,
-        c.tempo ?? null, c.tempoBars ?? null, c.tempoSync, c.keyLock ?? null, c.keyShift ?? null,
+        c.tempo ?? null, c.tempoBars ?? null, c.tempoStart ?? null, c.layerParts ?? null, c.tempoSync, c.keyLock ?? null, c.keyShift ?? null,
         c.transition === 'cut', c.transition === 'brake', c.transition === 'backspin', c.spinBeats ?? null,
         c.mixInBar, c.mixOutBar, c.transitionBars, c.endBar ?? null, c.inNudge ?? null, c.outNudge ?? null,
         (c.fx ?? []).some(f => f.kind === 'reverb'));

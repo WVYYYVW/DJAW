@@ -227,6 +227,10 @@ export const Automation = {
     if (laneReverb > 0.002) fx.reverb = Math.max(fx.reverb, f32(laneReverb));
     void isQuietFX;
 
+    // A layered track playing only its vocals or only the rest.
+    if (c.layerParts === 'vocals') instrumental = 0;
+    else if (c.layerParts === 'instrumental') vocal = 0;
+
     const gain = Math.pow(10, (c.gainDB + (c.loudnessGainDB ?? 0)) / 20);
     const kill = Automation.killDB;
     const lowDB = c.eqLow + (kill - c.eqLow) * lowK;
