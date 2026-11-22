@@ -1,5 +1,7 @@
 # Windows 移植：設計の詳細・対応表・落とし穴
 
+**日本語** | [English](i18n/PORTING.en.md) | [简体中文](i18n/PORTING.zh-Hans.md) | [繁體中文](i18n/PORTING.zh-Hant.md) | [한국어](i18n/PORTING.ko.md) | [Español](i18n/PORTING.es.md) | [Français](i18n/PORTING.fr.md) | [Deutsch](i18n/PORTING.de.md) | [Italiano](i18n/PORTING.it.md) | [Português](i18n/PORTING.pt.md) | [Русский](i18n/PORTING.ru.md)
+
 `CLAUDE.md` の続き。Mac 版（`mac/DJAW`）のコードが **仕様の正本**。数値・曲線・閾値はそのまま写すこと
 （ユーザーが長い時間をかけて耳で調整してきた値ばかり）。
 
@@ -197,3 +199,17 @@ JSON                  ProjectFile（キーはソート、日付は ISO8601）
 - `hyperflip.djaw`（Mac 版のミックス、音声埋め込み）、`hyperflip.wav`（その書き出し）
 - `DJAW_pv_export*.wav`（プレビューと書き出しの比較に使った書き出し）
 - 曲：`chance-FINAL.wav`, `TURN OFF THE LIGHTS REMIX FINISHED!!!.wav`, `you dont need to fall.mp3`, `01 welcome.wav` ほか
+
+## 9. 0.4.0 で加えた仕様
+
+- **テンポ変更の開始位置**（`Clip.tempoStart`）：`'afterTransition'`（つなぎの後。新しくテンポ変更を作るときの標準）・`'mixIn'` または未設定（つなぎと同時。0.3 以前のミックス）・数値（曲に入ってからの小節数）。
+  変化は `timelineTimeOfBar(c, c.mixInBar + tempoStartBars(c))` から始まり、`tempoRampBars(c)`（`Clip.tempoBars`、未設定ならつなぎの長さ）小節かけて次の BPM へ。
+- **重ねる曲**（`ProjectFile.layers`、`Clip.layerOf`・`layerBar`・`layerParts`）：ミックスの曲（ホスト）の小節に固定して上に鳴らす。
+  位置は `core/layers.ts` の `placeLayers`、デッキ C／D の割り当ては `layerDecks`（同時に最大 2 曲）。
+  描画は重ねる曲ごとに 1 曲だけの RenderSession を作り、`renderNext()` で足し合わせる（`nextChunk` は全セッションの最小）。
+  `layerParts` が `vocals`／`instrumental` のときはステムを使い、`Automation.state` がもう一方を 0 にする。
+- **ループ中のつなぎ**（`Clip.outPass`）：前の曲がループしているとき、何周目でつなぐか。`elapsedOfSourcePass` でレイアウトに反映。
+- **多言語**：`L(ja, en)` の英語を鍵にした表（`src/core/locales/<lang>.json`）。英語がテンプレート文字列の呼び出しには、組み立て時に `scripts/i18n.mjs` が鍵と値を足す。
+  自動ミックスのメモのように保存される文は `captureLanguages()` で全言語の印を残し、表示時に `localize()` で今の言語にする。
+  鍵の抽出は `node scripts/i18n.mjs extract`、訳の結合は `node scripts/i18n-merge.mjs`（`_parts/c<N>_*.json`、200 個ずつ）。
+- **保存サイズ**：埋め込む非圧縮の音声（WAV・AIFF）は FLAC（`core/flac.ts`、固定予測＋ライス符号、ビット単位で元と一致）にして入れる。MP3 などはそのまま。
