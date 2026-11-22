@@ -134,7 +134,7 @@ Windows では WebCodecs（H.264）＋ mp4 マルチプレクサ、または ffm
 - 標準サンプル（0.3.8〜）：`assets/samples/*.wav`（`scripts/make-samples.mjs` で合成。決まった乱数なので作り直しても同じ）、一覧と標準キットは `core/builtinSamples.ts`。asarUnpack で展開（`env.builtinSampleDir()`）。保存時は埋め込まず、別のインストール先のパスはファイル名で付け直す（`prepareSamples`）。新しいミックス（未保存）でサンプラーを開くと標準キットが入る
 - Windows のコード署名（0.3.9〜準備）：Certum「Open Source Code Signing in the cloud」（SimplySign）。リリースの Windows ジョブで `scripts/certum-login.ps1` が SimplySign Desktop を入れて自動ログイン（ユーザー名＋TOTP を SendKeys）、`scripts/sign-win.cjs`（electron-builder の `win.signtoolOptions.sign`）が signtool で署名、`signtool verify /pa` で確認。secret `CERTUM_USERNAME`・`CERTUM_OTP`（otpauth:// の URI ごと、または Base32）が無いときは署名しない。ps1 の TOTP は E2E で `-SelfTest`（RFC 6238 の値）
 - 映像プレビューの全画面：HTML Fullscreen API（`VisualPreview.tsx` の `toggleFullScreen`）。Electron では Esc で自動で抜けないので自前で処理
-- つなぎエディタ（0.3.10〜）：レーンの後ろに成分の波形（`laneWave`：上＝前の曲・下＝この曲。LOW＝低音、MID/HIGH＝低音以外、ステムは分離した WAV を `services/stemPeaks.ts` で読んで表示）。編集グリッド `store.editGrid`（拍単位、0＝なし、設定に保存）は `components/GridSelect.tsx` でつなぎエディタと FX レーンが共有
+- つなぎエディタ（0.3.10〜）：レーンの後ろに成分の波形（`laneWave`：上＝前の曲・下＝この曲。LOW＝低音、MID/HIGH＝低音以外、ステムは分離した WAV を `services/stemPeaks.ts` で読んで表示）。編集グリッド `store.editGrid`（拍単位、0＝なし、設定に保存）は `components/GridSelect.tsx` でつなぎエディタと FX レーンが共有。説明文と選んだ点の操作は高さ固定の `.te-selbar` 行に置く（0.3.12。ツールバーの高さが変わるとレーンが動き、ダブルクリックがずれる）
 - リリースの前に E2E を Mac・Windows で通すこと（Linux のクラウドだけの確認で Mac 版が壊れていた前例あり）
 - まだ Windows 実機で確認していないもの：AAC（Media Foundation）での M4A／映像書き出し、映像プレビューの別ウィンドウ、iTunes XML の実データ
 

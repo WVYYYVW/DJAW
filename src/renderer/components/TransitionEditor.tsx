@@ -434,7 +434,9 @@ export function TransitionEditor({ id }: { id: string }) {
               ...(s.customTransitions.length ? [{ separator: true }, ...s.customTransitions.map(p => ({ label: p.name, action: () => s.applyCustomTransition(id, p) }))] : []),
             ])}>{L('ひな形', 'Start from')} ▾</button>
             <GridSelect />
-            <div className="spacer" />
+          </div>
+          {/* The selected point, or the hint: one row of fixed height, so selecting or deleting a point never moves the lanes. */}
+          <div className="te-selbar">
             {selPoint && sel ? (
               <div className="te-sel">
                 <b>{Lane.title(sel.kind)} · {sel.incoming ? L('この曲', 'This') : L('前の曲', 'Prev')}</b>
@@ -444,7 +446,7 @@ export function TransitionEditor({ id }: { id: string }) {
                 <span className="stepbtns"><button onClick={() => movePoint(0, -0.05)}>−</button><button onClick={() => movePoint(0, 0.05)}>＋</button></span>
                 <button className="btn small" onClick={deleteSel}>🗑</button>
               </div>
-            ) : <span className="caption">{L('◆を上下にドラッグで曲線を曲げる・空いた所をクリックで点を追加・点をドラッグで移動・ダブルクリックで削除／直線に戻す（Alt で細かく）', 'Drag ◆ to bend · click empty space to add a point · drag points to move · double-click to delete / straighten (Alt: fine)')}</span>}
+            ) : <span className="caption" title={L('◆を上下にドラッグで曲線を曲げる・空いた所をクリックで点を追加・点をドラッグで移動・ダブルクリックで削除／直線に戻す（Alt で細かく）', 'Drag ◆ to bend · click empty space to add a point · drag points to move · double-click to delete / straighten (Alt: fine)')}>{L('◆を上下にドラッグで曲線を曲げる・空いた所をクリックで点を追加・点をドラッグで移動・ダブルクリックで削除／直線に戻す（Alt で細かく）', 'Drag ◆ to bend · click empty space to add a point · drag points to move · double-click to delete / straighten (Alt: fine)')}</span>}
           </div>
           <div className="te-lanes" ref={el => { lanesEl.current = el; lanesRef(el); }}>
             <div className="te-lane-row"><div className="te-lane-head" /><BarRuler totalBeats={totalBeats} range={range} /></div>

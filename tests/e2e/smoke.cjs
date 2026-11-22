@@ -212,6 +212,23 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
     }
     const panelErrors = errors.length;
     check('panel tabs open without errors', panelErrors === 0, errors.slice(0, 5));
+    // Transition editor: selecting a point (a click on empty space adds and selects one) must not move the lanes.
+    await ev(() => { const s = window.djaw; s.setTransitionLength(s.clips[1].id, 8); s.selectedClipID = s.clips[1].id; s.openPanel('transition'); });
+    await win.waitForTimeout(800);
+    const laneTop = () => ev(() => { const c = document.querySelector('canvas.lane-canvas'); return c ? Math.round(c.getBoundingClientRect().top) : null; });
+    const lr = await ev(() => { const c = document.querySelector('canvas.lane-canvas'); if (!c) return null; const r = c.getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; });
+    let laneJump = null;
+    if (lr) {
+      const before = await laneTop();
+      await win.mouse.click(lr[0] + 10 + 0.37 * (lr[2] - 20), lr[1] + lr[3] * 0.2);
+      await win.waitForTimeout(300);
+      const selected = await laneTop();
+      await win.keyboard.press('Escape');
+      await win.waitForTimeout(300);
+      laneJump = { before, selected, after: await laneTop() };
+      await ev(() => { window.djaw.undo(); window.djaw.undo(); });
+    }
+    check('transition editor lanes stay put when a point is selected', !!laneJump && laneJump.before === laneJump.selected && laneJump.selected === laneJump.after, laneJump);
     // The panel maximized (the arrangement hidden), the overview drawn, the tabs without sideways scrolling.
     await ev(() => { window.djaw.openPanel('overview'); window.djaw.togglePanelMaximized(true); });
     await win.waitForTimeout(800);
