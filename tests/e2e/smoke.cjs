@@ -229,6 +229,41 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
       await ev(() => { window.djaw.undo(); window.djaw.undo(); });
     }
     check('transition editor lanes stay put when a point is selected', !!laneJump && laneJump.before === laneJump.selected && laneJump.selected === laneJump.after, laneJump);
+    // A transition still in its preset state: its points can be deleted (double-click, and select + Delete).
+    const undoDepth = await ev(() => window.djaw.undoStack.length);
+    await ev(() => { const s = window.djaw; s.setTransitionLength(s.clips[1].id, 8); s.setTransitionStyle(s.clips[1].id, 'bassSwap'); s.selectedClipID = s.clips[1].id; s.openPanel('transition'); });
+    await win.waitForTimeout(800);
+    // The middle points of the low lane (the 4th): where the cursor turns into a hand.
+    const middlePoints = async () => {
+      const r = await ev(() => { const c = document.querySelectorAll('canvas.lane-canvas')[3]; if (!c) return null; const b = c.getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; });
+      if (!r) return [];
+      const found = [];
+      for (let x = r[0] + 40; x < r[0] + r[2] - 40; x += 6) {
+        for (let y = r[1] + 10; y <= r[1] + r[3] - 10; y += Math.max(1, (r[3] - 20) / 12)) {
+          await win.mouse.move(x, y);
+          if (await ev(() => document.querySelectorAll('canvas.lane-canvas')[3].style.cursor) === 'grab' && !found.some(f => Math.abs(f[0] - x) < 24)) { found.push([x, y]); break; }
+        }
+      }
+      return found;
+    };
+    const presetBefore = await middlePoints();
+    let presetDelete = { before: presetBefore.length };
+    if (presetBefore.length) {
+      const [x, y] = presetBefore[0];
+      await win.mouse.click(x, y); await win.waitForTimeout(80); await win.mouse.click(x, y);
+      await win.waitForTimeout(300);
+      presetDelete.afterDouble = (await middlePoints()).length;
+      presetDelete.custom = await ev(() => window.djaw.clips[1].transition);
+      const rest = await middlePoints();
+      if (rest.length) {
+        await win.mouse.click(rest[0][0], rest[0][1]); await win.waitForTimeout(200);
+        await win.keyboard.press('Delete'); await win.waitForTimeout(300);
+        presetDelete.afterKey = (await middlePoints()).length;
+      }
+    }
+    await ev(d => { const s = window.djaw; while (s.undoStack.length > d) s.undo(); }, undoDepth);
+    check('points of a preset transition can be deleted', presetDelete.before > 0 && presetDelete.afterDouble === presetDelete.before - 1
+      && (presetDelete.before < 2 || presetDelete.afterKey === presetDelete.before - 2), presetDelete);
     // The panel maximized (the arrangement hidden), the overview drawn, the tabs without sideways scrolling.
     await ev(() => { window.djaw.openPanel('overview'); window.djaw.togglePanelMaximized(true); });
     await win.waitForTimeout(800);

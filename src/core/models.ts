@@ -625,7 +625,9 @@ export type LaneTemplate = typeof laneTemplates[number];
 export const Lanes = {
   flat: (kind: LaneKind): AutoPoint[] => [pt(0, Lane.neutral(kind)), pt(1, Lane.neutral(kind))],
   points(l: TransitionLanes, kind: LaneKind, incoming: boolean): AutoPoint[] {
-    return (l[laneKey(kind, incoming)] as AutoPoint[] | null | undefined) ?? Lanes.flat(kind);
+    const key = laneKey(kind, incoming);
+    // An undrawn lane's two points keep the same ids on every call, so the editor can select / drag / delete them.
+    return (l[key] as AutoPoint[] | null | undefined) ?? Lanes.flat(kind).map((p, k) => ({ ...p, id: `${key}:flat${k}` }));
   },
   isActive(l: TransitionLanes, kind: LaneKind, incoming: boolean): boolean {
     return Lanes.points(l, kind, incoming).some(p => Math.abs(p.y - Lane.neutral(kind)) > 0.002);
@@ -662,6 +664,8 @@ export const Lanes = {
     for (const b of [shape.low, shape.mid, shape.high]) if (b.enabled) critical.push(b.point, b.point + b.ramp);
     for (const c of critical) xs.push(c - 0.0005, c, c + 0.0005);
     xs = [...new Set(xs.map(x => Math.min(1, Math.max(0, x))))].sort((a, b) => a - b);
+    // Stable ids (the lane and the point's index): a preset transition is re-sampled on every draw, and the editor
+    // finds the selected / double-clicked point by its id.
     const lane = (kind: LaneKind, incoming: boolean) => {
       const pts = xs.map(x => {
         const c = incoming ? Automation.incoming(style, shape, x) : Automation.outgoing(style, shape, x);
@@ -675,7 +679,8 @@ export const Lanes = {
         }
         return pt(x, Math.min(1, Math.max(0, y)));
       });
-      return Lanes.fitCurve(pts);
+      const key = laneKey(kind, incoming);
+      return Lanes.fitCurve(pts).map((p, k) => ({ ...p, id: `${key}:${k}` }));
     };
     return {
       outVolume: lane('volume', false), outHigh: lane('high', false), outMid: lane('mid', false), outLow: lane('low', false),
