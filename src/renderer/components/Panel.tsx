@@ -12,7 +12,7 @@ import { ArtworkThumb } from './TrackProfileSheet';
 import { showContextMenu } from './ContextMenu';
 import {
   DeckTab, FXTab, LibraryInspector, MixerTab, MixInspector, MultiLibraryInspector, Section, StructureSummary, TakesSection,
-  TempoChangeSection, TransitionSection, VariationsSection,
+  TempoChangeSection, TransitionSection, VariationsSection, LayerInspector,
 } from './Inspector';
 import { TransitionEditor } from './TransitionEditor';
 import { CueEditor } from './CueEditor';
@@ -77,6 +77,8 @@ function TrackTab() {
     );
   }
   if (id && s.libraryIndex(id) != null) return <LibraryInspector clip={s.library[s.libraryIndex(id)!]} />;
+  const layer = id ? s.layers.find(l => l.id === id) : null;
+  if (layer) return <LayerInspector clip={layer} />;
   return <Empty>{L('タイムラインかリストで曲を選んでください', 'Select a track in the timeline or the list')}</Empty>;
 }
 
@@ -144,10 +146,17 @@ export function DetailPanel({ maxHeight, maximized = false }: { maxHeight: numbe
   // Canvases inside size themselves when drawn: draw again when the window changes size.
   const [, redraw] = useReducer((n: number) => n + 1, 0);
   useEffect(() => { const f = () => redraw(); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
-  const height = Math.max(170, Math.min(s.panelHeight, maxHeight));
+  // The transition tab keeps its own, taller height: its lanes need the room.
+  const own = s.panelTab === 'transition';
+  const wanted = own ? s.transitionPanelHeight ?? Math.round(window.innerHeight * 0.58) : s.panelHeight;
+  const height = Math.max(170, Math.min(wanted, maxHeight));
   const resize = (e: React.PointerEvent) => {
     const y0 = e.clientY, h0 = height;
-    const move = (ev: PointerEvent) => { s.panelHeight = Math.max(170, Math.min(maxHeight, h0 - (ev.clientY - y0))); s.changed(); };
+    const move = (ev: PointerEvent) => {
+      const h = Math.max(170, Math.min(maxHeight, h0 - (ev.clientY - y0)));
+      if (own) s.transitionPanelHeight = h; else s.panelHeight = h;
+      s.changed();
+    };
     const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); s.saveSettings(); };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };

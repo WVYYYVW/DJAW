@@ -220,6 +220,8 @@ export interface Clip {
   tempoStart?: TempoStart | null;
   /** A layered track (played on top of a track of the mix, on deck C or D): the mix track it rides on… */
   layerOf?: string | null;
+  /** When the mix-out bar is inside a loop: the pass (1, 2, …) on which the next track comes in (null = the last). */
+  outPass?: number | null;
   /** …and that track's bar where this one's `mixInBar` lands. It plays until its `mixOutBar`. */
   layerBar?: number | null;
   /** Which part of a layered track plays (vocals / instrumental need its stems). */
@@ -346,6 +348,34 @@ export function elapsedOfSource(s: number, segs: PlaySegment[], trimStart: numbe
   }
   return s - trimStart;
 }
+
+/**
+ * Like elapsedOfSource, but for a spot inside a loop it picks the given pass (1-based; null or too large = the last),
+ * so the next track can come in while the loop is still repeating.
+ */
+export function elapsedOfSourcePass(s: number, segs: PlaySegment[], trimStart: number, pass: number | null | undefined): number {
+  if (pass == null || pass < 1) return elapsedOfSource(s, segs, trimStart);
+  const hits = segs.filter(seg => s >= seg.from - 1e-6 && s <= seg.to + 1e-6);
+  if (hits.length < 2) return elapsedOfSource(s, segs, trimStart);
+  const seg = hits[Math.min(hits.length, Math.round(pass)) - 1];
+  return seg.elapsed + (s - seg.from);
+}
+
+/** How many times the audio at this bar plays (2+ inside a loop). */
+export function passesAtBar(c: Clip, bar: number): number {
+  if (!hasEdits(c)) return 1;
+  const s = sourceTimeAtBar(c, bar);
+  return Math.max(1, rawSegments(c).filter(seg => s >= seg.from - 1e-6 && s < seg.to - 1e-6).length);
+}
+
+/** Elapsed (played) seconds at this track's mix-out, on the chosen pass of a loop. */
+export function mixOutElapsed(c: Clip) {
+  const s = sourceTimeAtBar(c, c.mixOutBar) + (c.outNudge ?? 0);
+  return hasEdits(c) ? elapsedOfSourcePass(s, rawSegments(c), c.trimStart, c.outPass) : s - c.trimStart;
+}
+
+/** Timeline time of this track's mix-out (the chosen loop pass included). */
+export const mixOutTime = (c: Clip, master: number) => c.start + mixOutElapsed(c) / rate(c, master);
 
 /** What is actually played, in order. */
 export function playSegments(c: Clip): PlaySegment[] {
@@ -902,6 +932,7 @@ export const TrackUses = {
 export interface TakeSnapshot {
   prevMixOutBar: number;
   prevOutNudge?: number | null;
+  prevOutPass?: number | null;
   prevFadeOutBeats: number;
   prevAutoFX: ClipFX[];
   mixInBar: number;
@@ -932,6 +963,7 @@ export const Take = {
     return structuredClone({
       prevMixOutBar: prev.mixOutBar,
       prevOutNudge: prev.outNudge ?? null,
+      prevOutPass: prev.outPass ?? null,
       prevFadeOutBeats: prev.fadeOutBeats,
       prevAutoFX: (prev.fx ?? []).filter(f => f.auto === true),
       mixInBar: clip.mixInBar,
@@ -958,6 +990,7 @@ export const Take = {
     const c = structuredClone(s);
     prev.mixOutBar = c.prevMixOutBar;
     prev.outNudge = c.prevOutNudge;
+    prev.outPass = c.prevOutPass ?? null;
     prev.fadeOutBeats = c.prevFadeOutBeats;
     const fx = [...(prev.fx ?? []).filter(f => f.auto !== true), ...c.prevAutoFX];
     prev.fx = fx.length ? fx : null;

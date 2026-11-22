@@ -203,7 +203,8 @@ function createWindow(fileToOpen?: string) {
   win.loadFile(path.join(__dirname, 'index.html'));
   win.once('ready-to-show', () => {
     win?.show();
-    if (fileToOpen) send('openFile', fileToOpen);
+    // A .djaw given on start opens; otherwise the renderer may reopen the last mix.
+    if (fileToOpen) send('openFile', fileToOpen); else send('openLast');
     // Look for a new version a little after start (quietly unless there is one).
     setTimeout(() => void updater.check(false), process.env.DJAW_UPDATE_TEST_DIR ? 1500 : 8000);
   });

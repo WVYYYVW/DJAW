@@ -74,6 +74,7 @@ export function App() {
         case 'open': await s.openProject(); break;
         case 'openRecent': await s.openRecent(arg as string); break;
         case 'openFile': if (await s.confirmDiscard()) await s.load(arg as string); break;
+        case 'openLast': await s.openLastAtStartup(); break;
         case 'addTracks': await s.presentAddFiles(); break;
         case 'addFolder': await s.presentAddFiles(true); break;
         case 'musicLibrary': s.showMusicLibrary = true; s.changed(); break;

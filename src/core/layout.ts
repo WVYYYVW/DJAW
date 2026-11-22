@@ -2,7 +2,7 @@
 // suggestedMixOut()). Pure functions: they return new arrays and leave the input alone.
 import {
   Clip, ClipPalette, Mathx, Style, Waveform, barAtSource, elapsedOfSource, hasEdits, lastBar, lastSoundTime, rate,
-  rawSegments, sourceAtElapsed, sourceTimeAtBar, barSource,
+  rawSegments, sourceAtElapsed, sourceTimeAtBar, barSource, elapsedOfSourcePass,
 } from './models';
 
 export interface LayoutResult { clips: Clip[]; gridOffset: number }
@@ -48,7 +48,7 @@ export function layout(input: Clip[], master: number, gridOffset: number): Layou
       const total = raw.reduce((a, s) => a + (s.to - s.from), 0);
       let play: number;
       if (i + 1 < c.length) {
-        const eOut = elapsedOfSource(sourceTimeAtBar(c[i], c[i].mixOutBar) + (c[i].outNudge ?? 0), raw, trimStart);
+        const eOut = elapsedOfSourcePass(sourceTimeAtBar(c[i], c[i].mixOutBar) + (c[i].outNudge ?? 0), raw, trimStart, c[i].outPass);
         play = eOut + c[i + 1].transitionBars * barSource(c[i]);
         if (c[i + 1].transitionBars < 0.01) play += 0.005 * r;
         anchor = c[i].start + eOut / r;

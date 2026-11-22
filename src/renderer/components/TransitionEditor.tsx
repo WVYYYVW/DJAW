@@ -330,14 +330,15 @@ export function TransitionEditor({ id }: { id: string }) {
   const i = s.index(id);
   const [target, setTarget] = useState<Target>('mirror');
   const [page, setPage] = useState(0);
-  // The lanes grow to fill the editor when there is room (a tall or maximized panel), up to 3× their usual height.
+  // The lanes fill the editor's height: they grow when there is room (up to 3× their usual height) and shrink when
+  // there is not, so every lane of the page is visible without scrolling (down to about a third).
   const [lanesRef, lanesSize] = useSize<HTMLDivElement>();
   const lanesEl = useRef<HTMLDivElement | null>(null);
   const [overhead, setOverhead] = useState(60);
   const baseHeight = (kind: string) => (kind === 'volume' ? 120 : page === 2 ? 64 : 84);
   const laneScale = (ks: readonly string[]) => {
     const sum = ks.reduce((a, k) => a + baseHeight(k), 0);
-    return sum > 0 && lanesSize.height > 0 ? Math.max(1, Math.min(3, (lanesSize.height - overhead) / sum)) : 1;
+    return sum > 0 && lanesSize.height > 0 ? Math.max(0.34, Math.min(3, (lanesSize.height - overhead) / sum)) : 1;
   };
   const [sel, setSel] = useState<Sel | null>(null);
   useEffect(() => {
@@ -418,7 +419,7 @@ export function TransitionEditor({ id }: { id: string }) {
         ) : <>
           <div className="te-toolbar">
             <div className="segmented">
-              {[L('フェーダー・EQ', 'Fader / EQ'), 'FX', L('ステム（歌・ドラム・ベース・メロディ）', 'Stems (vocals · drums · bass · melody)')].map((t, k) => <button key={k} className={page === k ? 'on' : ''} onClick={() => { setPage(k); if (k !== 0 && target === 'mirror') setTarget('outgoing'); }}>{t}</button>)}
+              {[L('フェーダー・EQ', 'Fader / EQ'), 'FX', L('ステム', 'Stems')].map((t, k) => <button key={k} title={k === 2 ? L('ステム（歌・ドラム・ベース・メロディ）', 'Stems (vocals · drums · bass · melody)') : undefined} className={page === k ? 'on' : ''} onClick={() => { setPage(k); if (k !== 0 && target === 'mirror') setTarget('outgoing'); }}>{t}</button>)}
             </div>
             <span className="dim">{L('描く線', 'Edit')}</span>
             <div className="segmented">
@@ -446,16 +447,17 @@ export function TransitionEditor({ id }: { id: string }) {
                 <span className="stepbtns"><button onClick={() => movePoint(0, -0.05)}>−</button><button onClick={() => movePoint(0, 0.05)}>＋</button></span>
                 <button className="btn small" onClick={deleteSel}>🗑</button>
               </div>
-            ) : <span className="caption" title={L('◆を上下にドラッグで曲線を曲げる・空いた所をクリックで点を追加・点をドラッグで移動・ダブルクリックで削除／直線に戻す（Alt で細かく）', 'Drag ◆ to bend · click empty space to add a point · drag points to move · double-click to delete / straighten (Alt: fine)')}>{L('◆を上下にドラッグで曲線を曲げる・空いた所をクリックで点を追加・点をドラッグで移動・ダブルクリックで削除／直線に戻す（Alt で細かく）', 'Drag ◆ to bend · click empty space to add a point · drag points to move · double-click to delete / straighten (Alt: fine)')}</span>}
+            ) : <span className="caption grow" title={L('◆を上下にドラッグで曲線を曲げる・空いた所をクリックで点を追加・点をドラッグで移動・ダブルクリックで削除／直線に戻す（Alt で細かく）', 'Drag ◆ to bend · click empty space to add a point · drag points to move · double-click to delete / straighten (Alt: fine)')}>{L('◆を上下にドラッグで曲線を曲げる・空いた所をクリックで点を追加・点をドラッグで移動・ダブルクリックで削除／直線に戻す（Alt で細かく）', 'Drag ◆ to bend · click empty space to add a point · drag points to move · double-click to delete / straighten (Alt: fine)')}</span>}
+            <SaveCustom clip={clip} />
           </div>
           <div className="te-lanes" ref={el => { lanesEl.current = el; lanesRef(el); }}>
             <div className="te-lane-row"><div className="te-lane-head" /><BarRuler totalBeats={totalBeats} range={range} /></div>
             {page === 2 && <StemStatus id={id} />}
             {kinds.map(kind => (
               <div key={kind} className="te-lane-row">
-                <div className="te-lane-head">
+                <div className={'te-lane-head' + (laneHeight(kind) < 66 ? ' compact' : '')} title={Lane.legend(kind)}>
                   <div className="te-lane-title">{Lane.title(kind)}</div>
-                  <div className="te-lane-legend">{Lane.legend(kind)}</div>
+                  {laneHeight(kind) >= 66 && <div className="te-lane-legend">{Lane.legend(kind)}</div>}
                   <button className="btn small" onClick={e => showContextMenu(e, [
                     ...((Lane.isEffect(kind) || Lane.isStem(kind)) ? Lanes.effectPresets(kind).map(p => ({ label: p.title, action: () => s.setLanes(id, Lanes.applyEffectPreset(lanes, p, kind)) }))
                       : Lanes.templates.map(tm => ({ label: Lanes.templateTitle(tm), action: () => s.setLanes(id, Lanes.applyTemplate(lanes, tm, kind)) }))),
@@ -468,9 +470,6 @@ export function TransitionEditor({ id }: { id: string }) {
             ))}
           </div>
         </>}
-        <div className="te-footer">
-          <SaveCustom clip={clip} />
-        </div>
     </div>
   );
 }
@@ -479,10 +478,9 @@ function SaveCustom({ clip }: { clip: Clip }) {
   const s = useStore();
   const [name, setName] = useState('');
   return (
-    <div className="button-row">
-      <span className="dim">{L('マイつなぎとして保存（ほかの曲間でも使えます）', 'Save as My Transition (use it between other tracks too)')}</span>
-      <input className="text" value={name} placeholder={L('名前', 'Name')} onChange={e => setName(e.target.value)} onKeyDown={e => e.stopPropagation()} />
-      <button className="btn" onClick={() => { s.saveCustomTransition(clip.id, name); setName(''); }}>{L('保存', 'Save')}</button>
+    <div className="te-savecustom" title={L('マイつなぎとして保存：ほかの曲間でも使えます（「ひな形」から選べます）', 'Save as My Transition: use it between other tracks too (from “Start from”)')}>
+      <input className="text" value={name} placeholder={L('マイつなぎの名前', 'My Transition name')} onChange={e => setName(e.target.value)} onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') { s.saveCustomTransition(clip.id, name); setName(''); } }} />
+      <button className="btn small" onClick={() => { s.saveCustomTransition(clip.id, name); setName(''); }}>{L('マイつなぎに保存', 'Save as My Transition')}</button>
     </div>
   );
 }

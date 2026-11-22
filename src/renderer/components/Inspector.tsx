@@ -5,18 +5,19 @@ import { L } from '../../core/i18n';
 import {
   Clip, CurveShape, Curve, EQBand, Lanes, Loudness, Style, TransitionStyle, barAtSource, barLabel, clipEnd, cueList,
   curveShapes, hasEdits, keepsLanding, landingBar, lastBar, loudnessModes, rate, transitionPresets, transitionShape,
-  effectiveLanes, Edit, Take,
+  effectiveLanes, Edit, Take, passesAtBar,
 } from '../../core/models';
 import { FX, FXShapes, fxKinds } from '../../core/tempo';
 import { Key, Structure, sectionTitle } from '../../core/analysis/structure';
 import { Automation } from '../../core/automation';
+import { deckName, layerLengthBars } from '../../core/layers';
 import { Genre, Genres, MixGenre, mixGenres } from '../../core/genre';
 import { Arc, MixStyle, MixStyles, SetArc, mixStyles, setArcs } from '../../core/automixer';
 import { tempoVaries } from '../../core/analysis/neural';
 import { TrackUse, TrackUses, trackUses } from '../../core/models';
 import { useStore } from '../hooks';
 import { store, InspectorTab } from '../store/store';
-import { Fmt, clipColor } from '../format';
+import { Fmt, Theme, clipColor } from '../format';
 import { NumberField } from './Toolbar';
 import { ArtworkThumb } from './TrackProfileSheet';
 import { showContextMenu } from './ContextMenu';
@@ -197,6 +198,14 @@ export function TransitionSection({ clip, index }: { clip: Clip; index: number }
       </Section>
       <Section title={L('位置', 'Positions')} footer={L('‹ › で1小節、« » で4小節（Alt を押しながらで1拍）。タイムラインでは曲のドラッグで出口、左端で入口、右端で長さを変えられます。', '‹ › move 1 bar, « » 4 bars (hold Alt for 1 beat). On the timeline, drag a track to move the mix-out, its left edge for the mix-in, the right edge for the length.')}>
         <PositionRow title={L('前の曲の出口', 'Previous mix-out')} value={prev.mixOutBar} color="rgb(255,159,10)" help={L('ここから2曲が重なり始めます', 'The two tracks start overlapping here')} onDelta={d => s.setEntryPoint(clip.id, prev.mixOutBar + d)} />
+        {passesAtBar(prev, prev.mixOutBar) > 1 && (
+          <Row label={L('ループの何回目で', 'On loop pass')} title={L('前の曲の出口がループの中にあります。何回目のくり返しで、この曲を入れ始めるか（ループはこの曲と重なったまま続きます）', 'The previous mix-out is inside a loop: on which pass this track starts coming in (the loop keeps repeating under it)')}>
+            <select value={prev.outPass ?? 0} onChange={e => s.setOutPass(prev.id, Number(e.target.value) || null)}>
+              {Array.from({ length: passesAtBar(prev, prev.mixOutBar) }, (_, k) => k + 1).map(n => <option key={n} value={n}>{L(`${n}回目`, `pass ${n}`)}</option>)}
+              <option value={0}>{L('最後の回（標準）', 'The last pass (default)')}</option>
+            </select>
+          </Row>
+        )}
         <PositionRow title={L('この曲の入口', 'This track’s mix-in')} value={clip.mixInBar} color="rgb(48,209,88)" help={L('この曲のどこから鳴らし始めるか', 'Where in this track playback starts')} onDelta={d => s.setMixIn(clip.id, clip.mixInBar + d)} />
         {clip.transitionBars > 0.01 && <>
           <PositionRow title={L('切替完了', 'Switch done')} value={landingBar(clip)} color="rgb(191,90,242)" help={L('前の曲が消えて、この曲だけになる位置（ドロップ頭が定番）', 'Where only this track remains (usually a drop)')} onDelta={d => s.setLandingBar(clip.id, landingBar(clip) + d)} />
@@ -437,6 +446,57 @@ export function MixerTab({ clip, index }: { clip: Clip; index: number }) {
         </Section>
       )}
     </>
+  );
+}
+
+/** A layered track (decks C / D): where it rides, what of it plays, its level, EQ and fades. */
+export function LayerInspector({ clip }: { clip: Clip }) {
+  const s = useStore();
+  const host = s.clips.find(c => c.id === clip.layerOf);
+  const deck = s.layerDeck(clip.id);
+  const parts = clip.layerParts ?? 'all';
+  const eq = (title: string, key: 'eqLow' | 'eqMid' | 'eqHigh') => (
+    <ValueSlider title={title} value={clip[key]} min={-26} max={6} def={0} format={Fmt.db} onBegin={() => s.pushUndo()} onChange={v => s.updateClip(clip.id, false, c => { c[key] = v; })} />
+  );
+  const stemsReady = !!s.stemsFor(clip.url), separating = s.stemProgress.get(clip.url);
+  return (
+    <div className="panel-columns">
+      <div className="iheader span-all">
+        <ArtworkThumb url={clip.url} colorIndex={clip.colorIndex} size={48} onClick={() => s.openProfileEditor(clip.id)} />
+        <div>
+          <div className="ititle">{clip.title}</div>
+          <div className="isub">{L('重ねる曲', 'Layered track')} · {deck ? L(`デッキ ${deckName(deck)}`, `Deck ${deckName(deck)}`) : L('⚠︎ デッキ C・D がいっぱい', '⚠︎ decks C and D are full')} · {Fmt.bpm(clip.bpm)} BPM → {Fmt.ratePercent(rate(clip, s.tempoMap.bpm(s.placedLayer(clip.id)?.start ?? 0)))}</div>
+        </div>
+        <div className="spacer" />
+        <button className="btn small" onClick={() => s.removeLayer(clip.id)}>{L('重ねるのをやめる', 'Remove Layer')}</button>
+      </div>
+      <Section title={L('位置', 'Position')} footer={host ? L(`「${host.title}」に乗って一緒に動きます。タイムラインのデッキ C / D でドラッグしても動かせます。`, `Rides on “${host.title}” and moves with it. You can also drag it on decks C / D in the timeline.`) : undefined}>
+        <PositionRow title={L('重ねる位置（土台の曲の小節）', 'Starts at (bar of the mix track)')} value={clip.layerBar ?? 0} color={Theme.deckC}
+          onDelta={d => s.moveLayer(clip.id, (clip.layerBar ?? 0) + d)} />
+        <PositionRow title={L('この曲の開始', 'From its bar')} value={clip.mixInBar} color="rgb(48,209,88)"
+          onDelta={d => { if (s.setLayerRange(clip.id, clip.mixInBar + d, clip.mixOutBar)) s.moveLayer(clip.id, (clip.layerBar ?? 0) + d, undefined, false); }} />
+        <PositionRow title={L('この曲の終了', 'Until its bar')} value={clip.mixOutBar} color="rgb(255,159,10)"
+          onDelta={d => s.setLayerRange(clip.id, clip.mixInBar, clip.mixOutBar + d)} />
+        <div className="caption">{L(`長さ ${Fmt.bars(layerLengthBars(clip))}`, `Length ${Fmt.bars(layerLengthBars(clip))}`)}</div>
+      </Section>
+      <Section title={L('鳴らす部分', 'What Plays')} footer={parts !== 'all' && !stemsReady ? (separating != null ? L('ステムを分離中…', 'Separating the stems…') : L('ステムの分離が必要です（自動で始まります）', 'Needs the stems (separated automatically)')) : undefined}>
+        <div className="segmented">
+          {(['all', 'vocals', 'instrumental'] as const).map(p => (
+            <button key={p} className={parts === p ? 'on' : ''} onClick={() => s.setLayerParts(clip.id, p)}>
+              {p === 'all' ? L('全部', 'Everything') : p === 'vocals' ? L('歌だけ', 'Vocals') : L('伴奏だけ', 'Instrumental')}
+            </button>
+          ))}
+        </div>
+      </Section>
+      <Section title={L('ミキサー', 'Mixer')}>
+        <ValueSlider title={L('音量', 'Volume')} value={clip.gainDB} min={-18} max={6} def={0} format={Fmt.db} onBegin={() => s.pushUndo()} onChange={v => s.updateClip(clip.id, false, c => { c.gainDB = v; })} />
+        {eq('LOW', 'eqLow')}{eq('MID', 'eqMid')}{eq('HIGH', 'eqHigh')}
+      </Section>
+      <Section title={L('フェード', 'Fades')}>
+        <ValueSlider title={L('フェードイン', 'Fade In')} value={clip.fadeInBeats} min={0} max={64} step={1} def={4} format={Fmt.beats} onBegin={() => s.pushUndo()} onChange={v => s.updateClip(clip.id, false, c => { c.fadeInBeats = v; })} />
+        <ValueSlider title={L('フェードアウト', 'Fade Out')} value={clip.fadeOutBeats} min={0} max={64} step={1} def={4} format={Fmt.beats} onBegin={() => s.pushUndo()} onChange={v => s.updateClip(clip.id, false, c => { c.fadeOutBeats = v; })} />
+      </Section>
+    </div>
   );
 }
 
@@ -717,6 +777,8 @@ export function MixInspector() {
           </select>
         </Row>
         <div className="caption">{Loudness.detail(s.loudnessMode)}</div>
+        <Row label={L('起動時に前回のミックスを開く', 'Open the last mix at start')}><input type="checkbox" checked={s.reopenLast} onChange={() => s.toggle('reopenLast')} /></Row>
+        <Row label={L('ミックスに入れてもライブラリに残す', 'Keep tracks in the library when adding them to the mix')} title={L('オンにすると、ライブラリの曲をミックス順に入れても、ライブラリ（とそのフォルダ）からは消えません', 'When on, tracks stay in the library (and its folders) after you add them to the mix order')}><input type="checkbox" checked={s.keepInLibrary} onChange={() => s.toggle('keepInLibrary')} /></Row>
         <Row label={L('曲を追加したら CUE タブを開く', 'Open the CUE tab after adding')}><input type="checkbox" checked={s.openCueEditorOnAdd} onChange={() => s.toggle('openCueEditorOnAdd')} /></Row>
         <Row label={L('曲の音声をファイルに含めて保存', 'Include audio when saving')}><input type="checkbox" checked={s.embedMedia} onChange={() => s.toggle('embedMedia')} /></Row>
       </Section>

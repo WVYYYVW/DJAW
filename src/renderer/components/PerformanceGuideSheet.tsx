@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import fs from 'node:fs';
 import { clipboard, ipcRenderer } from 'electron';
 import { L } from '../../core/i18n';
+import { deckName } from '../../core/layers';
 import { PerformanceGuide } from '../../core/performance';
 import { useStore } from '../hooks';
 
@@ -13,8 +14,9 @@ export function PerformanceGuideSheet() {
   const [tab, setTab] = useState(0);
   const [numbered, setNumbered] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
-  const guide = useMemo(() => PerformanceGuide.build(s.clips, s.masterBPM, s.tempoMap, s.sampleHits.flatMap(h => { const x = s.samples.find(y => y.id === h.sample); return x ? [{ name: x.name, time: Sampler.timeOfBeat(h.beat, s.masterBPM, s.gridOffset), repeats: Math.round(h.repeats ?? 0), every: h.every ?? 1 }] : []; })), [s.revision]);
-  const list = useMemo(() => PerformanceGuide.trackList(s.clips, s.masterBPM, s.tempoMap, numbered), [s.revision, numbered]);
+  const guide = useMemo(() => PerformanceGuide.build(s.clips, s.masterBPM, s.tempoMap, s.sampleHits.flatMap(h => { const x = s.samples.find(y => y.id === h.sample); return x ? [{ name: x.name, time: Sampler.timeOfBeat(h.beat, s.masterBPM, s.gridOffset), repeats: Math.round(h.repeats ?? 0), every: h.every ?? 1 }] : []; }),
+    s.placedLayers.map(l => ({ clip: l, deck: deckName(s.layerDeck(l.id) ?? 3) }))), [s.revision]);
+  const list = useMemo(() => PerformanceGuide.trackList(s.clips, s.masterBPM, s.tempoMap, numbered, s.layers), [s.revision, numbered]);
   const close = () => { s.showPerformanceGuide = false; s.changed(); };
   useEffect(() => {
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { close(); e.stopPropagation(); } };

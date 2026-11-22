@@ -61,6 +61,8 @@ export const Theme = {
   headerRow: 'rgb(40,42,47)',
   deckA: 'rgb(255,159,10)',
   deckB: 'rgb(64,200,224)',
+  deckC: 'rgb(191,90,242)',
+  deckD: 'rgb(48,209,88)',
   playhead: 'rgb(255,92,82)',
   accent: '#3d8bfd',
 };

@@ -28,6 +28,29 @@ declare module './store' {
     tracksInFolder(id: string): Clip[];
     /** The library as shown: folders and tracks in order, collapsed folders closed, filtered by the search. */
     libraryRows(): LibraryRow[];
+    /**
+     * Sorts the library — every track (`scope` 'all') or only one folder's own tracks (the rest keep their places).
+     * 'match' puts the tracks that go best with `reference` (key, tempo, genre) first.
+     */
+    sortLibrary(key: LibrarySort, scope: 'all' | string | null, descending?: boolean, reference?: string | null): void;
+    /** Moves library tracks to just before another one (into its folder). */
+    moveLibraryTracks(ids: string[], beforeID: string | null, folder?: string | null): void;
+    /** How well a track goes after / with another (0 = perfect; key, tempo and genre). */
+    matchScore(a: Clip, b: Clip): number;
+  }
+}
+
+export type LibrarySort = 'title' | 'artist' | 'bpm' | 'key' | 'duration' | 'match';
+export const librarySorts: LibrarySort[] = ['match', 'title', 'artist', 'bpm', 'key', 'duration'];
+export const LibrarySorts = {
+  title: (k: LibrarySort) => ({
+    match: L('選んだ曲との相性順', 'Best match with the selected track'), title: L('曲名', 'Title'), artist: L('アーティスト', 'Artist'),
+    bpm: 'BPM', key: L('キー（Camelot）', 'Key (Camelot)'), duration: L('長さ', 'Length'),
+  })[k],
+};
+
+declare module './store' {
+  interface MixStore {
   }
 }
 
@@ -126,6 +149,65 @@ P.tracksInFolder = function (id) {
     for (const f of this.libraryFolders) if (f.parent && inside.has(f.parent) && !inside.has(f.id)) { inside.add(f.id); grew = true; }
   }
   return this.library.filter(c => c.folder && inside.has(c.folder));
+};
+
+P.matchScore = function (a, b) {
+  // Tempo: the smallest change needed (also at double / half time), in percent.
+  const bpm = Math.min(...[1, 2, 0.5].map(f => Math.abs(Math.log((b.bpm * f) / Math.max(1, a.bpm))))) * 100;
+  // Key: steps on the Camelot wheel (relative major / minor counts as one).
+  const ka = this.structures.get(a.url)?.key, kb = this.structures.get(b.url)?.key;
+  let key = 3;
+  if (ka && kb) {
+    const x = Key.camelotNumber(ka), y = Key.camelotNumber(kb);
+    const d = Math.min((x - y + 12) % 12, (y - x + 12) % 12);
+    key = d + (ka.minor === kb.minor ? 0 : 1);
+  }
+  const genre = a.genre && b.genre && a.genre !== b.genre ? 2 : 0;
+  return bpm + key * 1.5 + genre;
+};
+
+P.sortLibrary = function (key, scope, descending = false, reference = null) {
+  const ref = reference ? this.clip(reference) : null;
+  if (key === 'match' && !ref) return;
+  const camelot = (c: Clip) => { const k = this.structures.get(c.url)?.key; return k ? Key.camelotNumber(k) * 2 + (k.minor ? 0 : 1) : 99; };
+  const value = (c: Clip): number | string => {
+    switch (key) {
+      case 'title': return c.title;
+      case 'artist': return c.artist || '\uffff';
+      case 'bpm': return c.bpm;
+      case 'key': return camelot(c);
+      case 'duration': return c.duration;
+      case 'match': return c.id === ref!.id ? -1 : this.matchScore(ref!, c);
+    }
+  };
+  const cmp = (a: Clip, b: Clip) => {
+    const x = value(a), y = value(b);
+    const r = typeof x === 'string' && typeof y === 'string' ? byName(x, y) : (x as number) - (y as number);
+    return descending && key !== 'match' ? -r : r;
+  };
+  const known = new Set(this.libraryFolders.map(f => f.id));
+  const inScope = (c: Clip) => scope === 'all' || ((c.folder && known.has(c.folder) ? c.folder : null) === scope);
+  const slots = this.library.map((c, k) => (inScope(c) ? k : -1)).filter(k => k >= 0);
+  if (slots.length < 2) return;
+  this.pushUndo();
+  const sorted = slots.map(k => this.library[k]).sort(cmp);
+  const next = [...this.library];
+  slots.forEach((k, j) => { next[k] = sorted[j]; });
+  this.library = next;
+  this.changed();
+};
+
+P.moveLibraryTracks = function (ids, beforeID, folder) {
+  const moving = this.library.filter(c => ids.includes(c.id));
+  if (!moving.length) return;
+  this.pushUndo();
+  const target = beforeID ? this.library.find(c => c.id === beforeID) : null;
+  const dest = folder !== undefined ? folder : target ? target.folder ?? null : undefined;
+  const rest = this.library.filter(c => !ids.includes(c.id));
+  const at = target && !ids.includes(target.id) ? rest.findIndex(c => c.id === target.id) : rest.length;
+  const moved = moving.map(c => (dest !== undefined ? { ...c, folder: dest } : c));
+  this.library = [...rest.slice(0, at), ...moved, ...rest.slice(at)];
+  this.changed();
 };
 
 P.libraryRows = function () {

@@ -1,5 +1,6 @@
-// Visual-only "hardware" view (mac/DJAW/Views/DeckPanel.swift): two turntables and a DJ mixer whose knobs,
-// kill lamps, channel faders and crossfader move by themselves, driven by the same automation that renders the mix.
+// Visual-only "hardware" view (mac/DJAW/Views/DeckPanel.swift): turntables and a DJ mixer whose knobs, kill lamps,
+// channel faders and crossfader move by themselves, driven by the same automation that renders the mix.
+// Decks A / B play the mix; C / D (shown when there are layered tracks) play the tracks layered on top of it.
 import React, { useEffect, useRef } from 'react';
 import { L } from '../../core/i18n';
 import { Clip, activeLoop, barAtSource, barLabel, clipEnd, keepsKey, rate, semitoneShift, sourceTimeAtTimeline } from '../../core/models';
@@ -7,7 +8,8 @@ import { AutoState, Automation } from '../../core/automation';
 import { FXState, isQuietFX } from '../../core/tempo';
 import { useStore, usePlayhead } from '../hooks';
 import { store } from '../store/store';
-import { Fmt, clipColor } from '../format';
+import { Fmt, Theme, clipColor } from '../format';
+import { deckName } from '../../core/layers';
 
 interface DeckInfo {
   clip: Clip | null; index: number | null; active: boolean; ended: boolean; sourceTime: number;
@@ -37,6 +39,26 @@ function deckInfo(lane: number, t: number): DeckInfo {
   return { clip, index: chosen, active, ended: !active && clipEnd(clip, master) < t, sourceTime: source, state, level, loop: l ? { pass: l.pass, of: l.of, bars: l.edit.bars } : null };
 }
 
+/** Deck C or D: the layered track playing there at t (or the next one to come). */
+function layerDeckInfo(deck: 2 | 3, t: number): DeckInfo {
+  const master = store.masterBPM;
+  const on = store.placedLayers.filter(l => (store.layerDeck(l.id) ?? 3) === deck);
+  const playing = on.find(l => l.start <= t && t <= clipEnd(l, master));
+  const clip = playing ?? on.find(l => l.start > t) ?? on[on.length - 1];
+  if (!clip) return { clip: null, index: null, active: false, ended: false, sourceTime: 0, state: null, level: 0, loop: null };
+  const active = !!playing;
+  const source = active ? sourceTimeAtTimeline(clip, t, master) : clip.start > t ? clip.trimStart : clip.trimEnd;
+  let state: AutoState | null = null, level = 0;
+  if (active) {
+    state = Automation.state([clip], 0, t, master);
+    const wf = store.waveforms.get(clip.url);
+    if (store.isPlaying && wf && wf.peaks.length) level = wf.peaks[Math.min(wf.peaks.length - 1, Math.max(0, Math.trunc(source * wf.binsPerSecond)))] / wf.maxPeak * state.volume;
+  }
+  return { clip, index: null, active, ended: !active && clipEnd(clip, master) < t, sourceTime: source, state, level, loop: null };
+}
+
+const deckColor = (d: number) => [Theme.deckA, Theme.deckB, Theme.deckC, Theme.deckD][d];
+
 function activeFX(fx: FXState) {
   const out: string[] = [];
   if (fx.filter < -0.02) out.push('LPF');
@@ -61,9 +83,10 @@ function JogWheel({ info, side, playing }: { info: DeckInfo; side: number; playi
     const ctx = c.getContext('2d')!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
-    const d = Math.min(h - 8, w * 2);
-    const cx = side === 0 ? w - d / 2 : d / 2;
+    const d = Math.min(h, w) - 6;
+    const cx = w / 2;
     const cy = h / 2;
+    void side;
     const r = d / 2 - 6;
     const accent = info.clip ? clipColor(info.clip.colorIndex) : 'gray';
     const progress = info.clip && info.clip.duration > 0 ? Math.min(1, Math.max(0, info.sourceTime / info.clip.duration)) : 0;
@@ -110,7 +133,7 @@ function JogWheel({ info, side, playing }: { info: DeckInfo; side: number; playi
   return <div className="jog-slot"><canvas ref={ref} className="jog" /></div>;
 }
 
-function Turntable({ info, side, playing, master }: { info: DeckInfo; side: number; playing: boolean; master: number }) {
+function Turntable({ info, side, deck, compact, playing, master }: { info: DeckInfo; side: number; deck: number; compact: boolean; playing: boolean; master: number }) {
   const accent = info.clip ? clipColor(info.clip.colorIndex) : 'gray';
   const clip = info.clip;
   const r = clip ? rate(clip, master) : 1;
@@ -118,16 +141,17 @@ function Turntable({ info, side, playing, master }: { info: DeckInfo; side: numb
   const cued = clip != null && !info.ended && !on;
   const align = side === 0 ? 'left' : 'right';
   return (
-    <div className={'turntable side' + side}>
+    <div className={'turntable side' + side + (compact ? ' compact' : '')} style={{ ['--deck' as string]: deckColor(deck) }}>
       {side === 0 && <JogWheel info={info} side={side} playing={playing} />}
       <div className="deck-details" style={{ textAlign: align }}>
         <div className="deck-head" style={{ flexDirection: side === 0 ? 'row' : 'row-reverse' }}>
-          <span style={{ color: accent }} className="deck-label">{L('デッキ ', 'DECK ')}{side === 0 ? 'A' : 'B'}</span>
+          <span className="deck-label">{L('デッキ ', 'DECK ')}{deckName(deck)}</span>
+          {deck >= 2 && <span className="lamp purple">{L('重ね', 'LAYER')}</span>}
           <span className={'lamp ' + (on ? 'play' : cued ? 'cue' : '')}>{on ? 'PLAY' : cued ? 'CUE' : info.ended ? 'END' : '—'}</span>
         </div>
         {clip ? <>
           <div className="deck-title" title={clip.title}>{clip.title}</div>
-          {clip.artist && <div className="deck-artist">{clip.artist}</div>}
+          {clip.artist && !compact && <div className="deck-artist">{clip.artist}</div>}
           <div className="deck-bpm"><span style={{ color: accent }}>{Fmt.bpm(clip.bpm * r)}</span> <small>BPM</small></div>
           <div className="deck-pitch">
             <span style={{ color: Math.abs(r - 1) > 0.08 ? 'rgb(255,159,10)' : undefined }}>{L('ピッチ ', 'Pitch ')}{Fmt.ratePercent(r)}</span>
@@ -159,13 +183,13 @@ function Knob({ value, label, kill }: { value: number; label: string; kill: bool
   );
 }
 
-function Channel({ info, label }: { info: DeckInfo; label: string }) {
+function Channel({ info, label, deck }: { info: DeckInfo; label: string; deck: number }) {
   const s = info.state;
   const env = info.active ? s?.envelope ?? 0 : 0;
   const color = info.clip ? clipColor(info.clip.colorIndex) : 'gray';
   return (
     <div className="channel">
-      <div className="ch-label" style={{ color }}>{label}</div>
+      <div className="ch-label" style={{ color: deckColor(deck) }}>{label}</div>
       <Knob label="HIGH" value={s?.high ?? 0} kill={(s?.high ?? 0) < -30} />
       <Knob label="MID" value={s?.mid ?? 0} kill={(s?.mid ?? 0) < -20} />
       <Knob label="LOW" value={s?.low ?? 0} kill={(s?.low ?? 0) < -30} />
@@ -177,16 +201,19 @@ function Channel({ info, label }: { info: DeckInfo; label: string }) {
   );
 }
 
-function Mixer({ a, b }: { a: DeckInfo; b: DeckInfo }) {
+function Mixer({ a, b, c, d }: { a: DeckInfo; b: DeckInfo; c: DeckInfo | null; d: DeckInfo | null }) {
   const va = a.active ? a.state?.envelope ?? 0 : 0, vb = b.active ? b.state?.envelope ?? 0 : 0;
   const pos = va + vb > 0.001 ? (vb - va) / Math.max(va, vb) : 0;
-  const echo = (a.state?.echoWet ?? 0) > 50 || (b.state?.echoWet ?? 0) > 50;
+  const echo = [a, b, c, d].some(x => (x?.state?.echoWet ?? 0) > 50);
+  // Four channels in the usual C · A | B · D order.
   return (
-    <div className="mixer">
+    <div className={'mixer' + (c ? ' four' : '')}>
       <div className="mixer-top">
-        <Channel info={a} label="A" />
+        {c && <Channel info={c} label="C" deck={2} />}
+        <Channel info={a} label="A" deck={0} />
         <div className="mixer-mid"><div className="cap">MIXER</div><span className={'lamp ' + (echo ? 'purple' : '')}>ECHO</span></div>
-        <Channel info={b} label="B" />
+        <Channel info={b} label="B" deck={1} />
+        {d && <Channel info={d} label="D" deck={3} />}
       </div>
       <div className="crossfader"><div className="xf-cap" style={{ left: `${(pos + 1) / 2 * 100}%` }} /></div>
     </div>
@@ -197,12 +224,15 @@ export function DeckPanel() {
   const s = useStore();
   const t = usePlayhead(0);
   const a = deckInfo(0, t), b = deckInfo(1, t);
+  const four = s.layers.length > 0;
+  const c = four ? layerDeckInfo(2, t) : null, d = four ? layerDeckInfo(3, t) : null;
   const tempoNow = s.tempoMap.bpm(t);
+  const deck = (info: DeckInfo, side: number, n: number) => <Turntable info={info} side={side} deck={n} compact={four} playing={s.isPlaying} master={tempoNow} />;
   return (
-    <div className="deckpanel">
-      <Turntable info={a} side={0} playing={s.isPlaying} master={tempoNow} />
-      {s.showMixer && <Mixer a={a} b={b} />}
-      <Turntable info={b} side={1} playing={s.isPlaying} master={tempoNow} />
+    <div className={'deckpanel' + (four ? ' four' : '')}>
+      <div className="deck-col left">{deck(a, 0, 0)}{c && deck(c, 0, 2)}</div>
+      {s.showMixer ? <Mixer a={a} b={b} c={c} d={d} /> : <div />}
+      <div className="deck-col right">{deck(b, 1, 1)}{d && deck(d, 1, 3)}</div>
     </div>
   );
 }

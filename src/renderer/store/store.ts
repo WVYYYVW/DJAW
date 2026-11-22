@@ -139,11 +139,18 @@ export class MixStore {
   browserWidth = 264;
   /** Whether the timeline shows the sampler lane (when there is something to show). */
   showSamplerLane = true;
+  /** Adding a track to the mix leaves it in the library too (a copy goes into the mix). */
+  keepInLibrary = false;
+  /** Reopen the last mix when DJAW starts. */
+  reopenLast = true;
+  private recovery: Promise<boolean> | null = null;
   browserSplit = 0.45;
   /** The detail panel fills the window (the arrangement is hidden meanwhile); not kept between launches. */
   panelMaximized = false;
   panelTab: PanelTab = 'transition';
   panelHeight = 330;
+  /** The transition tab's own panel height (null: 58% of the window, so its lanes fit without scrolling). */
+  transitionPanelHeight: number | null = null;
   showBrowser = true;
   /** An update being downloaded or ready to install (main/updater.ts). */
   /** The update in progress (main/updater.ts), shown by the update card and the toolbar chip. */
@@ -213,8 +220,11 @@ export class MixStore {
     this.showPanel = (s.showPanel as boolean) ?? true;
     this.editGrid = typeof s.editGrid === 'number' ? s.editGrid : 1;
     this.panelHeight = (s.panelHeight as number) ?? 330;
+    this.transitionPanelHeight = typeof s.transitionPanelHeight === 'number' ? s.transitionPanelHeight : null;
     this.browserWidth = typeof s.browserWidth === 'number' ? s.browserWidth : 264;
     this.showSamplerLane = (s.showSamplerLane as boolean) ?? true;
+    this.keepInLibrary = (s.keepInLibrary as boolean) ?? false;
+    this.reopenLast = (s.reopenLast as boolean) ?? true;
     this.browserSplit = typeof s.browserSplit === 'number' ? s.browserSplit : 0.45;
     this.showBrowser = (s.showBrowser as boolean) ?? true;
     this.customTransitions = (s.customTransitions as CustomTransition[]) ?? [];
@@ -229,8 +239,8 @@ export class MixStore {
 
   saveSettings() {
     const s = {
-      showPanel: this.showPanel, panelHeight: this.panelHeight, showBrowser: this.showBrowser, editGrid: this.editGrid,
-      browserWidth: this.browserWidth, browserSplit: this.browserSplit, showSamplerLane: this.showSamplerLane,
+      showPanel: this.showPanel, panelHeight: this.panelHeight, transitionPanelHeight: this.transitionPanelHeight, showBrowser: this.showBrowser, editGrid: this.editGrid,
+      browserWidth: this.browserWidth, browserSplit: this.browserSplit, showSamplerLane: this.showSamplerLane, keepInLibrary: this.keepInLibrary, reopenLast: this.reopenLast,
       showDecks: this.showDecks, showMixer: this.showMixer, exportNormalize: this.exportNormalize, embedMedia: this.embedMedia,
       openCueEditorOnAdd: this.openCueEditorOnAdd, showMixWaveform: this.showMixWaveform, customTransitions: this.customTransitions,
       recentDocuments: this.recentDocuments.slice(0, 10), defaultTransitionStyle: this.defaultTransitionStyle,
@@ -674,8 +684,9 @@ export class MixStore {
     const li = this.libraryIndex(id);
     if (li == null) return;
     this.pushUndo();
-    const clip = this.library[li];
-    this.library = this.library.filter((_, k) => k !== li);
+    // With "keep in library", a copy goes into the mix and the library keeps the track (in its folder).
+    const clip = this.keepInLibrary ? { ...structuredClone(this.library[li]), id: uuid(), folder: null } : this.library[li];
+    if (!this.keepInLibrary) this.library = this.library.filter((_, k) => k !== li);
     let target = this.clips.length;
     if (index != null) target = index;
     else if (this.selectedClipID) { const si = this.index(this.selectedClipID); if (si != null) target = si + 1; }
@@ -697,15 +708,15 @@ export class MixStore {
     for (const id of ordered) {
       const li = this.libraryIndex(id);
       if (li == null) continue;
-      const clip = { ...this.library[li], lockedPrevID: null };
-      this.library = this.library.filter((_, k) => k !== li);
+      const clip = this.keepInLibrary ? { ...structuredClone(this.library[li]), id: uuid(), folder: null, lockedPrevID: null } : { ...this.library[li], lockedPrevID: null };
+      if (!this.keepInLibrary) this.library = this.library.filter((_, k) => k !== li);
       if (!this.clips.length && clip.bpm > 0) this.masterBPM = Math.round(clip.bpm * 100) / 100;
       const at = Math.min(target, this.clips.length);
       this.clips = [...this.clips.slice(0, at), clip, ...this.clips.slice(at)];
       target++;
     }
     this.librarySelection = new Set();
-    this.selectedClipID = ordered[ordered.length - 1];
+    this.selectedClipID = this.clips[Math.min(target, this.clips.length) - 1]?.id ?? ordered[ordered.length - 1];
     this.finishTimingEdit();
     if (wasEmpty) this.fitRequest++;
   }
@@ -728,7 +739,8 @@ export class MixStore {
     this.pushUndo();
     const clip = { ...this.clips[i], lockedPrevID: null };
     this.clips = this.clips.filter((_, k) => k !== i);
-    this.library = [clip, ...this.library];
+    // Back to the library, unless it is still there (kept when it went into the mix).
+    if (!this.library.some(c => c.url === clip.url)) this.library = [clip, ...this.library];
     if (!this.clips.length) this.pause(); else this.finishTimingEdit();
     this.changed();
   }
@@ -736,6 +748,7 @@ export class MixStore {
   deleteSelected() {
     if (this.selectedHit) { this.removeHit(this.selectedHit); return; }
     if (this.librarySelection.size > 1) { this.removeFromLibrary([...this.librarySelection]); return; }
+    if (this.selectedClipID && this.isLayer(this.selectedClipID)) { this.removeLayer(this.selectedClipID); return; }
     const i = this.selectedIndex;
     if (i != null) {
       this.pushUndo();
@@ -945,6 +958,10 @@ export class MixStore {
     this.updateClip(id, undoable, c => { c.mixOutBar = bar; c.cueDone = true; });
     this.finishTimingEdit();
   }
+  /** Inside a loop: the pass on which the next track comes in (null = the last). */
+  setOutPass(id: string, pass: number | null) { this.updateClip(id, true, c => { c.outPass = pass; }); this.finishTimingEdit(); }
+  /** Brings the next track in while this loop is still repeating: from the loop's start, on pass `pass`. */
+  mixOutInLoop(id: string, bar: number, pass: number) { this.updateClip(id, true, c => { c.mixOutBar = bar; c.outPass = pass; c.outNudge = null; }); this.finishTimingEdit(); }
 
   useWholeTrack(id: string) { this.updateClip(id, true, c => resetToWholeTrack(c)); this.finishTimingEdit(); }
 
@@ -1509,7 +1526,7 @@ export class MixStore {
     this.changed();
   }
 
-  toggle(key: 'showPanel' | 'showBrowser' | 'showInspector' | 'showDecks' | 'showMixer' | 'followPlayhead' | 'showMixWaveform' | 'showSamplerLane' | 'exportNormalize' | 'embedMedia' | 'openCueEditorOnAdd') {
+  toggle(key: 'showPanel' | 'showBrowser' | 'showInspector' | 'showDecks' | 'showMixer' | 'followPlayhead' | 'showMixWaveform' | 'showSamplerLane' | 'keepInLibrary' | 'reopenLast' | 'exportNormalize' | 'embedMedia' | 'openCueEditorOnAdd') {
     (this as Record<string, unknown>)[key] = !(this as Record<string, unknown>)[key];
     this.saveSettings();
     this.changed();
@@ -1984,9 +2001,23 @@ export class MixStore {
 
   removeAutosave() { try { fs.rmSync(MixStore.autosavePath); } catch { /* none */ } }
 
-  async offerRecoveryIfNeeded() {
+  /** At start (no file given): the last mix, unless unsaved work was just restored or something is open already. */
+  async openLastAtStartup() {
+    const restored = await (this.recovery ?? Promise.resolve(false));
+    if (restored || !this.reopenLast || this.documentPath || this.clips.length || this.library.length) return;
+    const last = this.recentDocuments.find(p => fs.existsSync(p));
+    if (last) await this.load(last);
+  }
+
+  offerRecoveryIfNeeded() {
+    this.recovery = this.offerRecovery();
+    return this.recovery;
+  }
+
+  /** True when unsaved work was restored. */
+  private async offerRecovery(): Promise<boolean> {
     const p = MixStore.autosavePath;
-    if (!fs.existsSync(p)) return;
+    if (!fs.existsSync(p)) return false;
     const r = await ipcRenderer.invoke('dialog:message', {
       type: 'question', message: L('保存されていない作業が見つかりました', 'Unsaved work was found'),
       detail: L('前回 DJAW が終了した時に保存されていなかったミックスがあります。復元しますか？', 'A mix was not saved when DJAW last quit. Restore it?'),
@@ -1998,6 +2029,7 @@ export class MixStore {
     try { fs.copyFileSync(p, path.join(backups, `Recovered-${stamp}.djaw`)); } catch { /* ignore */ }
     if (r === 0) await this.load(p, true);
     this.removeAutosave();
+    return r === 0;
   }
 
   // MARK: Export
@@ -2054,7 +2086,7 @@ export class MixStore {
   // MARK: Misc
 
   copyTrackList() {
-    clipboard.writeText(PerformanceGuide.trackList(this.clips, this.masterBPM, this.tempoMap));
+    clipboard.writeText(PerformanceGuide.trackList(this.clips, this.masterBPM, this.tempoMap, false, this.layers));
   }
 
   revealInFolder(id: string) { const c = this.clip(id); if (c) shell.showItemInFolder(c.url); }

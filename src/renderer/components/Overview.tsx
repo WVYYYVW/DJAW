@@ -59,9 +59,13 @@ export function OverviewTab() {
   const mixH = Math.max(MIX_MIN, Math.round(H * 0.16));
   // Two deck lanes with a gap between them for the transition labels, then the mix.
   const GAP = 20;
-  const laneH = Math.max(60, Math.floor((H - RULER_H - mixH - 4 - GAP - 8) / 2));
+  // Decks C / D (layered tracks) below, a little lower than A / B.
+  const nLayer = s.layers.length ? 2 : 0;
+  const laneH = Math.max(60, Math.floor((H - RULER_H - mixH - 4 - GAP - 8 - nLayer * 6) / (2 + nLayer * 0.7)));
+  const layerH = Math.max(44, Math.floor(laneH * 0.7));
   const laneY = (k: number) => RULER_H + 4 + k * (laneH + GAP);
-  const mixY = laneY(1) + laneH + 8;
+  const layerY = (d: number) => laneY(1) + laneH + 6 + (d - 2) * (layerH + 6);
+  const mixY = (nLayer ? layerY(3) + layerH : laneY(1) + laneH) + 8;
   const xOf = (t: number) => LABEL_W + (t - from) / (to - from) * W;
   const tOf = (x: number) => from + (x - LABEL_W) / W * (to - from);
 
@@ -86,6 +90,15 @@ export function OverviewTab() {
       ctx.fillRect(LABEL_W, laneY(k), W, laneH);
       ctx.fillStyle = 'rgba(255,255,255,0.55)';
       ctx.fillText(k === 0 ? L('デッキ A', 'Deck A') : L('デッキ B', 'Deck B'), 8, laneY(k) + 16);
+    }
+    for (let d = 2; d < 2 + nLayer; d++) {
+      ctx.fillStyle = 'rgba(255,255,255,0.025)';
+      ctx.fillRect(LABEL_W, layerY(d), W, layerH);
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.fillText(d === 2 ? L('デッキ C', 'Deck C') : L('デッキ D', 'Deck D'), 8, layerY(d) + 16);
+      ctx.font = '10px system-ui'; ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillText(L('重ねる曲', 'layered'), 8, layerY(d) + 30);
+      ctx.font = '600 11px system-ui';
     }
     ctx.fillStyle = 'rgba(255,255,255,0.025)';
     ctx.fillRect(LABEL_W, mixY, W, mixH);
@@ -121,6 +134,11 @@ export function OverviewTab() {
       ctx.fillText(label, xa + 7, y + 2);
     });
     clips.forEach((c, i) => drawClip(ctx, clips, i, ends, master));
+    // Layered tracks, each on its own (its own fades, levels and effects), on deck C or D.
+    for (const l of s.placedLayers) {
+      const d = s.layerDeck(l.id) ?? 3;
+      drawClip(ctx, [l], 0, [clipEnd(l, master)], master, { top: layerY(d), h: layerH, label: `↑ ${l.title}` });
+    }
     drawMix(ctx);
     ctx.restore();
   }
@@ -145,27 +163,28 @@ export function OverviewTab() {
     }
   }
 
-  function drawClip(ctx: CanvasRenderingContext2D, clips: Clip[], i: number, ends: number[], master: number) {
+  function drawClip(ctx: CanvasRenderingContext2D, clips: Clip[], i: number, ends: number[], master: number, box?: { top: number; h: number; label: string }) {
     const c = clips[i];
     const lane = i % 2;
     const x0 = Math.max(LABEL_W, xOf(c.start)), x1 = Math.min(LABEL_W + W, xOf(ends[i]));
     if (x1 <= x0) return;
-    const top = laneY(lane);
+    const top = box ? box.top : laneY(lane);
+    const LH = box ? box.h : laneH;
     const selected = s.selectedClipID === c.id;
     // Box and name.
     ctx.fillStyle = clipColor(c.colorIndex, 0.07);
-    ctx.fillRect(x0, top, x1 - x0, laneH);
+    ctx.fillRect(x0, top, x1 - x0, LH);
     ctx.strokeStyle = selected ? 'rgba(255,255,255,0.85)' : clipColor(c.colorIndex, 0.45);
     ctx.lineWidth = selected ? 1.5 : 1;
-    ctx.strokeRect(xOf(c.start) + 0.5, top + 0.5, xOf(ends[i]) - xOf(c.start) - 1, laneH - 1);
+    ctx.strokeRect(xOf(c.start) + 0.5, top + 0.5, xOf(ends[i]) - xOf(c.start) - 1, LH - 1);
     ctx.lineWidth = 1;
     const fxTop = top + 17;
     const waveTop = fxTop + FX_ROW + 2;
-    const eqTop = top + laneH - EQ_ROW - 2;
+    const eqTop = top + LH - EQ_ROW - 2;
     const mid = (waveTop + eqTop - 2) / 2, half = (eqTop - 2 - waveTop) / 2;
     ctx.font = '600 11px system-ui';
     ctx.fillStyle = clipColor(c.colorIndex, 1);
-    ctx.fillText(`${i + 1}. ${c.title}`, Math.max(x0, xOf(c.start)) + 6, top + 13, Math.max(20, x1 - x0 - 12));
+    ctx.fillText(box ? box.label : `${i + 1}. ${c.title}`, Math.max(x0, xOf(c.start)) + 6, top + 13, Math.max(20, x1 - x0 - 12));
     const wf: Waveform | undefined = s.waveforms.get(c.url);
     const toSource = sourceMapper(c, master);
     const norm = wf ? 1 / Math.max(wf.maxPeak, 1e-6) : 0;
@@ -302,9 +321,15 @@ export function OverviewTab() {
     return s.clips.findIndex((c, i) => i > 0 && t >= c.start - tol && t <= Math.max(c.start + tol, Math.min(ends[i - 1], ends[i])));
   };
   const local = (e: React.MouseEvent) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  const hitLayer = (x: number, y: number) => {
+    const t = tOf(x);
+    return s.placedLayers.find(l => { const d = s.layerDeck(l.id) ?? 3; return y >= layerY(d) && y < layerY(d) + layerH && t >= l.start && t <= clipEnd(l, s.masterBPM); }) ?? null;
+  };
   const onClick = (e: React.MouseEvent) => {
     const { x, y } = local(e);
     if (x < LABEL_W) return;
+    const hl = nLayer ? hitLayer(x, y) : null;
+    if (hl) { s.selectedClipID = hl.id; store.seek(Math.max(0, Math.min(total, tOf(x)))); s.changed(); return; }
     const i = hitClip(x, y);
     if (i != null && i >= 0) { s.selectedClipID = s.clips[i].id; }
     store.seek(Math.max(0, Math.min(total, tOf(x))));
@@ -317,6 +342,8 @@ export function OverviewTab() {
     // On the label of a transition (just above deck B) or in an overlap: the transition editor.
     const tr = hitTransition(x);
     if (tr > 0 && y < laneY(1) && y > laneY(0) + laneH) { s.selectedClipID = s.clips[tr].id; s.openPanel('transition'); return; }
+    const hl = nLayer ? hitLayer(x, y) : null;
+    if (hl) { s.selectedClipID = hl.id; s.openPanel('track'); return; }
     // On a track: that track's settings (Track tab).
     const i = hitClip(x, y);
     if (i != null && i >= 0) { s.selectedClipID = s.clips[i].id; s.openPanel('track'); }

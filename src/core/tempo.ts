@@ -1,7 +1,7 @@
 // Port of mac/DJAW/Model/TempoFX.swift.
 import { L } from './i18n';
 import {
-  Clip, ClipFX, FXKind, FXShape, TransitionStyle, Style, elapsedAtBar, hasEdits, timelineTimeOfBar, uuid,
+  Clip, ClipFX, FXKind, FXShape, TransitionStyle, Style, elapsedAtBar, hasEdits, mixOutElapsed, timelineTimeOfBar, uuid,
 } from './models';
 
 // MARK: - Tempo map
@@ -142,7 +142,7 @@ export function outro(c: Clip, next: Clip | undefined | null): OutroFX | null {
   if (!next || !(next.transition === 'brake' || next.transition === 'backspin') || !(c.bpm > 1)) return null;
   const beats = next.spinBeats ?? Style.defaultSpinBeats(next.transition);
   const len = beats * 60 / c.bpm;
-  const eOut = elapsedAtBar(c, c.mixOutBar);
+  const eOut = mixOutElapsed(c);
   const start = Math.max(0, eOut - len);
   if (!(eOut - start > 0.02)) return null;
   return { kind: next.transition, elapsedStart: start, length: eOut - start };

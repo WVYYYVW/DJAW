@@ -42,11 +42,13 @@ export const PerformanceGuide = {
   },
 
   /** "0:00 Artist - Title" per track, at the moment each track takes over (Automation.switchTime). */
-  trackList(clips: Clip[], master: number, tempo: TempoMap, numbered = false) {
+  trackList(clips: Clip[], master: number, tempo: TempoMap, numbered = false, layers: Clip[] = []) {
     const long = Math.max(0, ...clips.map(c => tempo.real(end(c, master)))) >= 3600;
     return clips.map((c, k) => {
       const t = k === 0 ? 0 : tempo.real(Automation.switchTime(clips, k, master));
-      return (numbered ? `${k + 1}. ` : '') + PerformanceGuide.stamp(t, long) + ' ' + PerformanceGuide.displayName(c);
+      // Tracks layered on top of this one: "(w/ Artist - Title)".
+      const on = layers.filter(l => l.layerOf === c.id).map(l => PerformanceGuide.displayName(l));
+      return (numbered ? `${k + 1}. ` : '') + PerformanceGuide.stamp(t, long) + ' ' + PerformanceGuide.displayName(c) + (on.length ? ` (w/ ${on.join(', ')})` : '');
     }).join('\n');
   },
 
@@ -59,8 +61,28 @@ export const PerformanceGuide = {
   },
 
   /** `sampler`: the sounds placed with the sampler (timeline time), played from a sampler / pad on the gear. */
-  build(clips: Clip[], master: number, tempo: TempoMap, sampler: { name: string; time: number; repeats: number; every: number }[] = []): Guide {
+  build(clips: Clip[], master: number, tempo: TempoMap, sampler: { name: string; time: number; repeats: number; every: number }[] = [],
+    layers: { clip: Clip; deck: string }[] = []): Guide {
     const tracks = clips.map((_, i) => track(i, clips, master, tempo));
+    // Layered tracks (decks C / D): cue, start on the mix track's beat, fade, stop — listed under the track they ride on.
+    for (const { clip: l, deck: d } of layers) {
+      const k = clips.findIndex(c => c.id === l.layerOf);
+      if (k < 0) continue;
+      const host = clips[k], dh = deck(k), e = end(l, master);
+      const at = (t: number) => `${pos(host, dh, t, master)} / ${pos(l, d, t, master)}`;
+      const parts = l.layerParts === 'vocals' ? L('（歌だけ：ステム機能でボーカル以外を切る）', ' (vocals only: cut everything but the vocals with the stems)')
+        : l.layerParts === 'instrumental' ? L('（伴奏だけ：ステム機能でボーカルを切る）', ' (instrumental only: cut the vocals with the stems)') : '';
+      const lead = Math.max(0, l.start - 16 * 60 / Math.max(master, 1));
+      tracks[k].steps.push(
+        { time: tempo.real(lead), position: pos(host, dh, lead, master), deck: d, isPrep: true, text: L(`デッキ${d} に「${PerformanceGuide.displayName(l)}」を読み込み、${BB(l.mixInBar)} に CUE（ピッチ ${pitchText(pitch(l, tempo, l.start))}${keepsKey(l) ? '・キーロック' : ''}）${parts}`, `Load “${PerformanceGuide.displayName(l)}” on deck ${d}, cue at ${BB(l.mixInBar)} (pitch ${pitchText(pitch(l, tempo, l.start))}${keepsKey(l) ? ', key lock' : ''})${parts}`) },
+        { time: tempo.real(l.start), position: at(l.start), deck: d, text: L(`デッキ${d} PLAY（デッキ${dh} の ${BB(barAtTimeline(host, l.start, master))} ぴったりで重ねる）`, `Deck ${d} PLAY (layered exactly on deck ${dh} ${BB(barAtTimeline(host, l.start, master))})`)
+          + (l.fadeInBeats > 0 ? L(`、フェーダーを0から ${fmtBeats(l.fadeInBeats)} かけて上げる`, `, bring its fader up from 0 over ${fmtBeats(l.fadeInBeats)}`) : L('、フェーダー100%', ', fader 100%')) },
+      );
+      const fo = Math.max(l.start, e - l.fadeOutBeats * 60 / Math.max(master, 1));
+      if (l.fadeOutBeats > 0) tracks[k].steps.push({ time: tempo.real(fo), position: at(fo), deck: d, text: L(`デッキ${d} のフェーダーを ${fmtBeats(l.fadeOutBeats)} かけて0まで下げる`, `Fade deck ${d} out to 0 over ${fmtBeats(l.fadeOutBeats)}`) });
+      tracks[k].steps.push({ time: tempo.real(e), position: pos(host, dh, e, master), deck: d, text: L(`デッキ${d} STOP（重ねた曲の終わり、${BB(l.mixOutBar)}）`, `Deck ${d} STOP (end of the layered track, ${BB(l.mixOutBar)})`) });
+      tracks[k].steps.sort((a, b) => a.time - b.time);
+    }
     for (const h of sampler) {
       let k = -1;
       clips.forEach((c, i) => { if (c.start <= h.time + 1e-6) k = i; });
@@ -71,7 +93,9 @@ export const PerformanceGuide = {
     }
     const e = Math.max(0, ...clips.map(c => tempo.real(end(c, master))));
     const overview = [
-      L(`曲数：${clips.length}曲　長さ：${F.duration(e)}　デッキ：2台（A・B を交互に使用）＋ミキサー`, `${clips.length} tracks · ${F.duration(e)} · two decks (A and B in turn) and a mixer`),
+      layers.length
+        ? L(`曲数：${clips.length}曲＋重ねる曲${layers.length}曲　長さ：${F.duration(e)}　デッキ：4台（A・B を交互に、C・D に重ねる曲）＋4チャンネルのミキサー`, `${clips.length} tracks + ${layers.length} layered · ${F.duration(e)} · four decks (A and B in turn, layered tracks on C and D) and a 4-channel mixer`)
+        : L(`曲数：${clips.length}曲　長さ：${F.duration(e)}　デッキ：2台（A・B を交互に使用）＋ミキサー`, `${clips.length} tracks · ${F.duration(e)} · two decks (A and B in turn) and a mixer`),
       L('位置は「デッキ 小節.拍」（例：A 57.1 = デッキAの曲の57小節目の1拍目）。小節は DJAW のグリッドの番号です。', 'Positions are “deck bar.beat” (A 57.1 = bar 57, beat 1 of the track on deck A), numbered as on DJAW’s grid.'),
       L('EQ は「12時 = 0 dB」「絞り切り = カット」。フェーダーはチャンネルフェーダー（クロスフェーダーは中央のまま）。', 'EQ: “12 o’clock” = 0 dB, “off” = fully cut. Faders are the channel faders (leave the crossfader in the middle).'),
     ];

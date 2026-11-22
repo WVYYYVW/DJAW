@@ -339,6 +339,19 @@ function LoopEditorBody({ clip }: { clip: Clip }) {
             {edit.kind === 'loop' && <div className="irow"><span className="irow-label">{L('回数', 'Plays')}</span>
               <span className="mono">×{edit.repeats + 1}</span>
               <span className="stepbtns"><button onClick={() => change({ repeats: edit.repeats - 1 })}>−</button><button onClick={() => change({ repeats: edit.repeats + 1 })}>＋</button></span></div>}
+            {inMix && sourceTimeAtBar(clip, edit.bar) >= clip.trimEnd - 0.01 && (
+              <div className="caption warn">{L('⚠︎ この位置はミックスでは鳴りません（この曲の出口・つなぎの後）。出口を後ろにするか、ループを前に動かしてください。', '⚠︎ This part is not heard in the mix (after this track’s mix-out and transition). Move the mix-out later or the loop earlier.')}</div>
+            )}
+            {edit.kind === 'loop' && inMix && s.index(clip.id)! + 1 < s.clips.length && (
+              <div className="irow" title={L('このループをくり返している間に次の曲を重ね始めます（ループは次の曲と重なったまま続きます）', 'Starts bringing in the next track while this loop repeats (the loop keeps going under it)')}>
+                <span className="irow-label">{L('次の曲', 'Next track')}</span>
+                <select value={Math.abs(clip.mixOutBar - edit.bar) < 0.001 && clip.outPass ? clip.outPass : 0}
+                  onChange={e => { const n = Number(e.target.value); if (n > 0) s.mixOutInLoop(clip.id, edit.bar, n); else s.setOutPass(clip.id, null); }}>
+                  <option value={0}>{Math.abs(clip.mixOutBar - edit.bar) < 0.001 && clip.outPass ? L('（ループの後で入れる）', '(after the loop)') : L('ループ中には入れない', 'Not during the loop')}</option>
+                  {Array.from({ length: edit.repeats + 1 }, (_, k) => k + 1).map(n => <option key={n} value={n}>{L(`${n}回目から重ねる`, `Bring it in on pass ${n}`)}</option>)}
+                </select>
+              </div>
+            )}
             <div className="caption">{edit.kind === 'loop' ? L(`この曲が ${lengthText(edit.bars * edit.repeats)} 長くなり、後ろの曲はその分ずれます。`, `The track gets ${lengthText(edit.bars * edit.repeats)} longer; later tracks move along.`) : L(`この曲が ${lengthText(edit.bars)} 短くなります。`, `The track gets ${lengthText(edit.bars)} shorter.`)}</div>
             <div className="button-row">
               {inMix && <button className="btn small" onClick={() => s.previewBar(clip.id, edit.bar)}>▶ {L('試聴', 'Preview')}</button>}

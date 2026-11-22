@@ -6,7 +6,7 @@ import { L } from '../../core/i18n';
 import {
   Clip, FXKind, Mathx, Style, barAtSource, barLabel, barSource, clipEnd, clipLength, cueList, downbeatPhase,
   hasEdits, landingBar, lastBar, playSegments, rate, sourceMapper, sourceTimeAtBar, timelineTimeOfBar,
-  timelineTimeOfSource, transitionStyles, Edit,
+  timelineTimeOfSource, transitionStyles, Edit, mixOutTime,
 } from '../../core/models';
 import { FX, fxKinds, outro, TempoMap } from '../../core/tempo';
 import { Automation } from '../../core/automation';
@@ -27,11 +27,21 @@ const ORANGE = 'rgb(255,159,10)', GREEN = 'rgb(48,209,88)', PURPLE = 'rgb(191,90
 
 type Part = 'body' | 'trimLeft' | 'trimRight' | 'fadeIn' | 'fadeOut';
 type Hit = { kind: 'none' } | { kind: 'ruler' } | { kind: 'emptyLane' } | { kind: 'clip'; id: string; part: Part } | { kind: 'transition'; id: string }
-  | { kind: 'sampleHit'; id: string } | { kind: 'samplerLane' };
+  | { kind: 'sampleHit'; id: string } | { kind: 'samplerLane' } | { kind: 'layer'; id: string; part: 'body' | 'trimLeft' | 'trimRight' } | { kind: 'layerLane' };
+
+/** Library tracks dragged from the browser (components/Sidebar.tsx). */
+const DRAG_TRACKS = 'text/djaw-track';
+const LAYER_HINT = 22;
 
 interface Drag {
   hit: Hit; startX: number; startTime: number; original: Clip | null; originalValue: number;
   moved: boolean; originalPrev: Clip | null; slip: boolean;
+}
+
+/** Library tracks to layer on a mix track at one of its bars (the context menus). */
+function layerChoices(hostID: string, bar: number): MenuItem[] {
+  const list = store.library.slice(0, 60).map(c => ({ label: `${c.title}${c.artist ? ' — ' + c.artist : ''}  (${Fmt.bpm(c.bpm)})`, action: () => { store.addLayer(hostID, c.id, bar); } }));
+  return store.library.length > 60 ? [...list, { label: L(`…ほか ${store.library.length - 60}曲（ライブラリから重ねる段にドラッグ）`, `…${store.library.length - 60} more (drag from the library onto the layer lanes)`), enabled: false }] : list;
 }
 
 class TimelineView {
@@ -47,6 +57,9 @@ class TimelineView {
   hoverClip: string | null = null;
   dropTime: number | null = null;
   dropIndex = 0;
+  /** A library track dragged over the layer lanes (decks C / D): where it would ride. */
+  dropLayer = false;
+  dropLayerTime: number | null = null;
   dragLabel: { text: string; x: number; y: number } | null = null;
   chipRects: { id: string; x: number; y: number; w: number; h: number }[] = [];
   tempo = new TempoMap(120);
@@ -91,6 +104,14 @@ class TimelineView {
     const count = (lane: number) => store.clips.filter((_, i) => i % 2 === lane).length;
     row(this.laneTop(0), this.laneHeight, L('デッキ A', 'DECK A'), L(`${count(0)}曲`, `${count(0)} tracks`), Theme.deckA);
     row(this.laneTop(1), this.laneHeight, L('デッキ B', 'DECK B'), L(`${count(1)}曲`, `${count(1)} tracks`), Theme.deckB);
+    if (this.hasLayers) {
+      const placed = store.placedLayers;
+      const n = (d: number) => placed.filter(l => (store.layerDeck(l.id) ?? 3) === d).length;
+      row(this.layerTop(2), this.layerHeight, L('デッキ C', 'DECK C'), L(`重ね ${n(2)}曲`, `${n(2)} layered`), Theme.deckC);
+      row(this.layerTop(3), this.layerHeight, L('デッキ D', 'DECK D'), L(`重ね ${n(3)}曲`, `${n(3)} layered`), Theme.deckD);
+    } else if (store.clips.length) {
+      row(this.layerTop(2), LAYER_HINT, L('重ねる C/D', 'LAYER C/D'), '', 'rgba(255,255,255,0.25)', false);
+    }
     if (store.showMixWaveform) row(this.mixLaneTop, MIX_LANE, 'MIX', L('書き出しと同じ', 'as exported'), 'rgb(115,217,242)');
     if (this.showsSamplerLane) row(this.samplerLaneTop, SAMPLER_LANE, L('サンプラー', 'SAMPLER'), '', 'rgb(255,214,10)', store.samples.length > 0);
   }
@@ -117,9 +138,25 @@ class TimelineView {
   get showsSamplerLane() { return store.showSamplerLane && ((store.showPanel && store.panelTab === 'sampler') || store.samples.length > 0 || store.sampleHits.length > 0); }
   get samplerLaneSpace() { return this.showsSamplerLane ? SAMPLER_LANE + 8 : 0; }
   get samplerLaneTop() { return this.lanesBottom + 8 + this.mixLaneSpace; }
-  get laneHeight() { return Math.max(46, (this.height - LANES_TOP - LANE_GAP - 14 - this.mixLaneSpace - this.samplerLaneSpace) / 2); }
+  /** Decks C / D (layered tracks): two lanes when there are layers, otherwise a slim strip to drop tracks on. */
+  get hasLayers() { return store.layers.length > 0; }
+  get layerSpace(): number { return this.hasLayers ? 2 * (this.layerHeight + 6) + 2 : store.clips.length ? LAYER_HINT + 8 : 0; }
+  private get laneUnit(): number {
+    const free = this.height - LANES_TOP - LANE_GAP - 14 - this.mixLaneSpace - this.samplerLaneSpace;
+    return this.hasLayers ? (free - 14) / (2 + 2 * 0.62) : (free - (store.clips.length ? LAYER_HINT + 8 : 0)) / 2;
+  }
+  get laneHeight(): number { return Math.max(46, this.laneUnit); }
+  get layerHeight(): number { return Math.max(34, Math.round(this.laneUnit * 0.62)); }
   laneTop(lane: number) { return LANES_TOP + lane * (this.laneHeight + LANE_GAP); }
-  get lanesBottom() { return this.laneTop(1) + this.laneHeight; }
+  /** Bottom of decks A / B. */
+  get mainLanesBottom() { return this.laneTop(1) + this.laneHeight; }
+  layerTop(deck: number) { return this.mainLanesBottom + 8 + (deck - 2) * (this.layerHeight + 6); }
+  /** Bottom of all deck lanes (A–D). */
+  get lanesBottom() { return this.mainLanesBottom + this.layerSpace; }
+  layerRect(l: Clip) {
+    const d = store.layerDeck(l.id) ?? 3;
+    return { x: this.x(l.start), y: this.layerTop(d) + 2, w: Math.max(3, clipLength(l, store.masterBPM) * this.pps), h: this.layerHeight - 4 };
+  }
   get mixLaneTop() { return this.lanesBottom + 8; }
   /** Document x (scrolled content) for timeline time t. */
   x(t: number) { return INSET + (t + this.leadShift) * this.pps; }
@@ -223,6 +260,7 @@ class TimelineView {
       if (r.x + r.w >= area.x && r.x <= area.x + area.w) this.drawClip(ctx, i, r, master, area);
     });
     this.drawTransitions(ctx, area);
+    this.drawLayers(ctx, area, master);
     if (store.showMixWaveform) this.drawMixLane(ctx, area);
     if (this.showsSamplerLane) this.drawSamplerLane(ctx, area);
     if (!store.clips.length) this.drawEmptyState(ctx);
@@ -254,6 +292,61 @@ class TimelineView {
       const top = this.laneTop(lane);
       ctx.fillStyle = Theme.laneBG;
       ctx.fillRect(area.x, top, area.w, this.laneHeight);
+    }
+    if (this.hasLayers) {
+      for (const d of [2, 3]) { ctx.fillStyle = Theme.laneBG; ctx.fillRect(area.x, this.layerTop(d), area.w, this.layerHeight); }
+    } else if (store.clips.length) {
+      const top = this.layerTop(2);
+      ctx.fillStyle = 'rgba(255,255,255,0.025)'; ctx.fillRect(area.x, top, area.w, LAYER_HINT);
+      this.text(ctx, L('ライブラリの曲をここにドロップすると、その位置の曲に重ねて再生します（デッキ C / D）', 'Drop a library track here to play it on top of the mix track at that point (decks C / D)'),
+        this.scrollX + 10, top + 5, '500 10.5px system-ui', 'rgba(255,255,255,0.32)');
+    }
+  }
+
+  /** Layered tracks on decks C / D, each tied to the mix track it rides on. */
+  drawLayers(ctx: CanvasRenderingContext2D, area: { x: number; w: number }, master: number) {
+    for (const l of store.placedLayers) {
+      const r = this.layerRect(l);
+      if (r.x + r.w < area.x || r.x > area.x + area.w) continue;
+      const selected = l.id === store.selectedClipID, hovered = l.id === this.hoverClip;
+      const over = store.layerDeck(l.id) == null;
+      const host = store.clips.find(c => c.id === l.layerOf);
+      // The tie to the mix track: a line up from the layer's start.
+      if (host) {
+        ctx.strokeStyle = clipColor(l.colorIndex, 0.7); ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(r.x + 0.5, r.y); ctx.lineTo(r.x + 0.5, this.laneTop(store.index(host.id)! % 2) + this.laneHeight - 3); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      this.roundRect(ctx, r.x, r.y, r.w, r.h, 5);
+      ctx.fillStyle = clipColor(l.colorIndex, selected ? 0.26 : 0.16); ctx.fill();
+      ctx.save();
+      this.roundRect(ctx, r.x, r.y, r.w, r.h, 5); ctx.clip();
+      const head = Math.min(16, r.h / 2);
+      ctx.fillStyle = clipColor(l.colorIndex, selected ? 0.55 : 0.36); ctx.fillRect(r.x, r.y, r.w, head);
+      const wave = { x: r.x, y: r.y + head + 1, w: r.w, h: Math.max(8, r.h - head - 2) };
+      if (store.missingFiles.has(l.url)) { ctx.fillStyle = 'rgba(255,69,58,0.18)'; ctx.fillRect(wave.x, wave.y, wave.w, wave.h); }
+      else this.drawWaveform(ctx, l, wave, master, area);
+      // Fades as ramps over the waveform.
+      const beat = 60 / master;
+      const fi = l.fadeInBeats * beat * this.pps, fo = l.fadeOutBeats * beat * this.pps;
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      if (fi > 1) { ctx.beginPath(); ctx.moveTo(r.x, wave.y); ctx.lineTo(r.x + fi, wave.y); ctx.lineTo(r.x, wave.y + wave.h); ctx.closePath(); ctx.fill(); }
+      if (fo > 1) { ctx.beginPath(); ctx.moveTo(r.x + r.w, wave.y); ctx.lineTo(r.x + r.w - fo, wave.y); ctx.lineTo(r.x + r.w, wave.y + wave.h); ctx.closePath(); ctx.fill(); }
+      this.drawFX(ctx, l, wave, master);
+      ctx.restore();
+      this.roundRect(ctx, r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1, 5);
+      ctx.strokeStyle = over ? RED : selected ? 'rgba(255,255,255,0.92)' : clipColor(l.colorIndex, hovered ? 0.95 : 0.55);
+      ctx.lineWidth = selected || over ? 2 : 1; ctx.stroke();
+      const textX = Math.max(r.x + 6, this.scrollX + 6), tw = r.x + r.w - textX - 6;
+      if (tw > 24) {
+        ctx.save(); ctx.beginPath(); ctx.rect(textX, r.y, tw, head); ctx.clip();
+        const parts = l.layerParts === 'vocals' ? L('  · 歌だけ', '  · vocals') : l.layerParts === 'instrumental' ? L('  · 伴奏だけ', '  · instrumental') : '';
+        const where = host ? L(`  ↑「${host.title}」${barLabel(l.layerBar ?? 0)}小節目から`, `  ↑ on “${host.title}” from bar ${barLabel(l.layerBar ?? 0)}`) : '';
+        this.text(ctx, l.title, textX, r.y + 2, '600 10.5px system-ui', '#fff');
+        const w0 = ctx.measureText(l.title).width;
+        this.text(ctx, parts + where + (over ? L('  ⚠︎ デッキ C・D がいっぱい', '  ⚠︎ decks C and D are full') : ''), textX + w0, r.y + 3, '500 9.5px system-ui', over ? RED : 'rgba(255,255,255,0.62)');
+        ctx.restore();
+      }
     }
   }
 
@@ -587,7 +680,7 @@ class TimelineView {
       }
     }
     if (i + 1 < store.clips.length) {
-      const ox = this.x(timelineTimeOfBar(clip, clip.mixOutBar, master));
+      const ox = this.x(mixOutTime(clip, master));
       if (ox >= r.x && ox <= r.x + r.w) {
         ctx.fillStyle = 'rgba(255,159,10,0.9)';
         ctx.fillRect(ox - 0.5, wave.y, 1.5, wave.h);
@@ -818,6 +911,15 @@ class TimelineView {
       ctx.fillRect(px - 1, LANES_TOP, 2, this.lanesBottom - LANES_TOP);
       this.bigPill(ctx, appending ? L('ミックスの末尾に追加', 'Add to the end of the mix') : L(`${this.dropIndex + 1}曲目として挿入`, `Insert as track ${this.dropIndex + 1}`), px + 6, LANES_TOP + 6, Theme.accent);
     }
+    if (this.dropLayerTime != null) {
+      const h = store.hostAt(this.dropLayerTime);
+      const host = h ? store.clip(h.id) : null;
+      const bar = h ? Math.round(h.bar) : 0;
+      const px = host ? this.x(timelineTimeOfBar(host, bar, store.masterBPM)) : this.x(this.dropLayerTime);
+      ctx.fillStyle = Theme.accent;
+      ctx.fillRect(px - 1, LANES_TOP, 2, this.lanesBottom - LANES_TOP);
+      this.bigPill(ctx, host ? L(`「${host.title}」の ${barLabel(bar)}小節目から重ねる`, `Layer on “${host.title}” from bar ${barLabel(bar)}`) : L('ここには曲がありません', 'No mix track here'), px + 6, this.mainLanesBottom + 10, Theme.accent);
+    }
     if (this.dragLabel) this.bigPill(ctx, this.dragLabel.text, this.dragLabel.x + 14, Math.max(LANES_TOP + 4, this.dragLabel.y - 30), Theme.chipBG);
   }
 
@@ -834,6 +936,17 @@ class TimelineView {
   // MARK: Hit testing
   region(px: number, py: number): Hit {
     if (py < RULER) return { kind: 'ruler' };
+    if (py > this.mainLanesBottom && py <= this.lanesBottom) {
+      const placed = store.placedLayers;
+      for (let k = placed.length - 1; k >= 0; k--) {
+        const l = placed[k], r = this.layerRect(l);
+        if (!(px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h)) continue;
+        if (r.w > 24 && px - r.x < 6) return { kind: 'layer', id: l.id, part: 'trimLeft' };
+        if (r.w > 24 && r.x + r.w - px < 6) return { kind: 'layer', id: l.id, part: 'trimRight' };
+        return { kind: 'layer', id: l.id, part: 'body' };
+      }
+      return { kind: 'layerLane' };
+    }
     for (const c of this.chipRects) if (px >= c.x - 3 && px <= c.x + c.w + 3 && py >= c.y - 3 && py <= c.y + c.h + 3) return { kind: 'transition', id: c.id };
     const master = store.masterBPM;
     for (let i = store.clips.length - 1; i >= 0; i--) {
@@ -866,7 +979,10 @@ class TimelineView {
     const h = this.region(px, py);
     let hover: string | null = null;
     let cursor = 'default';
-    if (h.kind === 'clip') {
+    if (h.kind === 'layer') {
+      hover = h.id;
+      cursor = h.part === 'body' ? 'grab' : 'ew-resize';
+    } else if (h.kind === 'clip') {
       hover = h.id;
       cursor = h.part === 'trimLeft' || h.part === 'trimRight' ? 'ew-resize' : h.part === 'body' ? (store.index(h.id) === 0 ? 'default' : 'grab') : 'pointer';
     } else if (h.kind === 'transition') cursor = 'pointer';
@@ -904,9 +1020,15 @@ class TimelineView {
       store.beginScrub();
       store.scrub(t);
       this.drag = { hit, startX: px, startTime: t, original: null, originalValue: 0, moved: false, originalPrev: null, slip: false };
-    } else if (hit.kind === 'emptyLane') {
+    } else if (hit.kind === 'emptyLane' || hit.kind === 'layerLane') {
       store.selectedClipID = null;
       store.seek(t);
+    } else if (hit.kind === 'layer') {
+      store.selectedClipID = hit.id;
+      if (e.detail >= 2) { store.openPanel('track'); this.drag = null; return; }
+      const l = store.layers.find(x => x.id === hit.id);
+      const placed = store.placedLayer(hit.id);
+      if (l && placed) this.drag = { hit, startX: px, startTime: t, original: l, originalValue: placed.start, moved: false, originalPrev: null, slip: false };
     } else if (hit.kind === 'clip') {
       store.selectedClipID = hit.id;
       if (e.detail >= 2) {
@@ -956,6 +1078,39 @@ class TimelineView {
       store.moveHit(d.hit.id, beat, false);
       const pos = store.grid.position(Sampler.timeOfBeat(beat, store.masterBPM, store.gridOffset));
       this.dragLabel = { text: L(`小節 ${pos.bar}.${pos.beat}`, `Bar ${pos.bar}.${pos.beat}`) + (fine ? '' : L('（Alt でスナップなし）', ' (Alt: no snap)')), x: px, y: py };
+      this.requestDraw();
+      return;
+    }
+    if (d.hit.kind === 'layer' && d.original) {
+      const orig = d.original, part = d.hit.part, id = d.hit.id;
+      if (!d.moved) {
+        if (Math.abs(px - d.startX) < 3) return;
+        d.moved = true;
+        store.pushUndo();
+        store.isInteracting = true;
+        if (part === 'body') this.overlay.style.cursor = 'grabbing';
+      }
+      const unit = fine ? 0.25 : store.snap === 'beat' ? 0.25 : 1;
+      const steps = Math.round((t - d.startTime) / store.barLength / unit) * unit;
+      const label = (text: string) => { this.dragLabel = { text, x: px, y: py }; };
+      if (part === 'body') {
+        // Onto whichever mix track has taken over where its start is dragged to, on that track's bar grid.
+        const h = store.hostAt(d.originalValue + (t - d.startTime));
+        if (h) {
+          const bar = Math.round(h.bar / unit) * unit;
+          const ok = store.moveLayer(id, bar, h.id, false);
+          const host = store.clip(h.id);
+          label(ok ? L(`「${host?.title ?? ''}」の ${barLabel(bar)}小節目から重ねる`, `On “${host?.title ?? ''}” from bar ${barLabel(bar)}`) : L('ここはデッキ C・D がいっぱいです', 'Decks C and D are both busy here'));
+        }
+      } else if (part === 'trimLeft') {
+        const inBar = Math.max(0, orig.mixInBar + steps), delta = inBar - orig.mixInBar;
+        if (store.setLayerRange(id, inBar, orig.mixOutBar, false)) store.moveLayer(id, (orig.layerBar ?? 0) + delta, undefined, false);
+        label(L(`この曲の ${barLabel(inBar)}小節目から`, `From its bar ${barLabel(inBar)}`));
+      } else {
+        const outBar = Math.min(lastBar(orig), orig.mixOutBar + steps);
+        store.setLayerRange(id, orig.mixInBar, outBar, false);
+        label(L(`この曲の ${barLabel(outBar)}小節目まで（${Fmt.bars(outBar - orig.mixInBar)}）`, `Until its bar ${barLabel(outBar)} (${Fmt.bars(outBar - orig.mixInBar)})`));
+      }
       this.requestDraw();
       return;
     }
@@ -1029,6 +1184,7 @@ class TimelineView {
     store.isInteracting = false;
     if (d.hit.kind === 'ruler') store.endScrub(this.time(px));
     else if (d.hit.kind === 'sampleHit') { const h = store.sampleHits.find(x => x.id === (d.hit as { id: string }).id); if (h) this.lastSample = h.sample; }
+    else if (d.hit.kind === 'layer') { if (d.moved) { this.updateDocumentSize(); store.changed(); } }
     else if (d.hit.kind === 'clip') {
       if (this.leadShift !== 0) {
         const shiftX = this.leadShift * this.pps;
@@ -1061,12 +1217,40 @@ class TimelineView {
       showContextMenu(e, items);
       return;
     }
+    if (h.kind === 'layer') {
+      const l = store.layers.find(x => x.id === h.id);
+      if (!l) return;
+      store.selectedClipID = l.id;
+      store.changed();
+      items.push({ label: L('重ねる曲の設定（曲タブ）', 'Layer Settings (Track Tab)'), action: () => store.openPanel('track') });
+      items.push({ label: L('鳴らす部分', 'Play'), submenu: (['all', 'vocals', 'instrumental'] as const).map(p => ({
+        label: p === 'all' ? L('全部', 'Everything') : p === 'vocals' ? L('歌だけ（ステム分離）', 'Vocals only (stems)') : L('伴奏だけ（ステム分離）', 'Instrumental only (stems)'),
+        checked: (l.layerParts ?? 'all') === p, action: () => store.setLayerParts(l.id, p),
+      })) });
+      items.push({ label: L('フェード', 'Fades'), submenu: [0, 1, 4, 8, 16].map(b => ({
+        label: b === 0 ? L('なし', 'None') : L(`${b}拍`, `${b} beat${b > 1 ? 's' : ''}`), checked: Math.abs(l.fadeInBeats - b) < 0.01 && Math.abs(l.fadeOutBeats - b) < 0.01,
+        action: () => store.updateClip(l.id, true, c => { c.fadeInBeats = b; c.fadeOutBeats = b; }),
+      })) });
+      items.push({ label: L('ここから再生', 'Play from Here'), action: () => { store.seek(t); if (!store.isPlaying) store.play(); } });
+      items.push({ separator: true });
+      items.push({ label: L('重ねるのをやめる（削除）', 'Remove This Layer'), action: () => store.removeLayer(l.id) });
+      showContextMenu(e, items);
+      return;
+    }
+    if (h.kind === 'layerLane') {
+      const host = store.hostAt(t);
+      if (host) items.push({ label: L('ここに曲を重ねる', 'Layer a Track Here'), enabled: store.library.length > 0, submenu: layerChoices(host.id, Math.round(host.bar)) });
+      items.push({ label: L('再生位置をここに移動', 'Move Playhead Here'), action: () => store.seek(t) });
+      showContextMenu(e, items);
+      return;
+    }
     if (h.kind === 'clip' && clip) {
       const id = h.id;
       store.selectedClipID = id;
       store.changed();
       const i = store.index(id);
       items.push({ label: L('CUE（IN / OUT）を編集…', 'Edit Cues (IN / OUT)…'), action: () => store.openCueEditor(id) });
+      { const b = store.sourceBar(id, t); if (b != null) items.push({ label: L('この曲に別の曲を重ねる（デッキ C / D）', 'Layer Another Track on This (Decks C / D)'), enabled: store.library.length > 0, submenu: layerChoices(id, Math.round(b)) }); }
       items.push({ label: L('ライブラリに戻す', 'Move Back to Library'), action: () => store.removeFromMix(id) });
       if (i != null && i > 0) items.push({ label: L('つなぎを編集（つなぎタブ）', 'Edit the Transition (Transition Tab)'), action: () => store.openTransitionEditor(id) });
       items.push({ separator: true });
@@ -1179,20 +1363,37 @@ export function Timeline() {
     ov.addEventListener('wheel', wheel, { passive: false });
     // Files dropped from Explorer.
     const dragOver = (e: DragEvent) => {
-      if (!e.dataTransfer?.types.includes('Files')) return;
+      const types = e.dataTransfer?.types ?? [];
+      if (!types.includes('Files') && !types.includes(DRAG_TRACKS)) return;
       e.preventDefault();
-      const [x] = pos(e);
+      const [x, y] = pos(e);
+      v.dropLayer = y > v.mainLanesBottom && store.clips.length > 0 && types.includes(DRAG_TRACKS);
+      if (v.dropLayer) { v.dropTime = null; v.dropLayerTime = Math.max(0, v.time(x)); v.requestDraw(); return; }
+      v.dropLayerTime = null;
       v.dropTime = Math.max(0, v.time(x));
       v.dropIndex = store.lockSafeIndex(store.insertionIndex(v.dropTime));
       v.requestDraw();
     };
-    const dragLeave = () => { v.dropTime = null; v.requestDraw(); };
+    const dragLeave = () => { v.dropTime = null; v.dropLayerTime = null; v.requestDraw(); };
     const drop = (e: DragEvent) => {
       e.preventDefault();
       const files = droppedPaths(e.dataTransfer);
       const index = v.dropIndex;
-      v.dropTime = null;
+      const layerAt = v.dropLayer ? v.dropLayerTime : null;
+      v.dropTime = null; v.dropLayerTime = null; v.dropLayer = false;
       v.requestDraw();
+      const raw = e.dataTransfer?.getData(DRAG_TRACKS);
+      if (raw) {
+        const d = JSON.parse(raw) as { id: string; ids?: string[]; inMix: boolean };
+        if (layerAt != null) {
+          const h = store.hostAt(layerAt);
+          if (h) store.addLayer(h.id, d.id, Math.round(h.bar));
+        } else if (!d.inMix) {
+          const at = index >= store.clips.length ? store.clips.length : index;
+          if (d.ids && d.ids.length > 1) store.addToMixMany(d.ids, at); else store.addToMix(d.id, at);
+        }
+        return;
+      }
       if (files.length) store.addFiles(files, { kind: 'mix', index: index >= store.clips.length ? null : index });
     };
     w.addEventListener('dragover', dragOver);

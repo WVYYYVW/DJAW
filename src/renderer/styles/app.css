@@ -177,10 +177,20 @@ input[type=range] { accent-color: var(--accent); }
 .overview { width: 100%; height: 100%; cursor: pointer; }
 
 /* ---------- Decks ---------- */
-.deckpanel { display: flex; height: 100%; padding: 10px 12px; gap: 12px; }
-.turntable { flex: 1; display: flex; min-width: 0; align-items: stretch; background: rgb(31,31,31); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; overflow: hidden; }
-.jog-slot { flex: none; height: 100%; aspect-ratio: 1 / 2; max-width: 50%; position: relative; }
-.jog { position: absolute; inset: 0; width: 100%; height: 100%; }
+.deckpanel { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); height: 100%; padding: 10px 12px; gap: 12px; align-items: stretch; }
+.deck-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
+.deck-col.left { align-items: flex-end; }
+.deck-col.right { align-items: flex-start; }
+/* A deck: the record (a square, as tall as the deck) and the readouts beside it, never wider than it needs. */
+.turntable { flex: 1; width: 100%; max-width: 520px; min-height: 0; display: flex; min-width: 0; align-items: stretch; background: rgb(31,31,31); border: 1px solid rgba(255,255,255,0.06); border-top: 2px solid var(--deck, rgba(255,255,255,0.1)); border-radius: 12px; overflow: hidden; }
+.jog-slot { flex: none; height: 100%; aspect-ratio: 1 / 1; max-width: 48%; position: relative; padding: 4px; }
+.jog { position: absolute; inset: 4px; width: calc(100% - 8px); height: calc(100% - 8px); }
+.deck-label { color: var(--deck); }
+.turntable.compact .deck-details { padding: 6px 10px; gap: 1px; }
+.turntable.compact .deck-title { font-size: 13px; }
+.turntable.compact .deck-bpm { font-size: 17px; }
+.turntable.compact .deck-readouts .big { font-size: 14px; }
+.turntable.compact .deck-readouts { gap: 12px; }
 .deck-details { padding: 12px 14px; }
 .deck-details { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; overflow: hidden; }
 .deck-head { display: flex; align-items: center; gap: 8px; }
@@ -202,7 +212,7 @@ input[type=range] { accent-color: var(--accent); }
 .lamp.teal { color: var(--teal); border-color: rgba(64, 200, 224, 0.5); }
 .lamp.purple { color: var(--purple); border-color: rgba(191, 90, 242, 0.5); }
 .lamp.orange { color: var(--orange); border-color: rgba(255, 159, 10, 0.5); }
-.mixer { flex: none; width: 210px; display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--line); border-radius: 10px; }
+.mixer { flex: none; width: 200px; display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--line); border-radius: 10px; }
 .mixer-top { flex: 1; display: flex; gap: 8px; min-height: 0; }
 .mixer-mid { display: flex; flex-direction: column; align-items: center; gap: 6px; padding-top: 2px; }
 .channel { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 0; }
@@ -731,3 +741,32 @@ button.update-chip.failed { background: rgba(255,110,90,0.18); color: #ffb3a6; }
 .side-split { flex: none; height: 7px; margin: -3px 0; position: relative; z-index: 3; cursor: ns-resize; background: linear-gradient(var(--line), var(--line)) center / 100% 1px no-repeat; }
 .side-split:hover, .side-resize:hover { background-color: rgba(61, 139, 253, 0.35); }
 .side-resize { position: absolute; top: 0; bottom: 0; right: -4px; width: 7px; cursor: ew-resize; z-index: 6; }
+
+/* Mixer channels: wider faders and a taller throw so they read like the records next to them. */
+.mixer.four { width: 300px; }
+.mixer .channel { min-width: 40px; }
+.mixer .fader { width: 7px; }
+.mixer .fader-cap { left: -9px; width: 25px; height: 12px; margin-bottom: -6px; }
+.mixer .knob { width: 24px; height: 24px; }
+.mixer.four .knob { width: 21px; height: 21px; }
+
+/* Layered tracks under the track they ride on (Mix Order). */
+.layer-row { display: flex; align-items: center; gap: 6px; margin: 0 0 2px 22px; padding: 2px 6px; border-radius: 5px; font-size: 11.5px; cursor: pointer; color: var(--dim); }
+.layer-row:hover { background: rgba(255, 255, 255, 0.05); }
+.layer-row.selected { background: rgba(61, 139, 253, 0.22); color: #fff; }
+.layer-row .layer-mark { font-family: var(--mono); font-size: 10px; color: var(--purple); }
+.layer-row .layer-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.layer-row .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+
+/* Transition editor: the hint / selected point on the left, "Save as My Transition" on the right of one row. */
+.te-selbar { gap: 12px; }
+.te-selbar > .caption.grow { flex: 1; }
+.te-selbar > .te-sel { flex: 1; min-width: 0; }
+.te-savecustom { flex: none; display: flex; align-items: center; gap: 6px; }
+.te-savecustom input.text { width: 150px; }
+.te-lane-head.compact { gap: 2px; }
+.te-lane-head.compact .te-lane-title { font-size: 11px; }
+.te-lane-head { overflow: hidden; }
+.side-head .link.icon.on { color: var(--accent); background: rgba(61, 139, 253, 0.18); border-radius: 4px; }
+.side-head .link.icon:not(.on)[title*="📌"] { opacity: 0.6; }
+.te-toolbar .grid-select select { max-width: 140px; }

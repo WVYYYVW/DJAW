@@ -11,6 +11,8 @@ import { droppedPaths } from '../dropped';
 import { MenuItem, showContextMenu } from './ContextMenu';
 import { ArtworkThumb } from './TrackProfileSheet';
 import type { LibraryRow } from '../store/libraryFolders';
+import { LibrarySorts, librarySorts } from '../store/libraryFolders';
+import { deckName } from '../../core/layers';
 
 const DRAG_TRACKS = 'text/djaw-track';
 const DRAG_FOLDER = 'text/djaw-folder';
@@ -30,8 +32,29 @@ function folderMenu(ids: string[]): MenuItem[] {
   ];
 }
 
+/** Sort choices: all tracks (folder null) or one folder's tracks. 'Best match' uses the selected track. */
+function sortMenu(folder: string | null): MenuItem[] {
+  const s = store;
+  const ref = s.selectedClipID && s.clip(s.selectedClipID) ? s.selectedClipID : null;
+  const refTitle = ref ? s.clip(ref)!.title : null;
+  const items = (scope: 'all' | string | null): MenuItem[] => librarySorts.flatMap(k => {
+    if (k === 'match') return [{ label: refTitle ? L(`「${refTitle}」との相性順`, `Best match with “${refTitle}”`) : L('選んだ曲との相性順（曲を選んでください）', 'Best match with the selected track (select one)'), enabled: !!ref, action: () => s.sortLibrary('match', scope, false, ref) }];
+    const asc = { label: LibrarySorts.title(k) + (k === 'bpm' || k === 'duration' ? L('（小さい順）', ' (low → high)') : ''), action: () => s.sortLibrary(k, scope) };
+    return k === 'bpm' || k === 'duration' ? [asc, { label: LibrarySorts.title(k) + L('（大きい順）', ' (high → low)'), action: () => s.sortLibrary(k, scope, true) }] : [asc];
+  });
+  if (folder) return items(folder);
+  return [
+    { label: L('全曲を並べ替え（フォルダの中も）', 'Sort All Tracks (inside folders too)'), submenu: items('all') },
+    { label: L('フォルダに入っていない曲だけ並べ替え', 'Sort Tracks Outside Folders'), submenu: items(null) },
+    ...(s.libraryFolders.length ? [{ label: L('フォルダ内を並べ替え', 'Sort a Folder'), submenu: s.libraryFolders.map(f => ({ label: s.folderPath(f.id), submenu: items(f.id) })) }] : []),
+    { separator: true },
+    { label: L('ドラッグで曲の上に重ねると、その前に移動します', 'Drag a track onto another to move it before that one'), enabled: false },
+  ];
+}
+
 function TrackRow({ clip, index, inMix, depth = 0, order }: { clip: Clip; index: number; inMix: boolean; depth?: number; order?: Clip[] }) {
   const s = useStore();
+  const [dropBefore, setDropBefore] = useState(false);
   const selected = s.selectedClipID === clip.id || s.librarySelection.has(clip.id);
   const key = s.structures.get(clip.url)?.key;
   const prev = inMix && index > 0 ? s.clips[index - 1] : null;
@@ -101,8 +124,19 @@ function TrackRow({ clip, index, inMix, depth = 0, order }: { clip: Clip; index:
           {s.isLocked(index) ? '🔒 ' : '↘ '}{transition}{clip.transitionDone ? ' ✓' : ''}
         </div>
       )}
-      <div className={'track-row' + (selected ? ' sel' : '')} onMouseDown={select} onDoubleClick={() => s.openCueEditor(clip.id)} onContextMenu={menu}
+      <div className={'track-row' + (selected ? ' sel' : '') + (dropBefore ? ' drop-before' : '')} onMouseDown={select} onDoubleClick={() => s.openCueEditor(clip.id)} onContextMenu={menu}
         style={depth ? { paddingLeft: 8 + depth * 14 } : undefined}
+        onDragOver={inMix ? undefined : e => { if (e.dataTransfer.types.includes(DRAG_TRACKS)) { e.preventDefault(); e.stopPropagation(); setDropBefore(true); } }}
+        onDragLeave={inMix ? undefined : () => setDropBefore(false)}
+        onDrop={inMix ? undefined : e => {
+          setDropBefore(false);
+          const raw = e.dataTransfer.getData(DRAG_TRACKS);
+          if (!raw) return;
+          const d = JSON.parse(raw) as { id: string; ids?: string[]; inMix: boolean };
+          if (d.inMix) return;
+          e.preventDefault(); e.stopPropagation();
+          s.moveLibraryTracks(d.ids ?? [d.id], clip.id);
+        }}
         draggable onDragStart={e => {
           // Dragging one of several selected library tracks drags them all.
           const ids = !inMix && s.librarySelection.size > 1 && s.librarySelection.has(clip.id) ? [...s.librarySelection] : [clip.id];
@@ -180,6 +214,15 @@ export function Sidebar() {
           {s.clips.map((c, i) => (
             <div key={c.id} onDragOver={e => onDragOverMix(e, i)} onDrop={e => onDropMix(e, i)} className={dropAt === i ? 'drop-before' : ''}>
               <TrackRow clip={c} index={i} inMix />
+              {s.layersOn(c.id).map(l => (
+                <div key={l.id} className={'layer-row' + (s.selectedClipID === l.id ? ' selected' : '')} title={L('重ねる曲（クリックで選択・ダブルクリックで設定）', 'Layered track (click to select, double-click for its settings)')}
+                  onClick={() => { s.selectedClipID = l.id; s.librarySelection = new Set(); s.changed(); }} onDoubleClick={() => { s.selectedClipID = l.id; s.openPanel('track'); }}>
+                  <span className="layer-mark">↳ {deckName(s.layerDeck(l.id) ?? 3)}</span>
+                  <span className="dot" style={{ background: clipColor(l.colorIndex) }} />
+                  <span className="layer-title">{l.title}</span>
+                  <span className="dim mono">{barLabel(l.layerBar ?? 0)}–</span>
+                </div>
+              ))}
             </div>
           ))}
           <div className={'drop-end' + (dropAt === s.clips.length ? ' drop-before' : '')} onDragOver={e => onDragOverMix(e, s.clips.length)} onDrop={e => onDropMix(e, s.clips.length)}>
@@ -208,6 +251,7 @@ function FolderRow({ row, onDrop }: { row: Extract<LibraryRow, { kind: 'folder' 
     showContextMenu(e, [
       { label: L('名前を変更', 'Rename'), action: () => { s.renamingFolder = f.id; s.changed(); } },
       { label: L('この中にフォルダを作る', 'New Folder Inside'), action: () => s.createFolder(f.id) },
+      { label: L('このフォルダ内を並べ替え', 'Sort This Folder'), submenu: sortMenu(f.id) },
       { separator: true },
       { label: L(`中の曲をすべて選択（${inside.length}曲）`, `Select All Tracks Inside (${inside.length})`), enabled: inside.length > 0, action: () => { s.librarySelection = new Set(inside); s.selectedClipID = inside[0] ?? null; s.changed(); } },
       { label: L(`中の曲をミックスの末尾に入れる（${inside.length}曲）`, `Add Tracks Inside to End of Mix (${inside.length})`), enabled: inside.length > 0, action: () => s.addToMixMany(inside, s.clips.length) },
@@ -262,6 +306,8 @@ function LibrarySection() {
       <div className="side-head">
         <span className="side-title" title={L('ミックスに入れる前の曲', 'Tracks not in the mix yet')}>{L('ライブラリ', 'Library')}</span>
         <div className="spacer" />
+        <button className="link icon" title={L('並べ替え（全曲・フォルダごと。ドラッグでも並べ替えられます）', 'Sort (all tracks or one folder; you can also drag to reorder)')} onClick={e => showContextMenu(e, sortMenu(null))}>⇅</button>
+        <button className={'link icon' + (s.keepInLibrary ? ' on' : '')} title={s.keepInLibrary ? L('ミックスに入れてもライブラリに残す：オン', 'Keep tracks in the library when adding to the mix: on') : L('ミックスに入れてもライブラリに残す：オフ（入れるとライブラリから消える）', 'Keep tracks in the library when adding to the mix: off (they leave the library)')} onClick={() => s.toggle('keepInLibrary')}>📌</button>
         <button className="link icon" title={L('新しいフォルダ（ドラッグで曲やフォルダを入れられます）', 'New folder (drag tracks or folders into it)')} onClick={() => s.createFolder(null)}>📁＋</button>
         <button className="link icon" title={L('iTunes／ミュージックのライブラリから追加（Ctrl+Alt+Shift+I）', 'Add from the iTunes / Music library (Ctrl+Alt+Shift+I)')} onClick={() => { s.showMusicLibrary = true; s.changed(); }}>♫</button>
         {visibleIDs.length > 1 && (
@@ -275,7 +321,7 @@ function LibrarySection() {
           </button>
         )}
       </div>
-      {(s.library.length > 6 || s.libraryQuery) && (
+      {(s.library.length > 0 || s.libraryQuery) && (
         <div className="library-search">
           <input type="search" placeholder={L('曲名・アーティスト・BPM・キー・フォルダで絞り込み', 'Filter by title, artist, BPM, key, folder')} value={s.libraryQuery}
             onChange={e => { s.libraryQuery = e.target.value; s.changed(); }} onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') { s.libraryQuery = ''; s.changed(); } }} />
