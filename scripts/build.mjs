@@ -16,7 +16,19 @@ if (!fs.existsSync('src/vendor/stretch-core.mjs')) {
   execFileSync(process.execPath, ['tools/signalsmith/make-core.mjs', 'node_modules/signalsmith-stretch/SignalsmithStretch.mjs', 'src/vendor/stretch-core.mjs'], { stdio: 'inherit' });
 }
 
-const common = { bundle: true, sourcemap: 'linked', logLevel: 'info', target: 'es2022', define: { 'process.env.NODE_ENV': watch ? '"development"' : '"production"' } };
+// Keys for the translations of texts with values in them (scripts/i18n.mjs).
+const { keyed } = await import('./i18n.mjs');
+const i18nPlugin = {
+  name: 'i18n-keys',
+  setup(b) {
+    b.onLoad({ filter: /[\\/](src|tests)[\\/].*\.tsx?$/ }, async args => {
+      const text = await fs.promises.readFile(args.path, 'utf8');
+      const out = keyed(args.path, text);
+      return out == null ? undefined : { contents: out, loader: args.path.endsWith('x') ? 'tsx' : 'ts' };
+    });
+  },
+};
+const common = { bundle: true, sourcemap: 'linked', logLevel: 'info', target: 'es2022', plugins: [i18nPlugin], define: { 'process.env.NODE_ENV': watch ? '"development"' : '"production"' } };
 const node = { ...common, platform: 'node', format: 'cjs', external: ['electron', 'onnxruntime-node'] };
 
 const builds = [

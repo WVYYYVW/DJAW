@@ -233,37 +233,44 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
     const undoDepth = await ev(() => window.djaw.undoStack.length);
     await ev(() => { const s = window.djaw; s.setTransitionLength(s.clips[1].id, 8); s.setTransitionStyle(s.clips[1].id, 'bassSwap'); s.selectedClipID = s.clips[1].id; s.openPanel('transition'); });
     await win.waitForTimeout(800);
-    // The middle points of the low lane (the 4th): where the cursor turns into a hand.
-    const middlePoints = async () => {
-      const r = await ev(() => { const c = document.querySelectorAll('canvas.lane-canvas')[3]; if (!c) return null; c.scrollIntoView({ block: 'center' }); const b = c.getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; });
-      if (!r) return [];
-      const found = [];
-      for (let x = r[0] + 40; x < r[0] + r[2] - 40; x += 6) {
-        for (let y = r[1] + 10; y <= r[1] + r[3] - 10; y += Math.max(1, (r[3] - 20) / 12)) {
+    // A middle point of the low lane (the 4th): where the cursor turns into a hand, away from the ends.
+    const lowLane = () => ev(() => { const c = document.querySelectorAll('canvas.lane-canvas')[3]; if (!c) return null; c.scrollIntoView({ block: 'center' }); const b = c.getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; });
+    const findMiddlePoint = async () => {
+      const r = await lowLane();
+      if (!r) return null;
+      for (let x = r[0] + 40; x < r[0] + r[2] - 40; x += 4) {
+        for (let y = r[1] + 4; y <= r[1] + r[3] - 4; y += 4) {
           await win.mouse.move(x, y);
-          if (await ev(() => document.querySelectorAll('canvas.lane-canvas')[3].style.cursor) === 'grab' && !found.some(f => Math.abs(f[0] - x) < 24)) { found.push([x, y]); break; }
+          if (await ev(() => document.querySelectorAll('canvas.lane-canvas')[3].style.cursor) === 'grab') return [x, y];
         }
       }
-      return found;
+      return null;
     };
-    const presetBefore = await middlePoints();
-    let presetDelete = { before: presetBefore.length };
-    if (presetBefore.length) {
-      const [x, y] = presetBefore[0];
-      await win.mouse.click(x, y); await win.waitForTimeout(80); await win.mouse.click(x, y);
-      await win.waitForTimeout(300);
-      presetDelete.afterDouble = (await middlePoints()).length;
-      presetDelete.custom = await ev(() => window.djaw.clips[1].transition);
-      const rest = await middlePoints();
-      if (rest.length) {
-        await win.mouse.click(rest[0][0], rest[0][1]); await win.waitForTimeout(200);
-        await win.keyboard.press('Delete'); await win.waitForTimeout(300);
-        presetDelete.afterKey = (await middlePoints()).length;
-      }
+    // Points of the edited lane once the transition is hand-drawn (custom).
+    const lanePoints = () => ev(() => { const c = window.djaw.clips[1]; return c.transition === 'custom' && c.lanes ? (c.lanes.inLow ?? []).length : null; });
+    const presetDelete = {};
+    const p0 = await findMiddlePoint();
+    if (p0) {
+      // All points, as drawn: nudge the point up and back down (makes the transition hand-drawn, nothing removed).
+      await win.mouse.click(p0[0], p0[1]); await win.waitForTimeout(250);
+      await ev(() => { const b = document.querySelectorAll('.te-sel .stepbtns')[1]?.querySelectorAll('button'); b?.[1].click(); b?.[0].click(); });
+      await win.waitForTimeout(250);
+      presetDelete.all = await lanePoints();
+      await ev(() => { const s = window.djaw; s.undo(); s.undo(); });
+      await win.waitForTimeout(400);
+      // Double-click the point.
+      await win.mouse.click(p0[0], p0[1]); await win.waitForTimeout(80); await win.mouse.click(p0[0], p0[1]);
+      await win.waitForTimeout(400);
+      presetDelete.afterDouble = await lanePoints();
+      await ev(() => window.djaw.undo());
+      await win.waitForTimeout(400);
+      // Select it, then Delete.
+      await win.mouse.click(p0[0], p0[1]); await win.waitForTimeout(300);
+      await win.keyboard.press('Delete'); await win.waitForTimeout(400);
+      presetDelete.afterKey = await lanePoints();
     }
     await ev(d => { const s = window.djaw; while (s.undoStack.length > d) s.undo(); }, undoDepth);
-    check('points of a preset transition can be deleted', presetDelete.before > 0 && presetDelete.afterDouble === presetDelete.before - 1
-      && (presetDelete.before < 2 || presetDelete.afterKey === presetDelete.before - 2), presetDelete);
+    check('points of a preset transition can be deleted', presetDelete.all > 2 && presetDelete.afterDouble === presetDelete.all - 1 && presetDelete.afterKey === presetDelete.all - 1, presetDelete);
     // The video preview window fills its window when that is enlarged (maximized with the title bar's button).
     const previewFill = { opened: false };
     try {

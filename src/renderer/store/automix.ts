@@ -1,6 +1,6 @@
 // The auto-mix part of the store (mac/DJAW/Store/MixStore.swift "Auto-mix", "Genre", "Quick-cut style",
 // "Variations", "Whole-mix patterns", "Render check", "Tempo readings", "Auto-arrange").
-import { L } from '../../core/i18n';
+import { L, captureLanguages, localize } from '../../core/i18n';
 import {
   Clip, ClipFX, Mathx, Style, TransitionStyle, barAtSource, landingBar, resetToWholeTrack, sourceTimeAtBar,
 } from '../../core/models';
@@ -959,7 +959,7 @@ P.autoMixTransition = function (id) {
 P.autoNoteText = function (c) {
   const n = c.autoNote;
   if (!n || n.style !== c.transition || Math.abs((n.bars ?? -1) - c.transitionBars) >= 0.01 || Math.abs((n.inBar ?? -1e9) - c.mixInBar) >= 0.01) return null;
-  return n.text;
+  return localize(n.text);
 };
 
 // MARK: AI grid / cues
@@ -1027,3 +1027,10 @@ P.setTrackUse = function (u) { this.trackUse = u; this.saveSettings(); this.chan
 P.setVerifyTransitions = function (on) { this.verifyTransitions = on; this.saveSettings(); this.changed(); };
 
 export type { TransitionStyle };
+
+// The explanations an auto-mix leaves in the mix (Clip.autoNote, variation labels) are made in every language, so
+// they read right after the language is changed (core/i18n.ts captureLanguages / localize).
+for (const name of ['applyAutoTransition', 'computeVariations', 'planTempos', 'noteCheck', 'planTransitionsMixed', 'planTransitionsQuick'] as const) {
+  const f = P[name] as (...a: unknown[]) => unknown;
+  (P as unknown as Record<string, unknown>)[name] = function (this: MixStore, ...a: unknown[]) { return captureLanguages(() => f.apply(this, a)); };
+}

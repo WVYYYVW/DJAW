@@ -48,7 +48,7 @@ function ClipBadge() {
     <div className="clip-badge">
       <ArtworkThumb url={c.url} colorIndex={c.colorIndex} size={22} onClick={() => s.openProfileEditor(c.id)} />
       <span className="clip-badge-title" title={c.title}>{c.title}</span>
-      <span className="clip-badge-sub mono">{i != null ? L(`${i + 1}曲目`, `#${i + 1}`) : L('ライブラリ', 'Library')} · {Fmt.bpm(c.bpm)}{key ? ` · ${Key.camelot(key)}` : ''}</span>
+      <span className="clip-badge-sub mono">{i != null ? L(`${i + 1}曲目`, `#${i + 1}`) : s.isLayer(c.id) ? L(`重ね · デッキ ${'ABCD'[s.layerDeck(c.id) ?? 3]}`, `Layer · deck ${'ABCD'[s.layerDeck(c.id) ?? 3]}`) : L('ライブラリ', 'Library')} · {Fmt.bpm(c.bpm)}{key ? ` · ${Key.camelot(key)}` : ''}</span>
       <button className="tbtn icon small" title={L('この曲の操作', 'Track actions')} onClick={e => showContextMenu(e, [
         { label: L('曲の情報（ジャケット・アーティスト）を編集…', 'Edit Track Info (Artwork, Artist)…'), action: () => s.openProfileEditor(c.id) },
         ...(i != null ? [{ label: L('ライブラリに戻す', 'Move Back to Library'), action: () => s.removeFromMix(c.id) }] : [{ label: L('ミックスの末尾に入れる', 'Add to End of Mix'), action: () => s.addToMix(c.id, s.clips.length) }]),

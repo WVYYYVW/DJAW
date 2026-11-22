@@ -148,12 +148,13 @@ function storedName(id: string, file: string) {
 }
 
 /** Same as `writeProject`, without blocking (the UI stays responsive while hundreds of MB are written). */
-export async function writeProjectAsync(p: ProjectFile, media: { id: string; file: string }[], dest: string) {
+/** `name`: the file name to store (e.g. "Track.flac" for a WAV compressed on the way in); default: the file's own. */
+export async function writeProjectAsync(p: ProjectFile, media: { id: string; file: string; name?: string }[], dest: string) {
   const entries: MediaEntry[] = [];
   let offset = 0;
   for (const m of media) {
     const size = (await fs.promises.stat(m.file)).size;
-    entries.push({ id: m.id, fileName: storedName(m.id, m.file), offset, length: size });
+    entries.push({ id: m.id, fileName: m.name ?? storedName(m.id, m.file), offset, length: size });
     offset += size;
   }
   const json = Buffer.from(encodeProject({ ...p, media: entries.length ? entries : null }), 'utf8');

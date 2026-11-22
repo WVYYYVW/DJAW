@@ -42,5 +42,7 @@ export const Jobs = {
   peakRange: (mix: MixMessage, binsPerSecond: number, a: number, b: number) =>
     run<{ range: any }>({ type: 'peakRange', ...mix, binsPerSecond, a, b }),
   /** Renders the transition into clip `index` and lists what sounds wrong (null = could not render). */
+  /** Compresses a WAV losslessly to FLAC at `dest` (ok false: not a WAV FLAC can hold). */
+  flac: (src: string, dest: string) => run<{ ok: boolean }>({ type: 'flac', src, dest }),
   check: (mix: MixMessage, index: number) => run<{ result: { problems: string[] } | null }>({ type: 'check', ...mix, index }),
 };

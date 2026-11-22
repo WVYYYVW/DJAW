@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Updater } from './updater';
 import { setUpAnalysisHost } from './analysisHost';
+import { AppLanguage, L as coreL, languages, setLanguage } from '../core/i18n';
+import '../core/locales';
 const isMac = process.platform === 'darwin';
 
 app.setName('DJAW');
@@ -17,10 +19,9 @@ if (!process.env.DJAW_NO_GPU && (process.platform === 'win32' || isMac)) {
   app.commandLine.appendSwitch('enable-zero-copy');            // drawn frames handed to the encoder without copies
 }
 let win: BrowserWindow | null = null;
-let lang: 'ja' | 'en' = 'ja';
 let canClose = false;
 
-const L = (ja: string, en: string) => (lang === 'en' ? en : ja);
+const L = (ja: string, en: string) => coreL(ja, en);
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
 
 // Updates (main/updater.ts). Its own small file, so the renderer's settings writes never overwrite it.
@@ -35,14 +36,14 @@ const updater = new Updater(L, () => win, () => send('requestClose'), {
   },
 });
 
-function readLanguage() {
+function readLanguage(): AppLanguage {
   try {
     const s = JSON.parse(fs.readFileSync(settingsPath(), 'utf8'));
-    if (s.language === 'english') return 'en';
-    if (s.language === 'japanese') return 'ja';
+    if (typeof s.language === 'string') return s.language as AppLanguage;
   } catch { /* defaults */ }
-  return app.getLocale().startsWith('ja') ? 'ja' : 'en';
+  return 'system';
 }
+const applyLanguage = () => setLanguage(readLanguage(), app.getLocale());
 
 function send(command: string, arg?: unknown) {
   win?.webContents.send('menu', command, arg);
@@ -162,8 +163,7 @@ function buildMenu() {
           label: L('言語', 'Language'),
           submenu: [
             item(L('システムに合わせる', 'System'), 'language', undefined, 'system'),
-            item('日本語', 'language', undefined, 'japanese'),
-            item('English', 'language', undefined, 'english'),
+            ...languages.map(x => item(x.name, 'language', undefined, x.id)),
           ],
         },
         sep,
@@ -180,7 +180,7 @@ function buildMenu() {
 }
 
 function createWindow(fileToOpen?: string) {
-  lang = readLanguage();
+  applyLanguage();
   win = new BrowserWindow({
     width: 1440, height: 900, minWidth: 1000, minHeight: 640,
     backgroundColor: '#121316', title: 'DJAW', show: false,
@@ -243,7 +243,7 @@ ipcMain.handle('dialog:message', async (_e, opts) => (await dialog.showMessageBo
 ipcMain.on('recent:add', (_e, file: string) => { app.addRecentDocument(file); buildMenu(); });
 ipcMain.on('window:title', (_e, title: string) => win?.setTitle(title));
 ipcMain.on('app:close', () => { canClose = true; win?.close(); });
-ipcMain.on('app:relaunchMenu', () => { lang = readLanguage(); buildMenu(); });
+ipcMain.on('app:relaunchMenu', () => { applyLanguage(); buildMenu(); });
 ipcMain.on('shell:show', (_e, p: string) => shell.showItemInFolder(p));
 
 let fileArg = process.argv.find(a => a.toLowerCase().endsWith('.djaw'));

@@ -191,38 +191,75 @@ function write(name, l, r = l) {
 
 // MARK: - The sounds
 
-/** Air horn: a stack of detuned band-limited saws with the classic falling "bwaap", through a horn-like resonance. */
+/** Pulse wave (band-limited by smoothing the edges a little): the buzzy reed of a horn. */
+function pulse(n, freq, duty) {
+  const o = new Float64Array(n);
+  let ph = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR, f = typeof freq === 'function' ? freq(t) : freq, d = typeof duty === 'function' ? duty(t) : duty;
+    ph = (ph + f / SR) % 1;
+    const w = Math.min(0.5, f / SR * 1.5); // edge softening ~ 1.5 samples
+    const edge = (x, e) => clamp((x - e) / w + 0.5, 0, 1);
+    o[i] = 2 * (edge(ph, 0) - edge(ph, d)) - 1 + 2 * edge(ph, 1) - 0; // high for 0 ≤ ph < d
+  }
+  return o;
+}
+
+/**
+ * The classic DJ / dancehall air horn: a pressure horn, not a synth pad — three reeds a little apart (a rough,
+ * dissonant cluster), each a narrow buzzy pulse that scoops up into pitch, a hiss of air, hard clipping, and the
+ * bright "honk" band around 1–3 kHz.
+ */
 function airHornBlast(len, seed) {
   const n = buf(len).length;
   const r = rng(seed);
-  const base = t => 466 * (1 - 0.06 * Math.exp(-t * 18)) * (1 - 0.03 * Math.min(1, t / len));
-  const voices = [1, 1.005, 0.996, 1.258, 1.262, 1.5, 0.5].map((m, k) => mul(saw(n, t => base(t) * m * (1 + 0.002 * Math.sin(TAU * (5.5 + k) * t))), [0.9, 0.8, 0.8, 0.55, 0.5, 0.35, 0.45][k]));
-  let x = mix(...voices);
-  x = mix(svf(x, 'bp', 1450, 1.6), mul(svf(x, 'bp', 2900, 2.2), 0.5), mul(svf(x, 'lp', 4200), 0.35));
-  x = drive(x, 1.8);
-  void r;
-  return mul(x, env(n, [[0, 0], [0.012, 1], [len - 0.06, 0.92], [len, 0]]));
-}
-function airHorn() {
-  const [l, r] = reverb(airHornBlast(0.95, 1), airHornBlast(0.95, 2), { wet: 0.22, room: 0.8, tail: 1.6 });
-  write('air-horn', l, r);
+  const scoop = t => 1 - 0.18 * Math.exp(-t * 45) - 0.015 * Math.max(0, t - (len - 0.08)) / 0.08;
+  const reeds = [[488, 0.22, 1], [580, 0.2, 0.8], [652, 0.24, 0.65], [244, 0.3, 0.35]];
+  let x = mix(...reeds.map(([f0, duty, g], k) => mul(pulse(n, t => f0 * scoop(t) * (1 + 0.004 * Math.sin(TAU * (7 + k * 1.3) * t + r() * TAU)), duty), g)));
+  const air = mul(svf(noise(n, seed + 100), 'bp', 2600, 1.6), 0.07);
+  x = mix(x, air);
+  // Horn body: a strong resonance where air horns honk, plus the bright edge.
+  x = mix(mul(svf(x, 'bp', 1150, 1.8), 1.4), mul(svf(x, 'bp', 2400, 2.4), 0.9), mul(svf(x, 'hp', 3500), 0.35), mul(svf(x, 'lp', 700), 0.5));
+  x = drive(x, 3.2);
+  // Soft saturation still makes some fizz above the horn's range: roll it off.
+  x = svf(svf(x, 'lp', 8500, 0.6), 'lp', 8500, 0.6);
+  return mul(x, env(n, [[0, 0], [0.008, 1], [Math.max(0.02, len - 0.035), 0.95], [len, 0]]));
 }
 function airHornTriple() {
-  const a = airHornBlast(0.16, 3), b = airHornBlast(0.16, 4), c = airHornBlast(0.85, 5);
-  const x = mix(a, delayed(b, 0.2), delayed(c, 0.4));
-  const [l, r] = reverb(x, x, { wet: 0.22, room: 0.8, tail: 1.6 });
+  // "Ba-ba-baaaa": two short blasts and a long one, with a dub echo and some room.
+  const x = mix(airHornBlast(0.13, 3), delayed(airHornBlast(0.13, 4), 0.19), delayed(airHornBlast(0.75, 5), 0.38));
+  let [l, r] = echo(x, x, { time: 0.375, feedback: 0.38, wet: 0.32, tail: 1.8, tone: 4500 });
+  [l, r] = reverb(l, r, { wet: 0.15, room: 0.78, tail: 1.2 });
   write('air-horn-x3', l, r);
 }
+function airHornSingle() {
+  // One long blast (the single horn), echoed.
+  const x = airHornBlast(1.0, 1);
+  let [l, r] = echo(x, x, { time: 0.375, feedback: 0.3, wet: 0.25, tail: 1.4, tone: 4500 });
+  [l, r] = reverb(l, r, { wet: 0.15, room: 0.78, tail: 1.2 });
+  write('air-horn', l, r);
+}
 
-/** Dub siren: a square wave swept by a slow LFO, then ping-pong echo and reverb. */
+/**
+ * Dub siren (the reggae / dancehall siren DJ samplers carry): a square-ish tone whose pitch is pulled by a fast
+ * falling saw LFO — "pew-pew-pew" — while the whole thing slowly climbs, into a long ping-pong delay.
+ */
 function siren() {
-  const len = 2.4, n = buf(len).length;
-  const f = t => 600 * Math.pow(2, 1.0 * (0.5 - 0.5 * Math.cos(TAU * 2.1 * t)));
-  let x = mix(mul(square(n, f), 0.7), mul(sine(n, t => f(t) * 2), 0.25));
-  x = svf(x, 'lp', 3800, 0.9);
-  x = mul(x, env(n, [[0, 0], [0.01, 1], [len - 0.05, 1], [len, 0]]));
-  let [l, r] = echo(x, x, { time: 0.33, feedback: 0.5, wet: 0.4, tail: 2.2 });
-  [l, r] = reverb(l, r, { wet: 0.18, tail: 1.5 });
+  const len = 2.6, n = buf(len).length;
+  const rate = t => 6.5 + 1.5 * (t / len);
+  let lfo = 0;
+  const f = Float64Array.from({ length: n }, (_, i) => {
+    const t = i / SR;
+    lfo = (lfo + rate(t) / SR) % 1;
+    const base = 520 * Math.pow(2, 0.9 * (t / len));
+    return base * Math.pow(2, 1.15 * (1 - lfo)); // each chirp falls an octave and a bit
+  });
+  let x = mix(mul(pulse(n, t => f[Math.min(n - 1, Math.round(t * SR))], 0.42), 0.8), mul(sine(n, t => f[Math.min(n - 1, Math.round(t * SR))]), 0.3));
+  x = svf(x, 'lp', 4200, 0.9);
+  x = drive(x, 1.6);
+  x = mul(x, env(n, [[0, 0], [0.01, 1], [len - 0.06, 1], [len, 0]]));
+  let [l, r] = echo(x, x, { time: 0.3, feedback: 0.55, wet: 0.45, tail: 2.4, tone: 3200 });
+  [l, r] = reverb(l, r, { wet: 0.16, tail: 1.4 });
   write('siren', l, r);
 }
 
@@ -363,5 +400,5 @@ function sweepUp() {
 }
 
 fs.mkdirSync(OUT, { recursive: true });
-airHorn(); airHornTriple(); siren(); riser(); downlifter(); impact(); subDrop();
+airHornSingle(); airHornTriple(); siren(); riser(); downlifter(); impact(); subDrop();
 gabberKick(); hardKick(); snare(); clap(); crash(); reverseCrash(); openHat(); laser(); sweepUp();

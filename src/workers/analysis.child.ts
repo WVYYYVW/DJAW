@@ -4,8 +4,11 @@
 // port it is given instead.) One message at a time: track analysis (waveform, tempo, Beat This! grid, structure),
 // loudness, stem separation (in a second process of its own) and resampling WAV / AIFF files that are not at 44.1 kHz.
 import fs from 'node:fs';
+import '../core/locales';
 import path from 'node:path';
 import { openPcmFile } from '../core/render/source';
+import { AppLanguage, setLanguage } from '../core/i18n';
+if (process.env.DJAW_LANG) setLanguage(process.env.DJAW_LANG as AppLanguage);
 import { analyzeAudio } from '../core/analysis/analyzer';
 import { StemModel, loadBeatModel, loadCueModel, loadGenreModel, loadStemModel } from '../core/analysis/beatmodel';
 import { separateStems } from '../core/analysis/stems';

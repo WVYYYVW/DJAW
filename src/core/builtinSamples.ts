@@ -9,9 +9,9 @@ const sweeps = () => L('ライザー・スイープ', 'Risers & sweeps');
 const drums = () => L('ドラム', 'Drums');
 
 export const builtinSamples: BuiltinSample[] = [
-  { file: 'air-horn.wav', title: () => L('エアホーン', 'Air Horn'), group: fx },
-  { file: 'air-horn-x3.wav', title: () => L('エアホーン ×3', 'Air Horn ×3'), group: fx },
-  { file: 'siren.wav', title: () => L('サイレン', 'Siren'), group: fx },
+  { file: 'air-horn-x3.wav', title: () => L('エアホーン（バ・バ・バーン）', 'Air Horn (ba-ba-baaa)'), group: fx },
+  { file: 'air-horn.wav', title: () => L('エアホーン（長く1回）', 'Air Horn (one long)'), group: fx },
+  { file: 'siren.wav', title: () => L('ダブサイレン', 'Dub Siren'), group: fx },
   { file: 'laser.wav', title: () => L('レーザー', 'Laser'), group: fx },
   { file: 'impact.wav', title: () => L('インパクト', 'Impact'), group: fx },
   { file: 'sub-drop.wav', title: () => L('サブドロップ', 'Sub Drop'), group: fx },
@@ -28,6 +28,6 @@ export const builtinSamples: BuiltinSample[] = [
 ];
 
 /** The standard kit, pad by pad (Q W E R / A S D F … as the pad keys go). */
-export const standardKit = ['air-horn.wav', 'siren.wav', 'riser.wav', 'impact.wav', 'gabber-kick.wav', 'snare.wav', 'crash.wav', 'laser.wav'];
+export const standardKit = ['air-horn-x3.wav', 'siren.wav', 'riser.wav', 'impact.wav', 'gabber-kick.wav', 'snare.wav', 'crash.wav', 'laser.wav'];
 
 export const builtinByFile = (file: string) => builtinSamples.find(b => b.file === file) ?? null;

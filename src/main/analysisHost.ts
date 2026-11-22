@@ -15,13 +15,14 @@ import path from 'node:path';
 const procs = new Map<string, ChildProcess>();
 
 export function setUpAnalysisHost() {
-  ipcMain.on('analysis:spawn', (e, req: { lane: string; serial: number }) => {
+  ipcMain.on('analysis:spawn', (e, req: { lane: string; serial: number; lang?: string }) => {
     const sender: WebContents = e.sender;
     procs.get(req.lane)?.kill();
     const child = fork(path.join(__dirname, 'analysis.child.js'), [], {
       execPath: process.execPath,
       execArgv: [],
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      // Its messages (errors shown in the app) in the app's language.
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', DJAW_LANG: req.lang ?? '' },
       serialization: 'advanced',
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     });

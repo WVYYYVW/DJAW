@@ -11,6 +11,9 @@ import { exportVideo } from '../core/render/video';
 import type { SamplerInput } from '../core/sampler';
 import { STEM_NAMES, StemFiles } from '../core/analysis/stems';
 import type { StemSources } from '../core/render/session';
+import fs from 'node:fs';
+import '../core/locales';
+import { encodeFlac, parseWav } from '../core/flac';
 
 const SR = 44100;
 const pool = new StretchPool(SR);
@@ -165,6 +168,16 @@ self.onmessage = async (e: MessageEvent) => {
         jobs.set(m.job, flag);
         const r = await renderPeakRange(mixInput(m), m.binsPerSecond, m.a, m.b, flag);
         postMessage({ type: 'done', job: m.job, range: r });
+        break;
+      }
+      case 'flac': {
+        // A WAV for a .djaw: lossless FLAC (null when the WAV is not 16 / 24-bit integer PCM).
+        const pcm = parseWav(new Uint8Array(fs.readFileSync(m.src)));
+        if (!pcm) { postMessage({ type: 'done', job: m.job, ok: false }); break; }
+        const tmp = m.dest + '.part';
+        fs.writeFileSync(tmp, encodeFlac(pcm));
+        fs.renameSync(tmp, m.dest);
+        postMessage({ type: 'done', job: m.job, ok: true });
         break;
       }
       case 'check': {

@@ -1,7 +1,7 @@
 // The inspector (mac/DJAW/Views/InspectorView.swift): transition / deck / FX / mixer for the selected track,
 // the library track, several library tracks, or the mix as a whole.
 import React, { useRef, useState } from 'react';
-import { L } from '../../core/i18n';
+import { L, localize } from '../../core/i18n';
 import {
   Clip, CurveShape, Curve, EQBand, Lanes, Loudness, Style, TransitionStyle, barAtSource, barLabel, clipEnd, cueList,
   curveShapes, hasEdits, keepsLanding, landingBar, lastBar, loudnessModes, rate, transitionPresets, transitionShape,
@@ -261,7 +261,7 @@ export function TakesSection({ clip }: { clip: Clip }) {
       {list.map(t => (
         <div key={t.id} className={'take' + (t.id === current ? ' on' : '')}>
           <div className="take-text">
-            <div className="take-name">{t.id === current ? '● ' : ''}{t.name}</div>
+            <div className="take-name">{t.id === current ? '● ' : ''}{localize(t.name)}</div>
             <div className="take-sub">{Take.summary(t)}</div>
           </div>
           <button className="btn small" onClick={() => s.useTake(clip.id, t.id)} disabled={t.id === current}>{L('使う', 'Use')}</button>
@@ -586,14 +586,14 @@ export function VariationsSection({ clip, index }: { clip: Clip; index: number }
               <div className="variation-head">
                 <span className="radio">{current ? '●' : '○'}</span>
                 <div className="grow">
-                  <div className="take-name">{v.plan.label}</div>
+                  <div className="take-name">{localize(v.plan.label ?? '')}</div>
                   <div className="take-sub wrap">{summary(v.plan)}</div>
                 </div>
                 <button className="btn small" title={L('この案に切り替えて試聴', 'Switch to this variation and listen')} onClick={e => { e.stopPropagation(); s.previewVariation(clip.id, k); }}>▶</button>
                 <button className="btn small" disabled={current} onClick={e => { e.stopPropagation(); s.applyVariation(clip.id, k); }}>{L('使う', 'Use')}</button>
               </div>
               {v.problems && <div className={'caption ' + (v.problems.length ? 'warn' : 'ok')}>{v.problems.length ? '⚠ ' + v.problems.join('、') : '✓ ' + L('書き出して確認：問題なし', 'Checked: no problems')}</div>}
-              {expanded === v.id && <div className="caption pre">{v.plan.reasons.join('\n')}</div>}
+              {expanded === v.id && <div className="caption pre">{localize(v.plan.reasons.join('\n'))}</div>}
             </div>
           );
         })}
@@ -781,6 +781,10 @@ export function MixInspector() {
         <Row label={L('ミックスに入れてもライブラリに残す', 'Keep tracks in the library when adding them to the mix')} title={L('オンにすると、ライブラリの曲をミックス順に入れても、ライブラリ（とそのフォルダ）からは消えません', 'When on, tracks stay in the library (and its folders) after you add them to the mix order')}><input type="checkbox" checked={s.keepInLibrary} onChange={() => s.toggle('keepInLibrary')} /></Row>
         <Row label={L('曲を追加したら CUE タブを開く', 'Open the CUE tab after adding')}><input type="checkbox" checked={s.openCueEditorOnAdd} onChange={() => s.toggle('openCueEditorOnAdd')} /></Row>
         <Row label={L('曲の音声をファイルに含めて保存', 'Include audio when saving')}><input type="checkbox" checked={s.embedMedia} onChange={() => s.toggle('embedMedia')} /></Row>
+        {s.embedMedia && <>
+          <Row label={L('WAV を可逆圧縮（FLAC）して小さく', 'Compress WAVs losslessly (FLAC)')} title={L('音は1ビットも変わらず、WAV の曲は半分前後の大きさになります。MP3 などはそのまま入れます', 'Not a single bit of the sound changes; WAV tracks shrink to about half. MP3 and the like go in as they are')}><input type="checkbox" checked={s.compressAudio} onChange={() => s.toggle('compressAudio')} /></Row>
+          <Row label={L('ミックスに入れていないライブラリの曲も含める', 'Also include library tracks not in the mix')} title={L('オフにすると、ミックス（と重ねる曲・サンプラー）で使う曲だけを含めます。ライブラリの曲は元のファイルから読みます', 'When off, only the tracks the mix uses (and layered tracks, sampler sounds) go in; library tracks are read from their files')}><input type="checkbox" checked={s.embedLibraryAudio} onChange={() => s.toggle('embedLibraryAudio')} /></Row>
+        </>}
       </Section>
       <Section title={L('標準のつなぎ', 'Default Transition')} footer={L('新しく入れた曲のつなぎ方。下のボタンで、いまのミックスのすべてのつなぎを同じにできます（Ctrl+Z で戻せます）。', 'Used for newly added tracks. The buttons below apply a recipe to every transition in the mix (Ctrl+Z undoes it).')}>
         <Row label={L('つなぎ方', 'Style')}>

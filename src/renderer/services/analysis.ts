@@ -1,5 +1,6 @@
 // Track analysis: fingerprint → cache (Analysis/<fp>.analysis) or the analysis process, one track at a time.
 // The analysis runs in utility processes the main process starts (main/analysisHost.ts), reached over a MessagePort.
+import { currentLanguage } from '../../core/i18n';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ipcRenderer } from 'electron';
@@ -69,7 +70,7 @@ function getChild(lane: Lane = 'analysis'): Proc {
   const startup = setTimeout(() => { ipcRenderer.send('analysis:kill', lane); ended(lane, serial, 'did not start'); }, 60000);
   const p: Proc = { serial, port: null, queue: [], startup };
   children.set(lane, p);
-  ipcRenderer.send('analysis:spawn', { lane, serial });
+  ipcRenderer.send('analysis:spawn', { lane, serial, lang: currentLanguage() });
   return p;
 }
 

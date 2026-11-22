@@ -2,6 +2,7 @@
 // the mix, selection, playback, undo, editing operations, documents and export.
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { ipcRenderer, clipboard, shell } from 'electron';
 import { L } from '../../core/i18n';
 import { LibraryFolder,
@@ -141,6 +142,10 @@ export class MixStore {
   showSamplerLane = true;
   /** Adding a track to the mix leaves it in the library too (a copy goes into the mix). */
   keepInLibrary = false;
+  /** Saving with the audio: WAV tracks as lossless FLAC (the same sound, about half the size). */
+  compressAudio = true;
+  /** Saving with the audio: also the library's tracks that are not in the mix. */
+  embedLibraryAudio = true;
   /** Reopen the last mix when DJAW starts. */
   reopenLast = true;
   private recovery: Promise<boolean> | null = null;
@@ -225,6 +230,8 @@ export class MixStore {
     this.showSamplerLane = (s.showSamplerLane as boolean) ?? true;
     this.keepInLibrary = (s.keepInLibrary as boolean) ?? false;
     this.reopenLast = (s.reopenLast as boolean) ?? true;
+    this.compressAudio = (s.compressAudio as boolean) ?? true;
+    this.embedLibraryAudio = (s.embedLibraryAudio as boolean) ?? true;
     this.browserSplit = typeof s.browserSplit === 'number' ? s.browserSplit : 0.45;
     this.showBrowser = (s.showBrowser as boolean) ?? true;
     this.customTransitions = (s.customTransitions as CustomTransition[]) ?? [];
@@ -240,7 +247,7 @@ export class MixStore {
   saveSettings() {
     const s = {
       showPanel: this.showPanel, panelHeight: this.panelHeight, transitionPanelHeight: this.transitionPanelHeight, showBrowser: this.showBrowser, editGrid: this.editGrid,
-      browserWidth: this.browserWidth, browserSplit: this.browserSplit, showSamplerLane: this.showSamplerLane, keepInLibrary: this.keepInLibrary, reopenLast: this.reopenLast,
+      browserWidth: this.browserWidth, browserSplit: this.browserSplit, showSamplerLane: this.showSamplerLane, keepInLibrary: this.keepInLibrary, reopenLast: this.reopenLast, compressAudio: this.compressAudio, embedLibraryAudio: this.embedLibraryAudio,
       showDecks: this.showDecks, showMixer: this.showMixer, exportNormalize: this.exportNormalize, embedMedia: this.embedMedia,
       openCueEditorOnAdd: this.openCueEditorOnAdd, showMixWaveform: this.showMixWaveform, customTransitions: this.customTransitions,
       recentDocuments: this.recentDocuments.slice(0, 10), defaultTransitionStyle: this.defaultTransitionStyle,
@@ -1526,7 +1533,7 @@ export class MixStore {
     this.changed();
   }
 
-  toggle(key: 'showPanel' | 'showBrowser' | 'showInspector' | 'showDecks' | 'showMixer' | 'followPlayhead' | 'showMixWaveform' | 'showSamplerLane' | 'keepInLibrary' | 'reopenLast' | 'exportNormalize' | 'embedMedia' | 'openCueEditorOnAdd') {
+  toggle(key: 'showPanel' | 'showBrowser' | 'showInspector' | 'showDecks' | 'showMixer' | 'followPlayhead' | 'showMixWaveform' | 'showSamplerLane' | 'keepInLibrary' | 'reopenLast' | 'compressAudio' | 'embedLibraryAudio' | 'exportNormalize' | 'embedMedia' | 'openCueEditorOnAdd') {
     (this as Record<string, unknown>)[key] = !(this as Record<string, unknown>)[key];
     this.saveSettings();
     this.changed();
@@ -1962,8 +1969,14 @@ export class MixStore {
         };
         this.clips = this.clips.map(assign);
         this.library = this.library.map(assign);
+        this.layers = this.layers.map(assign);
         this.samples = this.samples.map(c => (isBuiltinSample(c.url) ? (c.mediaID ? { ...c, mediaID: null } : c) : assign(c)));
-        const media = [...ids.entries()].filter(([u]) => fs.existsSync(u)).map(([u, id]) => ({ id, file: u })).sort((a, b) => a.id.localeCompare(b.id));
+        // Library tracks (not in the mix) only when wanted.
+        const used = new Set([...this.clips, ...this.layers, ...this.samples].map(c => c.url));
+        const wantedUrls = [...ids.entries()].filter(([u]) => fs.existsSync(u) && (this.embedLibraryAudio || used.has(u)));
+        const media: { id: string; file: string; name?: string }[] = [];
+        for (const [u, id] of wantedUrls) media.push(this.compressAudio ? await this.losslessCopy(u, id) : { id, file: u });
+        media.sort((a, b) => a.id.localeCompare(b.id));
         // Writing into the file the media is read from: copy those out of the old package first.
         await writeProjectAsync(this.makeProjectFile(target!), media, target!);
       } else {
@@ -1997,6 +2010,29 @@ export class MixStore {
       fs.mkdirSync(path.dirname(MixStore.autosavePath), { recursive: true });
       fs.writeFileSync(MixStore.autosavePath, encodeProject(this.makeProjectFile(this.documentPath, this.documentPath)));
     } catch (e) { console.warn('[DJAW] autosave failed', e); }
+  }
+
+  /**
+   * A WAV to embed, as lossless FLAC (kept in the cache, so saving again does not encode again);
+   * other files (MP3, AAC, FLAC… already compressed) as they are.
+   */
+  private async losslessCopy(file: string, id: string): Promise<{ id: string; file: string; name?: string }> {
+    if (!/\.wav$/i.test(file)) return { id, file };
+    try {
+      const st = fs.statSync(file);
+      const key = createHash('sha1').update(`${file}|${st.size}|${st.mtimeMs}`).digest('hex').slice(0, 20);
+      const dir = dataDir('cache', 'flac');
+      fs.mkdirSync(dir, { recursive: true });
+      const dest = path.join(dir, key + '.flac');
+      if (!fs.existsSync(dest)) {
+        const r = await Jobs.flac(file, dest).promise;
+        if (!r.ok) return { id, file };
+      }
+      return { id, file: dest, name: path.basename(file).replace(/\.wav$/i, '') + '.flac' };
+    } catch (e) {
+      console.warn('[DJAW] FLAC failed, embedding the WAV', e);
+      return { id, file };
+    }
   }
 
   removeAutosave() { try { fs.rmSync(MixStore.autosavePath); } catch { /* none */ } }

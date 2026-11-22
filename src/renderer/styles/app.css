@@ -770,3 +770,4 @@ button.update-chip.failed { background: rgba(255,110,90,0.18); color: #ffb3a6; }
 .side-head .link.icon.on { color: var(--accent); background: rgba(61, 139, 253, 0.18); border-radius: 4px; }
 .side-head .link.icon:not(.on)[title*="📌"] { opacity: 0.6; }
 .te-toolbar .grid-select select { max-width: 140px; }
+.iheader > :first-child { flex: none; }

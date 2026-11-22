@@ -4,7 +4,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ipcRenderer } from 'electron';
 import fs from 'node:fs';
-import { AppLanguage, L, isEnglish, setLanguage } from '../core/i18n';
+import { AppLanguage, L, languageTag, localize, setLanguage } from '../core/i18n';
+import '../core/locales';
 import { useStore, useSize } from './hooks';
 import { store } from './store/store';
 import { dataDir, env } from './services/env';
@@ -49,7 +50,7 @@ function Alert() {
     <div className="sheet-backdrop" onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') close(); }}>
       <div className="sheet alert">
         <div className="sheet-title">DJAW</div>
-        <div className="alert-text">{s.alertMessage}</div>
+        <div className="alert-text">{localize(s.alertMessage)}</div>
         <div className="button-row end"><button className="btn primary" autoFocus onClick={close}>OK</button></div>
       </div>
     </div>
@@ -121,7 +122,7 @@ export function App() {
           const l = arg as AppLanguage;
           writeLanguage(l);
           setLanguage(l, env.locale);
-          document.documentElement.lang = isEnglish() ? 'en' : 'ja';
+          document.documentElement.lang = languageTag();
           ipcRenderer.send('app:relaunchMenu');
           setLang(n => n + 1);
           s.changed();
@@ -203,7 +204,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    document.documentElement.lang = isEnglish() ? 'en' : 'ja';
+    document.documentElement.lang = languageTag();
     s.offerRecoveryIfNeeded();
     // Which part of the window has the keys: the detail panel's editors, or the rest.
     const focus = (e: PointerEvent) => {
