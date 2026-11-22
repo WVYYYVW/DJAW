@@ -8,7 +8,9 @@ const keys = Object.keys(JSON.parse(fs.readFileSync(path.join(dir, '_source.json
 const CHUNK = 200;
 const tables = {};
 let problems = 0;
-const holes = s => [...s.matchAll(/\{(\d+)\}/g)].map(m => m[1]).sort().join(',');
+const holes = s => new Set([...s.matchAll(/\{(\d+)\}/g)].map(m => m[1]));
+// A translation may leave a value out (an English plural "s"), never add one.
+const fits = (t, k) => [...holes(t)].every(h => holes(k).has(h));
 for (const f of fs.readdirSync(parts).filter(f => /^c\d+_.+\.json$/.test(f)).sort()) {
   const n = Number(f.match(/^c(\d+)_/)[1]);
   const data = JSON.parse(fs.readFileSync(path.join(parts, f), 'utf8'));
@@ -19,7 +21,7 @@ for (const f of fs.readdirSync(parts).filter(f => /^c\d+_.+\.json$/.test(f)).sor
     list.forEach((s, i) => {
       const key = keys[n * CHUNK + i];
       if (key == null) return;
-      if (holes(s) !== holes(key)) { console.log(`${f} ${lang} #${n * CHUNK + i}: ${JSON.stringify(key)} → ${JSON.stringify(s)}`); problems++; }
+      if (!fits(s, key)) { console.log(`${f} ${lang} #${n * CHUNK + i}: ${JSON.stringify(key)} → ${JSON.stringify(s)}`); problems++; }
       t[key] = s;
     });
   }
