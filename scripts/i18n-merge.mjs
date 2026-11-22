@@ -15,7 +15,7 @@ for (const f of fs.readdirSync(parts).filter(f => /^c\d+_.+\.json$/.test(f)).sor
   const n = Number(f.match(/^c(\d+)_/)[1]);
   const data = JSON.parse(fs.readFileSync(path.join(parts, f), 'utf8'));
   for (const [lang, list] of Object.entries(data)) {
-    const want = Math.min(CHUNK, keys.length - n * CHUNK);
+    const want = (n + 2) * CHUNK > keys.length ? keys.length - n * CHUNK : CHUNK; // the last part takes the rest
     if (list.length !== want) { console.log(`${f} ${lang}: ${list.length} texts, want ${want}`); problems++; }
     const t = (tables[lang] ??= {});
     list.forEach((s, i) => {
