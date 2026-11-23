@@ -141,6 +141,12 @@ Windows では WebCodecs（H.264）＋ mp4 マルチプレクサ、または ffm
   - 多言語（11 言語）：表は `src/core/locales/<lang>.json`（英語の文が鍵）。**L(...) を足したり英語を変えたら** `node scripts/i18n.mjs extract` → 増えた鍵の訳を `_parts/c<N>_*.json`（200 個ずつ、最後の部分は残り全部）に足して `node scripts/i18n-merge.mjs`（全言語 n/n になること）。保存される文（自動ミックスのメモ・候補名）は `captureLanguages` で作り、表示で `localize`。サンプラーの標準音の名前は `sampleName()` で今の言語に
   - 保存：WAV は FLAC（`core/flac.ts`、`Jobs.flac`、`cache/flac/`）にして埋め込む。設定 `compressAudio`・`embedLibraryAudio`・`reopenLast`・`keepInLibrary`
   - E2E の smoke に、テンポ変更・重ねる曲・全言語の表示（日本語や訳し漏れの英語が残っていないか）・FLAC で埋め込んだ .djaw を元ファイルなしで開く、を追加。映像プレビューを閉じた直後に Playwright が報告する名前なしの "illegal access" はアプリの外（window の error にも来ない）なので数えない
+- 0.4.1（2026-11-23）：訳し漏れの総点検
+  - DJAW が自分で付けて保存する名前は `core/defaultNames.ts`（`DefaultName` で作り、`ShownName` で表示。どの言語で作られても今の言語に。`reLocalize`）。サンプラーの標準音の昔の名前は `builtinSamples.ts` の `oldNames`
+  - キーの名前（ショートカット一覧・kbd）は `core/keys.ts` の `keyCaps()`。リストの区切り・箇条書きの記号も L で（`'・'` を直書きしない）
+  - main プロセスの L は coreL そのもの（ラッパーで包むと、組み立て時に足される鍵が落ちて訳されない）
+  - `scripts/i18n.mjs extract` は鍵の順番を保つ（新しい鍵は最後に追加、使わなくなった鍵も残す）。1 つの訳を直すときは `node scripts/i18n-set.mjs <lang> '<English>' '<訳>'` → `i18n-merge.mjs`
+  - E2E の言語チェックは、全タブ・全シート・右クリックメニュー（サブメニュー含む）・古い版の名前を、10 言語で見る
 - リリースの前に E2E を Mac・Windows で通すこと（Linux のクラウドだけの確認で Mac 版が壊れていた前例あり）
 - まだ Windows 実機で確認していないもの：AAC（Media Foundation）での M4A／映像書き出し、映像プレビューの別ウィンドウ、iTunes XML の実データ
 
