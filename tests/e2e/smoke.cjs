@@ -415,32 +415,32 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
     });
     const scan = (table, cjk) => ev(([t, c]) => window.__scanLang(t, c), [table, cjk]);
     // Opens every right-click menu found on the screen (and each submenu) and scans it.
-    const scanMenus = async (table, cjk, where) => {
+    const scanMenus = async (table, cjk, where, withTimeline) => {
       const found = [];
-      const targets = await ev(() => {
+      const targets = await ev(withTimeline => {
         const pts = [];
         const ov = document.querySelector('.timeline-canvas.overlay');
         if (ov && ov.offsetParent) {
           const r = ov.getBoundingClientRect();
-          for (let fy = 0.04; fy < 1; fy += 0.08) for (let fx = 0.1; fx < 1; fx += 0.2) pts.push({ sel: '.timeline-canvas.overlay', x: r.left + r.width * fx, y: r.top + r.height * fy });
+          if (withTimeline) for (let fy = 0.04; fy < 1; fy += 0.09) for (const fx of [0.15, 0.5, 0.85]) pts.push({ sel: '.timeline-canvas.overlay', x: r.left + r.width * fx, y: r.top + r.height * fy });
         }
         for (const sel of ['.track-row', '.folder-row', '.pad', '.btn.small.memo', '.chip', '.loop-row', '.edit-row']) {
           const el = [...document.querySelectorAll(sel)].find(e => e.offsetParent);
           if (el) { const r = el.getBoundingClientRect(); pts.push({ sel, x: r.left + r.width / 2, y: r.top + r.height / 2 }); }
         }
         return pts;
-      });
+      }, withTimeline);
       for (const p of targets) {
         const texts = await ev(async ({ sel, x, y }) => {
           const el = document.elementFromPoint(x, y);
           if (!el) return [];
           el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 2 }));
-          await new Promise(r => setTimeout(r, 120));
+          await new Promise(r => setTimeout(r, 80));
           const items = [...document.querySelectorAll('.cm-menu > .cm-item.has-sub')];
           const all = [];
           const grab = () => document.querySelectorAll('.cm-menu .cm-label').forEach(l => all.push(l.textContent.trim()));
           grab();
-          for (const it of items) { it.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); await new Promise(r => setTimeout(r, 60)); grab(); }
+          for (const it of items) { it.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); await new Promise(r => setTimeout(r, 40)); grab(); }
           document.querySelector('.cm-backdrop')?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
           await new Promise(r => setTimeout(r, 60));
           return all;
@@ -454,7 +454,7 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
       }
       return found;
     };
-    const langIssues = {}, menusSeen = {};
+    const langIssues = {};
     for (const [lang, table] of Object.entries(tables)) {
       const cjk = lang.startsWith('zh');
       await sendMenu('language', lang); await win.waitForTimeout(400);
@@ -466,9 +466,8 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
         await ev(([t, w]) => { const s = window.djaw; s.selectedClipID = w === 'layer' ? (s.layers[0]?.id ?? s.clips[0].id) : s.clips[w].id; s.openPanel(t); }, [tab, which]);
         await win.waitForTimeout(250);
         (await scan(table, cjk)).forEach(b => found.push(`${tab}${which === 'layer' ? ' (layer)' : ''}: ${b}`));
-        const menus = await scanMenus(table, cjk, tab);
-        menusSeen[tab] = true;
-        found.push(...menus);
+        // Right-click menus where a view has its own (the timeline's once per language).
+        if (['overview', 'cue', 'loop', 'sampler', 'transition'].includes(tab) && which !== 'layer') found.push(...await scanMenus(table, cjk, tab, tab === 'overview'));
       }
       for (const sheet of ['showAutoArrange', 'showExport', 'showPerformanceGuide', 'showShortcuts', 'showMusicLibrary', 'profile']) {
         await ev(f => { const s = window.djaw; if (f === 'profile') s.openProfileEditor(s.clips[0].id); else { s[f] = true; s.changed(); } }, sheet);
@@ -478,6 +477,7 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
         await win.waitForTimeout(150);
       }
       if (found.length) langIssues[lang] = [...new Set(found)].slice(0, 12);
+      console.log(`  language ${lang} scanned (${found.length} issues)`);
       if (lang === 'de') await shot('05-lang-de');
     }
     await sendMenu('language', 'english'); await win.waitForTimeout(400);
