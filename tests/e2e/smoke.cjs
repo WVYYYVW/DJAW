@@ -390,6 +390,8 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
     });
     await ev(() => {
       window.__scanLang = (table, cjk) => {
+        // A text that is the translation of some other key is fine (Portuguese "Tempo" is also "Time").
+        const values = new Set(Object.values(table));
         const out = [], jp = cjk ? /[぀-ヿ]/ : /[぀-ヿ㐀-鿿]/;
         const texts = [];
         const walk = n => {
@@ -405,7 +407,7 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
         for (const t of texts) {
           if (!t || /E2E|DJAW/.test(t)) continue;
           if (jp.test(t)) out.push(t.slice(0, 50));
-          else if (t.length > 3 && /[a-z]{3}/.test(t) && table[t] != null && table[t] !== t) out.push('EN: ' + t.slice(0, 50));
+          else if (t.length > 3 && /[a-z]{3}/.test(t) && table[t] != null && table[t] !== t && !values.has(t)) out.push('EN: ' + t.slice(0, 50));
         }
         return [...new Set(out)];
       };
@@ -446,7 +448,7 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
         for (const t of texts) {
           if (!t || /E2E|DJAW/.test(t)) continue;
           if (jp.test(t)) found.push(`${where} menu ${p.sel}: ${t.slice(0, 50)}`);
-          else if (t.length > 3 && /[a-z]{3}/.test(t) && table[t] != null && table[t] !== t) found.push(`${where} menu ${p.sel}: EN: ${t.slice(0, 50)}`);
+          else if (t.length > 3 && /[a-z]{3}/.test(t) && table[t] != null && table[t] !== t && !Object.values(table).includes(t)) found.push(`${where} menu ${p.sel}: EN: ${t.slice(0, 50)}`);
         }
       }
       return found;

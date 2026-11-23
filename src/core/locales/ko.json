@@ -1233,5 +1233,12 @@
  "Unsaved work was found": "저장하지 않은 작업이 있습니다",
  "A mix was not saved when DJAW last quit. Restore it?": "DJAW를 마지막으로 종료할 때 저장하지 않은 믹스가 있었습니다. 복원할까요?",
  "Discard": "버리기",
- "• ": "• "
+ "• ": "• ",
+ "could not read {0}": "{0}을(를) 읽을 수 없습니다",
+ "the .djaw file is damaged": ".djaw 파일이 손상되었습니다",
+ "no tracks": "곡이 없습니다",
+ "incomplete download ({0} / {1} bytes)": "다운로드가 완료되지 않았습니다 ({0} / {1} 바이트)",
+ "no app in the disk image": "디스크 이미지에 앱이 없습니다",
+ "unreadable": "읽을 수 없음",
+ "stem model unavailable": "스템 분리 모델이 없습니다"
 }

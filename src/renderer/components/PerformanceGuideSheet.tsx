@@ -44,7 +44,7 @@ export function PerformanceGuideSheet() {
         </div>
         {tab === 0 ? (
           <div className="guide-body">
-            <div className="guide-overview">{guide.overview.map((l, k) => <div key={k} className="dim">・{l}</div>)}</div>
+            <div className="guide-overview">{guide.overview.map((l, k) => <div key={k} className="dim">{L('・', '• ')}{l}</div>)}</div>
             {guide.tracks.map(t => (
               <div key={t.number} className="guide-track">
                 <div className="guide-track-head">
@@ -52,7 +52,7 @@ export function PerformanceGuideSheet() {
                   <b>{L(`デッキ${t.deck}`, `Deck ${t.deck}`)}</b>
                   <b className="ellipsis">{t.title}</b>
                 </div>
-                {t.setup.map((l, k) => <div key={k} className="guide-setup">・{l}</div>)}
+                {t.setup.map((l, k) => <div key={k} className="guide-setup">{L('・', '• ')}{l}</div>)}
                 <div className="guide-steps">
                   {t.steps.map((st, k) => (
                     <React.Fragment key={k}>

@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Clip, MediaEntry, ProjectFile } from './models';
+import { L } from './i18n';
 
 export const MAGIC = Buffer.from('DJAWPACK', 'utf8');
 export const CONTAINER_VERSION = 1;
@@ -107,7 +108,7 @@ export function writeProject(p: ProjectFile, media: { id: string; file: string }
         copied += n;
       }
       fs.closeSync(src);
-      if (copied !== entries[k].length) throw new Error(`could not read ${m.file}`);
+      if (copied !== entries[k].length) throw new Error(L(`${m.file} を読めませんでした`, `could not read ${m.file}`));
     }
   } finally {
     fs.closeSync(fd);
@@ -129,7 +130,7 @@ export function extractMedia(m: MediaEntry, project: string, blobStart: number, 
     let done = 0;
     while (done < m.length) {
       const n = fs.readSync(src, chunk, 0, Math.min(chunk.length, m.length - done), blobStart + m.offset + done);
-      if (n <= 0) throw new Error('the .djaw file is damaged');
+      if (n <= 0) throw new Error(L('.djaw ファイルが壊れています', 'the .djaw file is damaged'));
       fs.writeSync(out, chunk, 0, n);
       done += n;
     }
@@ -181,7 +182,7 @@ export async function writeProjectAsync(p: ProjectFile, media: { id: string; fil
       } finally {
         await src.close();
       }
-      if (copied !== entries[k].length) throw new Error(`could not read ${m.file}`);
+      if (copied !== entries[k].length) throw new Error(L(`${m.file} を読めませんでした`, `could not read ${m.file}`));
     }
   } finally {
     await out.close();
@@ -203,7 +204,7 @@ export async function extractMediaAsync(m: MediaEntry, project: string, blobStar
     let done = 0;
     while (done < m.length) {
       const { bytesRead } = await src.read(chunk, 0, Math.min(chunk.length, m.length - done), blobStart + m.offset + done);
-      if (bytesRead <= 0) throw new Error('the .djaw file is damaged');
+      if (bytesRead <= 0) throw new Error(L('.djaw ファイルが壊れています', 'the .djaw file is damaged'));
       await out.write(chunk, 0, bytesRead);
       done += bytesRead;
     }

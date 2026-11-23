@@ -1864,7 +1864,7 @@ export class MixStore {
       await Promise.all(items.filter(i => this.pending.some(p => p.id === i.id)).map(async item => {
         try {
           const fp = this.fingerprints.get(item.url) ?? fingerprint(item.url);
-          if (!fp) throw new Error('unreadable');
+          if (!fp) throw new Error(L('読めません', 'unreadable'));
           this.fingerprints.set(item.url, fp);
           this.pcmPaths.set(item.url, await ensurePcm(item.url, fp));
           this.mixInputsChanged();

@@ -1,6 +1,7 @@
 // Keyboard shortcut list (mac/DJAW/Views/ShortcutsView.swift, with Windows keys).
 import React, { useEffect } from 'react';
 import { L } from '../../core/i18n';
+import { keyCaps } from '../../core/keys';
 import { store } from '../store/store';
 
 export function Shortcuts() {
@@ -87,7 +88,7 @@ export function Shortcuts() {
           {groups.map(([title, items]) => (
             <div key={title} className="shortcut-group">
               <div className="side-head">{title}</div>
-              {items.map(([k, t]) => <div key={k + t} className="shortcut-row"><span className="keycap">{k}</span><span>{t}</span></div>)}
+              {items.map(([k, t]) => <div key={k + t} className="shortcut-row"><span className="keycap">{keyCaps(k)}</span><span>{t}</span></div>)}
             </div>
           ))}
         </div>

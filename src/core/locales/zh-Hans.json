@@ -1233,5 +1233,12 @@
  "Unsaved work was found": "发现未保存的工作",
  "A mix was not saved when DJAW last quit. Restore it?": "DJAW 上次退出时有混音未保存。要恢复吗？",
  "Discard": "丢弃",
- "• ": "• "
+ "• ": "• ",
+ "could not read {0}": "无法读取 {0}",
+ "the .djaw file is damaged": ".djaw 文件已损坏",
+ "no tracks": "没有曲目",
+ "incomplete download ({0} / {1} bytes)": "下载不完整（{0} / {1} 字节）",
+ "no app in the disk image": "磁盘映像中没有应用",
+ "unreadable": "无法读取",
+ "stem model unavailable": "没有分轨分离模型"
 }

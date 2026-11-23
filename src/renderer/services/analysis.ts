@@ -1,6 +1,6 @@
 // Track analysis: fingerprint → cache (Analysis/<fp>.analysis) or the analysis process, one track at a time.
 // The analysis runs in utility processes the main process starts (main/analysisHost.ts), reached over a MessagePort.
-import { currentLanguage } from '../../core/i18n';
+import { L, currentLanguage } from '../../core/i18n';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ipcRenderer } from 'electron';
@@ -116,7 +116,7 @@ export function cachedAnalysis(file: string): { analysis: TrackAnalysis; fp: str
  */
 export async function analyzeQuick(file: string, progress?: Progress): Promise<{ analysis: TrackAnalysis; fp: string; pcm: string }> {
   const fp = fingerprint(file);
-  if (!fp) throw new Error('unreadable');
+  if (!fp) throw new Error(L('読めません', 'unreadable'));
   progress?.('decode', 0);
   const pcm = await ensurePcm(file, fp);
   const [r, meta] = await Promise.all([
@@ -132,7 +132,7 @@ export async function analyzeQuick(file: string, progress?: Progress): Promise<{
 /** Analysis of a file (cached by content). `fresh` analyses again. */
 export async function analyze(file: string, opts: { fresh?: boolean; progress?: Progress } = {}): Promise<{ analysis: TrackAnalysis; fp: string; pcm: string }> {
   const fp = fingerprint(file);
-  if (!fp) throw new Error('unreadable');
+  if (!fp) throw new Error(L('読めません', 'unreadable'));
   opts.progress?.('decode', 0);
   const pcm = await ensurePcm(file, fp);
   if (!opts.fresh) {
@@ -181,7 +181,7 @@ export async function separateStems(file: string, progress?: (p: number) => void
   const done = stemsFor(file);
   if (done) return done;
   const fp = fingerprint(file);
-  if (!fp) throw new Error('unreadable');
+  if (!fp) throw new Error(L('読めません', 'unreadable'));
   const pcm = await ensurePcm(file, fp);
   const files = stemFiles(stemDir(), fp);
   await request({ type: 'stems', pcm, modelDir: path.dirname(modelPath(STEM_MODELS[0])), files }, (_s, f) => progress?.(f), 'stems');

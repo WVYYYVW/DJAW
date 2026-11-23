@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import '../core/locales';
 import path from 'node:path';
 import { openPcmFile } from '../core/render/source';
-import { AppLanguage, setLanguage } from '../core/i18n';
+import { AppLanguage, L as text, setLanguage } from '../core/i18n';
 if (process.env.DJAW_LANG) setLanguage(process.env.DJAW_LANG as AppLanguage);
 import { analyzeAudio } from '../core/analysis/analyzer';
 import { StemModel, loadBeatModel, loadCueModel, loadGenreModel, loadStemModel } from '../core/analysis/beatmodel';
@@ -35,7 +35,7 @@ async function handle(m: any) {
     if (!cueModel) cueModel = loadCueModel(dir);
     if (!genreModel) genreModel = loadGenreModel(dir);
     const src = openPcmFile(m.pcm);
-    if (!src) throw new Error('unreadable');
+    if (!src) throw new Error(text('読めません', 'unreadable'));
     try {
       const a = await analyzeAudio(src, {
         beatModel: m.neural === false ? null : await model,
@@ -50,9 +50,9 @@ async function handle(m: any) {
   } else if (m.type === 'stems') {
     if (!stemModel) stemModel = loadStemModel(m.modelDir);
     const vm = await stemModel;
-    if (!vm) throw new Error('stem model unavailable');
+    if (!vm) throw new Error(text('ステム分離のモデルがありません', 'stem model unavailable'));
     const src = openPcmFile(m.pcm);
-    if (!src) throw new Error('unreadable');
+    if (!src) throw new Error(text('読めません', 'unreadable'));
     try {
       const stats = await separateStems(src, vm, m.files,
         p => send({ type: 'progress', id: m.id, stage: 'stems', fraction: p }));
@@ -62,11 +62,11 @@ async function handle(m: any) {
     }
   } else if (m.type === 'loudness') {
     const src = openPcmFile(m.pcm);
-    if (!src) throw new Error('unreadable');
+    if (!src) throw new Error(text('読めません', 'unreadable'));
     try { send({ type: 'done', id: m.id, segments: loudnessSegments(src) }); } finally { src.close(); }
   } else if (m.type === 'resample') {
     const pcm = openPcmFile(m.file);
-    if (!pcm) throw new Error('unreadable');
+    if (!pcm) throw new Error(text('読めません', 'unreadable'));
     const n = pcm.frames;
     const l = new Float32Array(n), r = new Float32Array(n);
     pcm.read(0, n, l, r);

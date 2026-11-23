@@ -10,6 +10,7 @@ import { app, BrowserWindow, dialog, ipcMain, net, session } from 'electron';
 import { createHash } from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
+import { L } from '../core/i18n';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -97,7 +98,7 @@ async function download(rel: NonNullable<Release['asset']>, dest: string, progre
     ses.downloadURL(rel.url, { headers: { 'User-Agent': 'DJAW' } });
   });
   const got = fs.statSync(dest).size;
-  if (rel.size && got !== rel.size) throw new Error(`incomplete download (${got} / ${rel.size} bytes)`);
+  if (rel.size && got !== rel.size) throw new Error(L(`ダウンロードが途中で止まりました（${got} / ${rel.size} バイト）`, `incomplete download (${got} / ${rel.size} bytes)`));
 }
 
 const run = promisify(execFile);
@@ -247,7 +248,7 @@ export class Updater {
     await run('hdiutil', ['attach', dmg, '-nobrowse', '-readonly', '-noautoopen', '-mountpoint', mnt]);
     try {
       const appName = fs.readdirSync(mnt).find(n => n.endsWith('.app'));
-      if (!appName) throw new Error('no app in the disk image');
+      if (!appName) throw new Error(L('ディスクイメージにアプリがありません', 'no app in the disk image'));
       await run('ditto', [path.join(mnt, appName), path.join(dir, 'DJAW.app')]);
     } finally {
       try { await run('hdiutil', ['detach', mnt, '-force']); } catch { /* ignore */ }

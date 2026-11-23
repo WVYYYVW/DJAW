@@ -1233,5 +1233,12 @@
  "Unsaved work was found": "Найдена несохранённая работа",
  "A mix was not saved when DJAW last quit. Restore it?": "При прошлом выходе из DJAW микс не был сохранён. Восстановить?",
  "Discard": "Отбросить",
- "• ": "• "
+ "• ": "• ",
+ "could not read {0}": "не удалось прочитать {0}",
+ "the .djaw file is damaged": "файл .djaw повреждён",
+ "no tracks": "нет треков",
+ "incomplete download ({0} / {1} bytes)": "загрузка не завершена ({0} / {1} байт)",
+ "no app in the disk image": "в образе диска нет приложения",
+ "unreadable": "не читается",
+ "stem model unavailable": "модель разделения на стемы недоступна"
 }

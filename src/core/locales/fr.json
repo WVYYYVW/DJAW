@@ -1233,5 +1233,12 @@
  "Unsaved work was found": "Travail non enregistré trouvé",
  "A mix was not saved when DJAW last quit. Restore it?": "Un mix n’a pas été enregistré à la dernière fermeture de DJAW. Le restaurer ?",
  "Discard": "Abandonner",
- "• ": "• "
+ "• ": "• ",
+ "could not read {0}": "impossible de lire {0}",
+ "the .djaw file is damaged": "le fichier .djaw est endommagé",
+ "no tracks": "aucun morceau",
+ "incomplete download ({0} / {1} bytes)": "téléchargement incomplet ({0} / {1} octets)",
+ "no app in the disk image": "aucune app dans l’image disque",
+ "unreadable": "illisible",
+ "stem model unavailable": "modèle de séparation des stems indisponible"
 }

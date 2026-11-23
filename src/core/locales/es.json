@@ -1233,5 +1233,12 @@
  "Unsaved work was found": "Se encontró trabajo sin guardar",
  "A mix was not saved when DJAW last quit. Restore it?": "Una mezcla no se guardó la última vez que se cerró DJAW. ¿Restaurarla?",
  "Discard": "Descartar",
- "• ": "• "
+ "• ": "• ",
+ "could not read {0}": "no se pudo leer {0}",
+ "the .djaw file is damaged": "el archivo .djaw está dañado",
+ "no tracks": "no hay pistas",
+ "incomplete download ({0} / {1} bytes)": "descarga incompleta ({0} / {1} bytes)",
+ "no app in the disk image": "no hay ninguna app en la imagen de disco",
+ "unreadable": "no se puede leer",
+ "stem model unavailable": "no hay modelo de separación de stems"
 }

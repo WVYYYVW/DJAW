@@ -1233,5 +1233,12 @@
  "Unsaved work was found": "保存されていない作業が見つかりました",
  "A mix was not saved when DJAW last quit. Restore it?": "前回 DJAW が終了した時に保存されていなかったミックスがあります。復元しますか？",
  "Discard": "破棄",
- "• ": "・"
+ "• ": "・",
+ "could not read {0}": "{0} を読めませんでした",
+ "the .djaw file is damaged": ".djaw ファイルが壊れています",
+ "no tracks": "曲がありません",
+ "incomplete download ({0} / {1} bytes)": "ダウンロードが途中で止まりました（{0} / {1} バイト）",
+ "no app in the disk image": "ディスクイメージにアプリがありません",
+ "unreadable": "読めません",
+ "stem model unavailable": "ステム分離のモデルがありません"
 }

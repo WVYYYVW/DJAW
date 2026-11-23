@@ -23,6 +23,7 @@ import { ArtworkThumb } from './TrackProfileSheet';
 import { showContextMenu } from './ContextMenu';
 import { FXWave } from './FXWave';
 import { ShownName } from '../../core/defaultNames';
+import { keyCaps } from '../../core/keys';
 
 export function Section({ title, footer, children }: { title?: React.ReactNode; footer?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -800,13 +801,13 @@ export function MixInspector() {
       <AutoMixSection />
       <Section title={L('操作', 'Controls')}>
         <div className="shortcuts-mini">
-          <div><kbd>Space</kbd> {L('再生 / 停止', 'Play / pause')}</div>
+          <div><kbd>{keyCaps('Space')}</kbd> {L('再生 / 停止', 'Play / pause')}</div>
           <div><kbd>← →</kbd> {L('選んだ曲の入る位置を1小節ずつ', 'Move the selected entry by a bar')}</div>
           <div><kbd>1</kbd>–<kbd>6</kbd> {L('つなぎのレシピ', 'Transition recipes')}</div>
-          <div><kbd>Ctrl+T</kbd> {L('つなぎタブ', 'Transition tab')}</div>
-          <div><kbd>Ctrl+K</kbd> {L('CUE タブ', 'CUE tab')}</div>
-          <div><kbd>Ctrl+L</kbd> {L('ループタブ', 'Loop tab')}</div>
-          <div><kbd>Ctrl+/</kbd> {L('ショートカット一覧', 'All shortcuts')}</div>
+          <div><kbd>{keyCaps('Ctrl+T')}</kbd> {L('つなぎタブ', 'Transition tab')}</div>
+          <div><kbd>{keyCaps('Ctrl+K')}</kbd> {L('CUE タブ', 'CUE tab')}</div>
+          <div><kbd>{keyCaps('Ctrl+L')}</kbd> {L('ループタブ', 'Loop tab')}</div>
+          <div><kbd>{keyCaps('Ctrl+/')}</kbd> {L('ショートカット一覧', 'All shortcuts')}</div>
         </div>
       </Section>
     </div>

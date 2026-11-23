@@ -5,6 +5,7 @@ import { RenderSession, SessionOptions } from './session';
 import { WavBits, WavWriter } from './wav';
 import { StreamResampler } from './resampler';
 import { Mp4Writer } from './mp4';
+import { L } from '../i18n';
 
 export class CancelFlag {
   cancelled = false;
@@ -87,7 +88,7 @@ export function rateSink(from: number, to: number, write: (L: Float32Array, R: F
 /** Writes the mix as WAV (24-bit) or M4A (AAC 256 kbps). Normalizing renders twice (peak first) unless the peak is already known. */
 export async function exportWav(m: MixInput, dest: string, o: ExportOptions, cancel: CancelFlag,
   progress: (p: number) => void, knownPeak?: number | null): Promise<number> {
-  if (!(mixEndReal(m) > 0)) throw new Error('no tracks');
+  if (!(mixEndReal(m) > 0)) throw new Error(L('曲がありません', 'no tracks'));
   if (o.raw) {
     const w = new WavWriter(dest, o.sampleRate || m.sampleRate, 32);
     let peak = 0;
@@ -149,7 +150,7 @@ export interface MixPeaks {
 export async function renderPeaks(m: MixInput, cancel: CancelFlag, update: (p: MixPeaks) => void, binsPerSecond = 200): Promise<MixPeaks> {
   const sr = m.sampleRate;
   const end = mixEndReal(m);
-  if (!(end > 0)) throw new Error('no tracks');
+  if (!(end > 0)) throw new Error(L('曲がありません', 'no tracks'));
   const binFrames = Math.max(1, Math.round(sr / binsPerSecond));
   const total = Math.round((end + 0.3) * sr);
   const nBins = Math.floor(total / binFrames) + 1;
