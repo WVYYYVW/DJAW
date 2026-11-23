@@ -396,7 +396,8 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
         const texts = [];
         const walk = n => {
           if (n.nodeType === 3) texts.push(n.textContent.trim());
-          else if (n.nodeType === 1 && getComputedStyle(n).display !== 'none' && !n.classList.contains('style-row')) {
+          else if (n.nodeType === 1 && getComputedStyle(n).display !== 'none' && !n.classList.contains('style-row')
+            && !n.classList.contains('keycap') && n.tagName !== 'KBD') { // key caps: names printed on the keys (core/keys.ts)
             if (n.title) texts.push(n.title.trim()); if (n.placeholder) texts.push(n.placeholder.trim());
             if (n.tagName === 'INPUT' && n.type === 'text' && n.value) texts.push(n.value.trim());
             if (n.tagName === 'OPTION') texts.push(n.textContent.trim());
