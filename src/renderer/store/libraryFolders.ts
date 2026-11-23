@@ -4,6 +4,7 @@ import { L } from '../../core/i18n';
 import { Clip, LibraryFolder, uuid } from '../../core/models';
 import { Key } from '../../core/analysis/structure';
 import { MixStore } from './store';
+import { DefaultName } from '../../core/defaultNames';
 
 /** One line of the library list: a folder or a track, with its depth. */
 export type LibraryRow = { kind: 'folder'; folder: LibraryFolder; depth: number; count: number } | { kind: 'track'; clip: Clip; depth: number };
@@ -62,7 +63,7 @@ const byName = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base'
 P.createFolder = function (parent = null, name) {
   this.pushUndo();
   const id = uuid();
-  const base = name ?? L('新しいフォルダ', 'New Folder');
+  const base = name ?? DefaultName.folder();
   let n = base, k = 2;
   while (this.libraryFolders.some(f => (f.parent ?? null) === parent && f.name === n)) n = `${base} ${k++}`;
   this.libraryFolders = [...this.libraryFolders.map(f => (f.id === parent ? { ...f, collapsed: false } : f)), { id, name: n, parent }];

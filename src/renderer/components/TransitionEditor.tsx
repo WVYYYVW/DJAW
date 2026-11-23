@@ -11,6 +11,7 @@ import { store } from '../store/store';
 import { Fmt, clipColor } from '../format';
 import { showContextMenu } from './ContextMenu';
 import { GridSelect, snapBeats, gridStep, beatFraction } from './GridSelect';
+import { ShownName } from '../../core/defaultNames';
 
 type Target = 'incoming' | 'outgoing' | 'mirror';
 type Grab = { kind: 'point' | 'bend'; id: string } | null;
@@ -432,7 +433,7 @@ export function TransitionEditor({ id }: { id: string }) {
             <span className="legend"><span className="dot" style={{ background: colorA }} />{L('前の曲', 'Prev')} <span className="dot" style={{ background: colorB }} />{L('この曲', 'This')}</span>
             <button className="btn" onClick={e => showContextMenu(e, [
               ...transitionPresets().map(p => ({ label: L(`「${p.title}」から始める`, `Start from “${p.title}”`), action: () => s.setLanes(id, Lanes.sampled(p.style, Shape.defaults(p.style))) })),
-              ...(s.customTransitions.length ? [{ separator: true }, ...s.customTransitions.map(p => ({ label: p.name, action: () => s.applyCustomTransition(id, p) }))] : []),
+              ...(s.customTransitions.length ? [{ separator: true }, ...s.customTransitions.map(p => ({ label: ShownName.myTransition(p.name), action: () => s.applyCustomTransition(id, p) }))] : []),
             ])}>{L('ひな形', 'Start from')} ▾</button>
             <GridSelect />
           </div>

@@ -22,6 +22,7 @@ import { NumberField } from './Toolbar';
 import { ArtworkThumb } from './TrackProfileSheet';
 import { showContextMenu } from './ContextMenu';
 import { FXWave } from './FXWave';
+import { ShownName } from '../../core/defaultNames';
 
 export function Section({ title, footer, children }: { title?: React.ReactNode; footer?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -191,7 +192,7 @@ export function TransitionSection({ clip, index }: { clip: Clip; index: number }
             {s.customTransitions.map(p => (
               <button key={p.id} className={'chip' + (clip.transition === 'custom' && JSON.stringify(clip.lanes) === JSON.stringify(p.lanes) ? ' on' : '')}
                 onClick={() => s.applyCustomTransition(clip.id, p)}
-                onContextMenu={e => { e.preventDefault(); showContextMenu(e, [{ label: L('削除', 'Delete'), action: () => s.deleteCustomTransition(p.id) }]); }}>★ {p.name} · {p.bars}</button>
+                onContextMenu={e => { e.preventDefault(); showContextMenu(e, [{ label: L('削除', 'Delete'), action: () => s.deleteCustomTransition(p.id) }]); }}>★ {ShownName.myTransition(p.name)} · {p.bars}</button>
             ))}
           </div>
         )}
@@ -261,7 +262,7 @@ export function TakesSection({ clip }: { clip: Clip }) {
       {list.map(t => (
         <div key={t.id} className={'take' + (t.id === current ? ' on' : '')}>
           <div className="take-text">
-            <div className="take-name">{t.id === current ? '● ' : ''}{localize(t.name)}</div>
+            <div className="take-name">{t.id === current ? '● ' : ''}{ShownName.take(t.name)}</div>
             <div className="take-sub">{Take.summary(t)}</div>
           </div>
           <button className="btn small" onClick={() => s.useTake(clip.id, t.id)} disabled={t.id === current}>{L('使う', 'Use')}</button>
@@ -516,7 +517,7 @@ export function LibraryInspector({ clip }: { clip: Clip }) {
       <Section title={L('CUE', 'Cues')}>
         <Row label="IN">{Fmt.barOrdinal(clip.mixInBar)}</Row>
         <Row label="OUT">{Fmt.barOrdinal(clip.mixOutBar)}</Row>
-        {cueList(clip).map(c => <Row key={c.id} label={c.label}>{Fmt.barOrdinal(c.bar)}</Row>)}
+        {cueList(clip).map(c => <Row key={c.id} label={ShownName.cue(c.label)}>{Fmt.barOrdinal(c.bar)}</Row>)}
         <button className="btn" onClick={() => s.openCueEditor(clip.id)}>{L('CUE タブで編集', 'Edit in the CUE Tab')}</button>
       </Section>
       <Section footer={L('ミックスに入れると、前の曲の OUT からこの曲の IN で直結されます。つなぎ方はそのあと選びます。', 'In the mix, it connects straight from the previous track’s OUT to this IN. Choose the transition afterwards.')}>
@@ -592,7 +593,7 @@ export function VariationsSection({ clip, index }: { clip: Clip; index: number }
                 <button className="btn small" title={L('この案に切り替えて試聴', 'Switch to this variation and listen')} onClick={e => { e.stopPropagation(); s.previewVariation(clip.id, k); }}>▶</button>
                 <button className="btn small" disabled={current} onClick={e => { e.stopPropagation(); s.applyVariation(clip.id, k); }}>{L('使う', 'Use')}</button>
               </div>
-              {v.problems && <div className={'caption ' + (v.problems.length ? 'warn' : 'ok')}>{v.problems.length ? '⚠ ' + v.problems.join('、') : '✓ ' + L('書き出して確認：問題なし', 'Checked: no problems')}</div>}
+              {v.problems && <div className={'caption ' + (v.problems.length ? 'warn' : 'ok')}>{v.problems.length ? '⚠ ' + v.problems.join(L('、', ', ')) : '✓ ' + L('書き出して確認：問題なし', 'Checked: no problems')}</div>}
               {expanded === v.id && <div className="caption pre">{localize(v.plan.reasons.join('\n'))}</div>}
             </div>
           );

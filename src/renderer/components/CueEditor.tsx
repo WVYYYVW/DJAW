@@ -9,6 +9,7 @@ import { Player } from '../services/player';
 import { Fmt, Theme, clipColor } from '../format';
 import { showContextMenu } from './ContextMenu';
 import { Structure, sectionTitle } from '../../core/analysis/structure';
+import { ShownName } from '../../core/defaultNames';
 
 /** Colours of the track's sections (the same as the Track tab's structure bar). */
 export const sectionColors = { intro: 'rgba(255,255,255,0.28)', drop: 'rgb(255,159,10)', breakdown: 'rgb(64,200,224)', outro: 'rgba(255,255,255,0.16)' } as const;
@@ -232,7 +233,7 @@ function CueDetail({ clip, wf, position, outgoingBars, preview, onSeek, onResume
       ctx.beginPath(); ctx.roundRect(px, 4, tw + 8, 16, 3); ctx.fill();
       ctx.fillStyle = '#000'; ctx.textBaseline = 'middle'; ctx.fillText(label, px + 4, 12);
     };
-    for (const cue of cueList(clip)) flag(x(sourceTimeAtBar(clip, cue.bar)), TEAL, cue.label);
+    for (const cue of cueList(clip)) flag(x(sourceTimeAtBar(clip, cue.bar)), TEAL, ShownName.cue(cue.label));
     flag(x(sIn), GREEN, 'IN ' + barLabel(clip.mixInBar));
     if (keepsLanding(clip) || clip.transitionBars > 0.01) {
       const sLand = sourceTimeAtBar(clip, landingBar(clip));
@@ -417,7 +418,7 @@ export function CueEditor({ id }: { id: string }) {
           <button className="btn small" title={L('ドロップやブレイクの頭に目印を付けておくと、IN / OUT を選ぶ時に使えます', 'Mark drops and breakdowns to use them as IN / OUT later')} onClick={() => addMemo(clip)}>🔖 {L('メモ（M）', 'Memo (M)')}</button>
           {cueList(clip).map(cue => (
             <button key={cue.id} className="btn small memo" onClick={() => play(clip, cue.bar)} onContextMenu={e => { e.preventDefault(); memoMenu(e, cue.bar, cue.id); }}>
-              {cue.label} · {barLabel(cue.bar)} <span className="chev" onClick={e => { e.stopPropagation(); memoMenu(e, cue.bar, cue.id); }}>▾</span>
+              {ShownName.cue(cue.label)} · {barLabel(cue.bar)} <span className="chev" onClick={e => { e.stopPropagation(); memoMenu(e, cue.bar, cue.id); }}>▾</span>
             </button>
           ))}
           <div className="spacer" />

@@ -39,6 +39,7 @@ import type { MixStyle, SetArc } from '../../core/automixer';
 import type { TrackUse } from '../../core/models';
 import type { Sample, SampleHit } from '../../core/sampler';
 import type { MixPattern, TransitionVariation } from './automix';
+import { DefaultName } from '../../core/defaultNames';
 
 export const audioExtensions = new Set(['mp3', 'wav', 'wave', 'aif', 'aiff', 'aifc', 'm4a', 'aac', 'flac', 'caf', 'mp4', 'ogg', 'opus']);
 
@@ -976,7 +977,7 @@ export class MixStore {
     const c = this.clip(id);
     if (!c) return;
     const n = (c.cues?.length ?? 0) + 1;
-    this.updateClip(id, true, x => { x.cues = [...(x.cues ?? []), { id: uuid(), bar, label: L(`CUE ${n}`, `Cue ${n}`) }]; });
+    this.updateClip(id, true, x => { x.cues = [...(x.cues ?? []), { id: uuid(), bar, label: DefaultName.cue(n) }]; });
   }
   renameCue(id: string, cue: string, label: string) {
     this.updateClip(id, false, c => { c.cues = (c.cues ?? []).map(q => (q.id === cue ? { ...q, label } : q)); });
@@ -1206,7 +1207,7 @@ export class MixStore {
   saveCustomTransition(id: string, name: string) {
     const c = this.clip(id);
     if (!c) return;
-    const title = name.trim() || L(`マイつなぎ ${this.customTransitions.length + 1}`, `My Transition ${this.customTransitions.length + 1}`);
+    const title = name.trim() || DefaultName.myTransition(this.customTransitions.length + 1);
     this.customTransitions = [...this.customTransitions, { id: uuid(), name: title, bars: Math.max(1, c.transitionBars), lanes: effectiveLanes(c) }];
     this.saveSettings();
     this.changed();
@@ -1284,7 +1285,7 @@ export class MixStore {
     if (existing) { if (name) this.renameTake(id, existing.id, name); return existing.id; }
     if (undoable) this.pushUndo(); else this.markDirty();
     const n = this.takes(id).length + 1;
-    const take: TransitionTake = { id: uuid(), name: name || L(`候補 ${n}`, `Take ${n}`), created: new Date().toISOString(), prevID: this.clips[i - 1].id, snapshot: now };
+    const take: TransitionTake = { id: uuid(), name: name || DefaultName.take(n), created: new Date().toISOString(), prevID: this.clips[i - 1].id, snapshot: now };
     this.setClip(i, c => { c.takes = [...(c.takes ?? []), take]; });
     this.changed();
     return take.id;
@@ -1294,7 +1295,7 @@ export class MixStore {
     const take = this.takes(id).find(t => t.id === takeID);
     if (i == null || i <= 0 || !take) return;
     this.pushUndo();
-    if (this.currentTakeID(id) == null) this.saveTake(id, L('前のつなぎ（自動保存）', 'Previous (auto-saved)'), false);
+    if (this.currentTakeID(id) == null) this.saveTake(id, DefaultName.previousTake(), false);
     const prev = structuredClone(this.clips[i - 1]), clip = structuredClone(this.clips[i]);
     Take.apply(take.snapshot, prev, clip);
     this.clips = this.clips.map((c, k) => (k === i - 1 ? prev : k === i ? clip : c));

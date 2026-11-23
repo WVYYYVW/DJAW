@@ -13,6 +13,7 @@ import { ArtworkThumb } from './TrackProfileSheet';
 import type { LibraryRow } from '../store/libraryFolders';
 import { LibrarySorts, librarySorts } from '../store/libraryFolders';
 import { deckName } from '../../core/layers';
+import { ShownName } from '../../core/defaultNames';
 
 const DRAG_TRACKS = 'text/djaw-track';
 const DRAG_FOLDER = 'text/djaw-folder';
@@ -23,7 +24,7 @@ function folderMenu(ids: string[]): MenuItem[] {
   const walk = (parent: string | null, depth: number): MenuItem[] => s.libraryFolders
     .filter(f => (f.parent ?? null) === parent)
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
-    .flatMap(f => [{ label: `${'　'.repeat(depth)}📁 ${f.name}`, action: () => s.moveTracksToFolder(ids, f.id) }, ...walk(f.id, depth + 1)]);
+    .flatMap(f => [{ label: `${'　'.repeat(depth)}📁 ${ShownName.folder(f.name)}`, action: () => s.moveTracksToFolder(ids, f.id) }, ...walk(f.id, depth + 1)]);
   return [
     ...walk(null, 0),
     ...(s.libraryFolders.length ? [{ separator: true } as MenuItem] : []),
@@ -271,11 +272,11 @@ function FolderRow({ row, onDrop }: { row: Extract<LibraryRow, { kind: 'folder' 
       <span className="folder-arrow">{f.collapsed && !s.libraryQuery ? '▸' : '▾'}</span>
       <span className="folder-icon">📁</span>
       {renaming ? (
-        <input className="folder-name-input" autoFocus defaultValue={f.name} onClick={e => e.stopPropagation()}
+        <input className="folder-name-input" autoFocus defaultValue={ShownName.folder(f.name)} onClick={e => e.stopPropagation()}
           onFocus={e => e.currentTarget.select()}
           onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') s.renameFolder(f.id, e.currentTarget.value); if (e.key === 'Escape') { s.renamingFolder = null; s.changed(); } }}
           onBlur={e => s.renameFolder(f.id, e.currentTarget.value)} />
-      ) : <span className="folder-name">{f.name}</span>}
+      ) : <span className="folder-name">{ShownName.folder(f.name)}</span>}
       <span className="folder-count">{row.count}</span>
     </div>
   );

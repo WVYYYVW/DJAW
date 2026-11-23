@@ -21,7 +21,7 @@ if (!process.env.DJAW_NO_GPU && (process.platform === 'win32' || isMac)) {
 let win: BrowserWindow | null = null;
 let canClose = false;
 
-const L = (ja: string, en: string) => coreL(ja, en);
+const L = coreL;
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
 
 // Updates (main/updater.ts). Its own small file, so the renderer's settings writes never overwrite it.

@@ -1232,5 +1232,6 @@
  "Could not save: {0}": "Speichern fehlgeschlagen: {0}",
  "Unsaved work was found": "Ungesicherte Arbeit gefunden",
  "A mix was not saved when DJAW last quit. Restore it?": "Beim letzten Beenden von DJAW wurde ein Mix nicht gespeichert. Wiederherstellen?",
- "Discard": "Verwerfen"
+ "Discard": "Verwerfen",
+ "• ": "• "
 }

@@ -86,9 +86,17 @@ export function collect(root = 'src') {
 }
 
 if (process.argv[1] && process.argv[1].endsWith('i18n.mjs') && process.argv[2] === 'extract') {
-  const src = collect();
+  const found = collect();
   const dir = 'src/core/locales';
   fs.mkdirSync(dir, { recursive: true });
+  // Keys keep their places (the translation parts are numbered by place): known keys first, in their old order
+  // (also ones no longer used — dropping them would shift every key after them), then new keys at the end.
+  const sourceFile = path.join(dir, '_source.json');
+  const old = fs.existsSync(sourceFile) ? JSON.parse(fs.readFileSync(sourceFile, 'utf8')) : {};
+  const src = { ...old };
+  for (const [k, v] of Object.entries(found)) src[k] = v;
+  const unused = Object.keys(old).filter(k => !(k in found)).length;
+  if (unused) console.log(`${unused} texts no longer used (kept in place)`);
   fs.writeFileSync(path.join(dir, '_source.json'), JSON.stringify(src, null, 1) + '\n');
   const keys = Object.keys(src);
   console.log(`${keys.length} texts`);

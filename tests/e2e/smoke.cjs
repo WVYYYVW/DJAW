@@ -369,34 +369,116 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
 
     // Every language: no Japanese left on screen (kana anywhere; kanji too outside Chinese), and no English text
     // that the language's table translates. (Discogs style names, `.style-row`, are a fixed English taxonomy.)
-    const tables = Object.fromEntries(['english', 'de', 'fr', 'ko', 'zh-Hans', 'ru'].map(l => [l, l === 'english' ? {} : JSON.parse(fs.readFileSync(path.join(root, 'src/core/locales', l + '.json'), 'utf8'))]));
+    // Covers every panel tab, the sheets, and the right-click menus (with their submenus), with names that DJAW
+    // stored in Japanese in older versions (a pad "サイレン", a folder, a take, a "My Transition").
+    const tables = Object.fromEntries(['english', 'de', 'fr', 'es', 'it', 'pt', 'ko', 'zh-Hans', 'zh-Hant', 'ru'].map(l => [l, l === 'english' ? {} : JSON.parse(fs.readFileSync(path.join(root, 'src/core/locales', l + '.json'), 'utf8'))]));
     const sendMenu = (cmd, arg) => app.evaluate(({ BrowserWindow }, [c, a]) => BrowserWindow.getAllWindows()[0].webContents.send('menu', c, a), [cmd, arg]);
-    const langIssues = {};
+    const seeded = await ev(() => {
+      const s = window.djaw, c0 = s.clips[0], c1 = s.clips[1];
+      const builtin = s.samples.find(x => /[\\/]assets[\\/]samples[\\/]/.test(x.url));
+      let pad = null;
+      if (builtin) {
+        const url = builtin.url.replace(/[^\\/]+\.wav$/, 'siren.wav');
+        s.samples = s.samples.map(x => (x === builtin ? { ...x, url, name: 'サイレン' } : x)); pad = 'サイレン';
+      }
+      s.createFolder(null, '新しいフォルダ'); s.renamingFolder = null;
+      s.saveTake(c1.id, '候補 3', false);
+      s.saveCustomTransition(c1.id, 'マイつなぎ 2');
+      s.addCue(c0.id, Math.round(c0.mixInBar) + 2);
+      s.changed();
+      return { pad };
+    });
+    await ev(() => {
+      window.__scanLang = (table, cjk) => {
+        const out = [], jp = cjk ? /[぀-ヿ]/ : /[぀-ヿ㐀-鿿]/;
+        const texts = [];
+        const walk = n => {
+          if (n.nodeType === 3) texts.push(n.textContent.trim());
+          else if (n.nodeType === 1 && getComputedStyle(n).display !== 'none' && !n.classList.contains('style-row')) {
+            if (n.title) texts.push(n.title.trim()); if (n.placeholder) texts.push(n.placeholder.trim());
+            if (n.tagName === 'INPUT' && n.type === 'text' && n.value) texts.push(n.value.trim());
+            if (n.tagName === 'OPTION') texts.push(n.textContent.trim());
+            n.childNodes.forEach(walk);
+          }
+        };
+        walk(document.body);
+        for (const t of texts) {
+          if (!t || /E2E|DJAW/.test(t)) continue;
+          if (jp.test(t)) out.push(t.slice(0, 50));
+          else if (t.length > 3 && /[a-z]{3}/.test(t) && table[t] != null && table[t] !== t) out.push('EN: ' + t.slice(0, 50));
+        }
+        return [...new Set(out)];
+      };
+    });
+    const scan = (table, cjk) => ev(([t, c]) => window.__scanLang(t, c), [table, cjk]);
+    // Opens every right-click menu found on the screen (and each submenu) and scans it.
+    const scanMenus = async (table, cjk, where) => {
+      const found = [];
+      const targets = await ev(() => {
+        const pts = [];
+        const ov = document.querySelector('.timeline-canvas.overlay');
+        if (ov && ov.offsetParent) {
+          const r = ov.getBoundingClientRect();
+          for (let fy = 0.04; fy < 1; fy += 0.08) for (let fx = 0.1; fx < 1; fx += 0.2) pts.push({ sel: '.timeline-canvas.overlay', x: r.left + r.width * fx, y: r.top + r.height * fy });
+        }
+        for (const sel of ['.track-row', '.folder-row', '.pad', '.btn.small.memo', '.chip', '.loop-row', '.edit-row']) {
+          const el = [...document.querySelectorAll(sel)].find(e => e.offsetParent);
+          if (el) { const r = el.getBoundingClientRect(); pts.push({ sel, x: r.left + r.width / 2, y: r.top + r.height / 2 }); }
+        }
+        return pts;
+      });
+      for (const p of targets) {
+        const texts = await ev(async ({ sel, x, y }) => {
+          const el = document.elementFromPoint(x, y);
+          if (!el) return [];
+          el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 2 }));
+          await new Promise(r => setTimeout(r, 120));
+          const items = [...document.querySelectorAll('.cm-menu > .cm-item.has-sub')];
+          const all = [];
+          const grab = () => document.querySelectorAll('.cm-menu .cm-label').forEach(l => all.push(l.textContent.trim()));
+          grab();
+          for (const it of items) { it.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); await new Promise(r => setTimeout(r, 60)); grab(); }
+          document.querySelector('.cm-backdrop')?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          await new Promise(r => setTimeout(r, 60));
+          return all;
+        }, p);
+        const jp = cjk ? /[぀-ヿ]/ : /[぀-ヿ㐀-鿿]/;
+        for (const t of texts) {
+          if (!t || /E2E|DJAW/.test(t)) continue;
+          if (jp.test(t)) found.push(`${where} menu ${p.sel}: ${t.slice(0, 50)}`);
+          else if (t.length > 3 && /[a-z]{3}/.test(t) && table[t] != null && table[t] !== t) found.push(`${where} menu ${p.sel}: EN: ${t.slice(0, 50)}`);
+        }
+      }
+      return found;
+    };
+    const langIssues = {}, menusSeen = {};
     for (const [lang, table] of Object.entries(tables)) {
+      const cjk = lang.startsWith('zh');
       await sendMenu('language', lang); await win.waitForTimeout(400);
       const found = [];
-      for (const tab of ['overview', 'mix', 'track', 'transition', 'cue', 'loop', 'fx', 'sampler', 'deck']) {
-        await ev(([t, i]) => { const s = window.djaw; s.selectedClipID = s.clips[i].id; s.openPanel(t); }, [tab, tab === 'transition' ? 1 : 0]);
+      const views = [
+        ['overview', 0], ['mix', 0], ['track', 0], ['track', 'layer'], ['transition', 1], ['cue', 0], ['loop', 0], ['fx', 0], ['sampler', 0], ['deck', 0],
+      ];
+      for (const [tab, which] of views) {
+        await ev(([t, w]) => { const s = window.djaw; s.selectedClipID = w === 'layer' ? (s.layers[0]?.id ?? s.clips[0].id) : s.clips[w].id; s.openPanel(t); }, [tab, which]);
         await win.waitForTimeout(250);
-        const bad = await ev(([table, cjk]) => {
-          const out = [], jp = cjk ? /[぀-ヿ]/ : /[぀-ヿ㐀-鿿]/;
-          const texts = [];
-          const walk = n => { if (n.nodeType === 3) texts.push(n.textContent.trim()); else if (n.nodeType === 1 && getComputedStyle(n).display !== 'none' && !n.classList.contains('style-row')) { if (n.title) texts.push(n.title.trim()); if (n.placeholder) texts.push(n.placeholder.trim()); n.childNodes.forEach(walk); } };
-          walk(document.body);
-          for (const t of texts) {
-            if (!t || /E2E|DJAW/.test(t)) continue;
-            if (jp.test(t)) out.push(t.slice(0, 40));
-            else if (t.length > 3 && /[a-z]{3}/.test(t) && table[t] != null && table[t] !== t) out.push('EN: ' + t.slice(0, 40));
-          }
-          return [...new Set(out)];
-        }, [table, lang === 'zh-Hans']);
-        bad.forEach(b => found.push(`${tab}: ${b}`));
+        (await scan(table, cjk)).forEach(b => found.push(`${tab}${which === 'layer' ? ' (layer)' : ''}: ${b}`));
+        const menus = await scanMenus(table, cjk, tab);
+        menusSeen[tab] = true;
+        found.push(...menus);
       }
-      if (found.length) langIssues[lang] = [...new Set(found)].slice(0, 8);
+      for (const sheet of ['showAutoArrange', 'showExport', 'showPerformanceGuide', 'showShortcuts', 'showMusicLibrary', 'profile']) {
+        await ev(f => { const s = window.djaw; if (f === 'profile') s.openProfileEditor(s.clips[0].id); else { s[f] = true; s.changed(); } }, sheet);
+        await win.waitForTimeout(450);
+        (await scan(table, cjk)).forEach(b => found.push(`${sheet}: ${b}`));
+        await ev(f => { const s = window.djaw; if (f === 'profile') s.profileEditorTarget = null; else s[f] = false; s.changed(); }, sheet);
+        await win.waitForTimeout(150);
+      }
+      if (found.length) langIssues[lang] = [...new Set(found)].slice(0, 12);
       if (lang === 'de') await shot('05-lang-de');
     }
     await sendMenu('language', 'english'); await win.waitForTimeout(400);
-    check('every language shown without leftovers', Object.keys(langIssues).length === 0, langIssues);
+    check('every language shown without leftovers (tabs, sheets, menus, old names)', seeded.pad && Object.keys(langIssues).length === 0, { seeded, langIssues });
 
     // Export a WAV (the save dialog answers with a temp path).
     const wav = path.join(work, 'export.wav');

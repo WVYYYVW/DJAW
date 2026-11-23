@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ipcRenderer } from 'electron';
-import { L, inEveryLanguage } from '../../core/i18n';
+import { L } from '../../core/i18n';
+import { ShownName } from '../../core/defaultNames';
 import { PADS, Sample, SampleHit, Sampler, SamplerInput } from '../../core/sampler';
 import { fingerprint } from '../../core/analysis/cache';
 import { openPcmFile } from '../../core/render/source';
@@ -67,8 +68,8 @@ function relinkBuiltin(url: string): string | null {
  * added) shows it in the language in effect; renamed or own sounds show their name.
  */
 export function sampleName(sample: { url: string; name: string }): string {
-  const b = /[\\/]assets[\\/]samples[\\/]/.test(sample.url) ? builtinByFile(path.basename(sample.url.replace(/\\/g, '/'))) : null;
-  return b && inEveryLanguage(b.title).includes(sample.name) ? b.title() : sample.name;
+  const file = /[\\/]assets[\\/]samples[\\/]/.test(sample.url) ? path.basename(sample.url.replace(/\\/g, '/')) : null;
+  return ShownName.sample(file, sample.name);
 }
 
 /** Short sounds only: longer files would be tracks. */

@@ -208,12 +208,12 @@
  "(prep) ": "(prep.) ",
  "Track BPM {0} → pitch {1} (plays at {2} BPM)": "BPM de la pista {0} → pitch {1} (suena a {2} BPM)",
  "Pitch 0% (not tempo-matched)": "Pitch 0% (sin igualar tempo)",
- "Master tempo (key lock) ON": "Master tempo (key lock) ON",
- "Master tempo (key lock) OFF": "Master tempo (key lock) OFF",
+ "Master tempo (key lock) ON": "Master tempo (bloqueo de tono) ON",
+ "Master tempo (key lock) OFF": "Master tempo (bloqueo de tono) OFF",
  "Key {0}{1} semitones": "Tono {0}{1} semitonos",
  "CUE: {0} ({1})": "CUE: {0} ({1})",
  "Trim (gain) {0}{1} dB": "Trim (ganancia) {0}{1} dB",
- "EQ base: ": "EQ base: ",
+ "EQ base: ": "Posición base del EQ: ",
  "Loop: from {0}, {1}, {2}× (put loop-in on a hot cue)": "Bucle: desde {0}, {1}, {2}× (pon el inicio del bucle en un hot cue)",
  "Jump: from {0} to {1} (put the target on a hot cue)": "Salto: de {0} a {1} (pon el destino en un hot cue)",
  "Deck {0} PLAY (fader 100%, all EQs at 12 o’clock)": "Deck {0} PLAY (fader al 100%, todos los EQ a las 12)",
@@ -1232,5 +1232,6 @@
  "Could not save: {0}": "No se pudo guardar: {0}",
  "Unsaved work was found": "Se encontró trabajo sin guardar",
  "A mix was not saved when DJAW last quit. Restore it?": "Una mezcla no se guardó la última vez que se cerró DJAW. ¿Restaurarla?",
- "Discard": "Descartar"
+ "Discard": "Descartar",
+ "• ": "• "
 }

@@ -44,6 +44,25 @@ export function inEveryLanguage(fn: () => string): string[] {
   try { return languages.map(x => { current = x.id; return fn(); }); } finally { current = keep; }
 }
 
+/**
+ * A name DJAW made itself and stored (a cue "CUE 3", a take "Take 2", a new folder…), shown in the language in
+ * effect: if `stored` is `make(n)` in any language (for any n), it is made again now; otherwise (the user named it)
+ * it is shown as it is. `make` gets the number as text, or '' when the name has none.
+ */
+export function reLocalize(stored: string, make: (n: string) => string): string {
+  const mark = '\u0001';
+  for (const template of new Set(inEveryLanguage(() => make(mark)))) {
+    const at = template.indexOf(mark);
+    if (at < 0) { if (template === stored) return make(''); continue; }
+    const head = template.slice(0, at), tail = template.slice(at + mark.length);
+    if (stored.length > head.length + tail.length && stored.startsWith(head) && stored.endsWith(tail)) {
+      const n = stored.slice(head.length, stored.length - tail.length);
+      if (/^\d+$/.test(n)) return make(n);
+    }
+  }
+  return stored;
+}
+
 /** The language in effect ('system' resolved). */
 export function currentLanguage(): Exclude<AppLanguage, 'system'> { return current; }
 /** BCP-47 tag of the language in effect (for <html lang>, number formats). */

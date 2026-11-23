@@ -19,6 +19,7 @@ import { droppedPaths } from '../dropped';
 import { showContextMenu, MenuItem } from './ContextMenu';
 import { Sampler, SampleHit } from '../../core/sampler';
 import { hitMenu } from './SamplerPanel';
+import { ShownName } from '../../core/defaultNames';
 
 /** Width of the track headers on the left (A, B, MIX, SAMPLER). */
 export const HEAD_W = 86;
@@ -427,7 +428,7 @@ class TimelineView {
         prev = p.bpm;
       }
     }
-    this.text(ctx, `TEMPO ${Fmt.bpm(this.tempo.bpm(Math.max(0, this.time(this.scrollX))))}`, this.scrollX + 6, top + 3, '700 8.5px system-ui', 'rgba(255,255,255,0.35)');
+    this.text(ctx, `${L('TEMPO', 'TEMPO')} ${Fmt.bpm(this.tempo.bpm(Math.max(0, this.time(this.scrollX))))}`, this.scrollX + 6, top + 3, '700 8.5px system-ui', 'rgba(255,255,255,0.35)');
   }
 
   roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -668,7 +669,7 @@ class TimelineView {
       ctx.fillStyle = 'rgba(64,200,224,0.85)';
       ctx.fillRect(cx - 0.5, wave.y + 16, 1, wave.h - 30);
       ctx.beginPath(); ctx.moveTo(cx - 4, wave.y + 16); ctx.lineTo(cx + 4, wave.y + 16); ctx.lineTo(cx, wave.y + 22); ctx.closePath(); ctx.fill();
-      this.text(ctx, cue.label, cx + 4, wave.y + 22, '600 9px system-ui', TEAL);
+      this.text(ctx, ShownName.cue(cue.label), cx + 4, wave.y + 22, '600 9px system-ui', TEAL);
     }
     const inX = this.x(timelineTimeOfBar(clip, clip.mixInBar, master));
     if (inX >= r.x - 1 && inX <= r.x + r.w) this.flag(ctx, `IN ${barLabel(clip.mixInBar)}`, inX, wave.y + 1, GREEN, false);

@@ -2,16 +2,20 @@
 // anywhere: in mixes, live sets, uploads). The standard kit fills the 8 pads.
 import { L } from './i18n';
 
-export interface BuiltinSample { file: string; title: () => string; group: () => string; }
+export interface BuiltinSample {
+  file: string; title: () => string; group: () => string;
+  /** Names it had in earlier versions (still stored on pads of older mixes). */
+  oldNames?: string[];
+}
 
 const fx = () => L('DJ エフェクト', 'DJ effects');
 const sweeps = () => L('ライザー・スイープ', 'Risers & sweeps');
 const drums = () => L('ドラム', 'Drums');
 
 export const builtinSamples: BuiltinSample[] = [
-  { file: 'air-horn-x3.wav', title: () => L('エアホーン（バ・バ・バーン）', 'Air Horn (ba-ba-baaa)'), group: fx },
-  { file: 'air-horn.wav', title: () => L('エアホーン（長く1回）', 'Air Horn (one long)'), group: fx },
-  { file: 'siren.wav', title: () => L('ダブサイレン', 'Dub Siren'), group: fx },
+  { file: 'air-horn-x3.wav', title: () => L('エアホーン（バ・バ・バーン）', 'Air Horn (ba-ba-baaa)'), group: fx, oldNames: ['エアホーン ×3', 'Air Horn ×3'] },
+  { file: 'air-horn.wav', title: () => L('エアホーン（長く1回）', 'Air Horn (one long)'), group: fx, oldNames: ['エアホーン', 'Air Horn'] },
+  { file: 'siren.wav', title: () => L('ダブサイレン', 'Dub Siren'), group: fx, oldNames: ['サイレン', 'Siren'] },
   { file: 'laser.wav', title: () => L('レーザー', 'Laser'), group: fx },
   { file: 'impact.wav', title: () => L('インパクト', 'Impact'), group: fx },
   { file: 'sub-drop.wav', title: () => L('サブドロップ', 'Sub Drop'), group: fx },

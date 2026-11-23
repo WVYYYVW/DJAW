@@ -1232,5 +1232,6 @@
  "Could not save: {0}": "저장할 수 없습니다: {0}",
  "Unsaved work was found": "저장하지 않은 작업이 있습니다",
  "A mix was not saved when DJAW last quit. Restore it?": "DJAW를 마지막으로 종료할 때 저장하지 않은 믹스가 있었습니다. 복원할까요?",
- "Discard": "버리기"
+ "Discard": "버리기",
+ "• ": "• "
 }

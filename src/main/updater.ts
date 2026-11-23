@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-type Lang = (ja: string, en: string) => string;
+type Lang = (ja: string, en: string, key?: string, args?: unknown[]) => string;
 
 interface Release { version: string; notes: string; asset: { name: string; url: string; size: number; sha256: string | null } | null }
 

@@ -208,8 +208,8 @@
  "(prep) ": "(préparation) ",
  "Track BPM {0} → pitch {1} (plays at {2} BPM)": "BPM du morceau {0} → pitch {1} (joue à {2} BPM)",
  "Pitch 0% (not tempo-matched)": "Pitch 0 % (tempo non calé)",
- "Master tempo (key lock) ON": "Master tempo (key lock) ON",
- "Master tempo (key lock) OFF": "Master tempo (key lock) OFF",
+ "Master tempo (key lock) ON": "Master tempo (verrouillage de tonalité) ON",
+ "Master tempo (key lock) OFF": "Master tempo (verrouillage de tonalité) OFF",
  "Key {0}{1} semitones": "Tonalité {0}{1} demi-tons",
  "CUE: {0} ({1})": "CUE : {0} ({1})",
  "Trim (gain) {0}{1} dB": "Trim (gain) {0}{1} dB",
@@ -1232,5 +1232,6 @@
  "Could not save: {0}": "Impossible d’enregistrer : {0}",
  "Unsaved work was found": "Travail non enregistré trouvé",
  "A mix was not saved when DJAW last quit. Restore it?": "Un mix n’a pas été enregistré à la dernière fermeture de DJAW. Le restaurer ?",
- "Discard": "Abandonner"
+ "Discard": "Abandonner",
+ "• ": "• "
 }

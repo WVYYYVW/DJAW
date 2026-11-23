@@ -107,7 +107,7 @@ export const PerformanceGuide = {
   },
 
   text(g: Guide) {
-    const out = [L('■ 演奏手順', '■ How to play this set'), '', ...g.overview.map(x => '・' + x)];
+    const out = [L('■ 演奏手順', '■ How to play this set'), '', ...g.overview.map(x => L('・', '• ') + x)];
     for (const t of g.tracks) {
       out.push('', `${t.number}. [${L('デッキ', 'Deck')} ${t.deck}] ${t.title}`);
       out.push(...t.setup.map(x => '   - ' + x));
@@ -137,7 +137,7 @@ function track(i: number, clips: Clip[], master: number, tempo: TempoMap): Guide
   const trim = c.gainDB + (c.loudnessGainDB ?? 0);
   if (Math.abs(trim) >= 0.5) setup.push(L(`TRIM（ゲイン）${trim >= 0 ? '+' : ''}${trim.toFixed(1)} dB`, `Trim (gain) ${trim >= 0 ? '+' : ''}${trim.toFixed(1)} dB`));
   const eqBase = ([['LOW', c.eqLow], ['MID', c.eqMid], ['HIGH', c.eqHigh]] as [string, number][]).filter(([, v]) => Math.abs(v) >= 0.5);
-  if (eqBase.length) setup.push(L('EQ の基本位置：', 'EQ base: ') + eqBase.map(([n, v]) => `${n} ${v >= 0 ? '+' : ''}${v.toFixed(0)} dB`).join('・'));
+  if (eqBase.length) setup.push(L('EQ の基本位置：', 'EQ base: ') + eqBase.map(([n, v]) => `${n} ${v >= 0 ? '+' : ''}${v.toFixed(0)} dB`).join(L('・', ', ')));
   for (const e of [...(c.edits ?? [])].sort((a, b) => a.bar - b.bar)) {
     setup.push(e.kind === 'loop'
       ? L(`ループ：${BB(e.bar)}〜 ${Edit.lengthLabel(e)} を ${e.repeats + 1}回（ループ IN をホットキューに）`, `Loop: from ${BB(e.bar)}, ${Edit.lengthLabel(e)}, ${e.repeats + 1}× (put loop-in on a hot cue)`)
@@ -195,7 +195,7 @@ function transitionSteps(i: number, clips: Clip[], master: number, tempo: TempoM
   if (!Style.isCutLike(style) && style !== 'echoOut' && len > 0.001) {
     const cv = Automation.incomingCurve(c, 0);
     ready += L(`、フェーダー ${level('volume', value(cv, 'volume'))}、`, `, fader ${level('volume', value(cv, 'volume'))}, `)
-      + (['low', 'mid', 'high'] as Control[]).map(k => `${controlName(k)} ${level(k, value(cv, k))}`).join('・');
+      + (['low', 'mid', 'high'] as Control[]).map(k => `${controlName(k)} ${level(k, value(cv, k))}`).join(L('・', ', '));
   } else ready += L('、フェーダー 0%（EQ は12時）', ', fader 0% (EQs at 12 o’clock)');
   steps.push({ time: tempo.real(leadIn), position: pos(prev, dOut, leadIn, master), deck: dIn, text: ready, isPrep: true });
   switch (style) {

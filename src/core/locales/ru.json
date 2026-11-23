@@ -1232,5 +1232,6 @@
  "Could not save: {0}": "Не удалось сохранить: {0}",
  "Unsaved work was found": "Найдена несохранённая работа",
  "A mix was not saved when DJAW last quit. Restore it?": "При прошлом выходе из DJAW микс не был сохранён. Восстановить?",
- "Discard": "Отбросить"
+ "Discard": "Отбросить",
+ "• ": "• "
 }

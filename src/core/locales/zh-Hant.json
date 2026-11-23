@@ -277,7 +277,7 @@
  "Phaser": "相位",
  "Trans (Gate)": "Trans（門限）",
  "Bit Crusher": "位元粉碎",
- "Roll": "Roll",
+ "Roll": "滾奏",
  "Cuts the highs; ramp it up and the track sounds like it walks away.": "切掉高頻；逐漸加大，曲目聽起來像在遠去。",
  "Cuts the lows. The classic build-up before a drop.": "切掉低頻。Drop 前經典的鋪陳。",
  "Beat-synced delay.": "與節拍同步的延遲。",
@@ -1232,5 +1232,6 @@
  "Could not save: {0}": "無法儲存：{0}",
  "Unsaved work was found": "發現未儲存的工作",
  "A mix was not saved when DJAW last quit. Restore it?": "DJAW 上次結束時有混音未儲存。要復原嗎？",
- "Discard": "捨棄"
+ "Discard": "捨棄",
+ "• ": "• "
 }
