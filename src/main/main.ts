@@ -179,6 +179,8 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+app.on('child-process-gone', (_e, d) => console.error('[DJAW] child process gone:', d.type, d.reason, d.exitCode, d.name ?? ''));
+
 function createWindow(fileToOpen?: string) {
   applyLanguage();
   win = new BrowserWindow({
@@ -219,6 +221,7 @@ function createWindow(fileToOpen?: string) {
     : { action: 'deny' });
   win.webContents.on('did-create-window', w => w.setMenu(null));
   win.webContents.on('render-process-gone', (_e, d) => console.error('[DJAW] renderer gone:', d.reason, d.exitCode));
+  win.webContents.on('unresponsive', () => console.error('[DJAW] renderer unresponsive'));
   win.on('closed', () => { win = null; });
   buildMenu();
 }

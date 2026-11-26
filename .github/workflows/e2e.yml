@@ -85,6 +85,16 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Smoke test (packaged app)
         run: node tests/e2e/smoke.cjs ${{ matrix.os == 'macos-latest' && 'dist/mac-arm64/DJAW.app/Contents/MacOS/DJAW' || 'dist/win-unpacked/DJAW.exe' }}
+        env:
+          # Chromium's own warnings and errors (why a renderer was killed) go to the app's stderr, which the test prints.
+          ELECTRON_ENABLE_LOGGING: '1'
+      - name: Windows crash reports (when something crashed)
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddHours(-1) } -ErrorAction SilentlyContinue |
+            Where-Object { $_.ProviderName -match 'Application Error|Windows Error Reporting|Application Hang' } |
+            Select-Object -First 6 | ForEach-Object { "=== $($_.TimeCreated) $($_.ProviderName) $($_.Id)"; $_.Message }
       - name: Mac crash reports (when something crashed)
         if: failure() && runner.os == 'macOS'
         shell: bash
