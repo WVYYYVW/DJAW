@@ -1241,5 +1241,9 @@
  "no app in the disk image": "keine App im Disk-Image",
  "unreadable": "nicht lesbar",
  "stem model unavailable": "Stem-Trennmodell nicht verfügbar",
- "Time in the track (from its start, at its own tempo)": "Zeit im Track (ab seinem Anfang, im Originaltempo)"
+ "Time in the track (from its start, at its own tempo)": "Zeit im Track (ab seinem Anfang, im Originaltempo)",
+ "ELAPSED": "VERSTR.",
+ "Time in the playing track “{0}” (from its start, at its own tempo)": "Zeit im laufenden Track „{0}“ (ab seinem Anfang, in seinem eigenen Tempo)",
+ "No track playing here": "Hier spielt kein Track",
+ "Track time": "Track-Zeit"
 }

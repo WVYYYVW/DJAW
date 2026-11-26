@@ -1241,5 +1241,9 @@
  "no app in the disk image": "ディスクイメージにアプリがありません",
  "unreadable": "読めません",
  "stem model unavailable": "ステム分離のモデルがありません",
- "Time in the track (from its start, at its own tempo)": "曲の中の時間（曲の元の速さで、曲の頭から）"
+ "Time in the track (from its start, at its own tempo)": "曲の中の時間（曲の元の速さで、曲の頭から）",
+ "ELAPSED": "経過",
+ "Time in the playing track “{0}” (from its start, at its own tempo)": "再生中の曲「{0}」の中の時間（曲の頭から、曲の元の速さで）",
+ "No track playing here": "ここで鳴っている曲はありません",
+ "Track time": "曲の時間"
 }

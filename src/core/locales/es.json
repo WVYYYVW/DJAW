@@ -1241,5 +1241,9 @@
  "no app in the disk image": "no hay ninguna app en la imagen de disco",
  "unreadable": "no se puede leer",
  "stem model unavailable": "no hay modelo de separación de stems",
- "Time in the track (from its start, at its own tempo)": "Tiempo dentro de la pista (desde su inicio, a su tempo original)"
+ "Time in the track (from its start, at its own tempo)": "Tiempo dentro de la pista (desde su inicio, a su tempo original)",
+ "ELAPSED": "TRANSC.",
+ "Time in the playing track “{0}” (from its start, at its own tempo)": "Tiempo en la pista que suena “{0}” (desde su inicio, a su tempo original)",
+ "No track playing here": "Aquí no suena ninguna pista",
+ "Track time": "Tiempo de pista"
 }

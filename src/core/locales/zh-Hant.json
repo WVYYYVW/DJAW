@@ -1241,5 +1241,9 @@
  "no app in the disk image": "磁碟映像中沒有 App",
  "unreadable": "無法讀取",
  "stem model unavailable": "沒有分軌分離模型",
- "Time in the track (from its start, at its own tempo)": "曲目中的時間（從曲目開頭算起，按原速）"
+ "Time in the track (from its start, at its own tempo)": "曲目中的時間（從曲目開頭算起，按原速）",
+ "ELAPSED": "已播放",
+ "Time in the playing track “{0}” (from its start, at its own tempo)": "正在播放的曲目「{0}」中的時間（從曲目開頭算起，按原速）",
+ "No track playing here": "這裡沒有正在播放的曲目",
+ "Track time": "曲目時間"
 }

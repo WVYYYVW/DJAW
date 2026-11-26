@@ -1241,5 +1241,9 @@
  "no app in the disk image": "aucune app dans l’image disque",
  "unreadable": "illisible",
  "stem model unavailable": "modèle de séparation des stems indisponible",
- "Time in the track (from its start, at its own tempo)": "Temps dans le morceau (depuis son début, à son tempo d’origine)"
+ "Time in the track (from its start, at its own tempo)": "Temps dans le morceau (depuis son début, à son tempo d’origine)",
+ "ELAPSED": "ÉCOULÉ",
+ "Time in the playing track “{0}” (from its start, at its own tempo)": "Temps dans le morceau en cours « {0} » (depuis son début, à son tempo d’origine)",
+ "No track playing here": "Aucun morceau ne joue ici",
+ "Track time": "Temps du morceau"
 }

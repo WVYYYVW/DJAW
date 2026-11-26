@@ -6,6 +6,7 @@ import { store } from '../store/store';
 import { Fmt, Theme, clipColor } from '../format';
 import { Icon, IconName } from './Icons';
 import { updateChipText } from './UpdateCard';
+import { nowPlaying } from '../nowPlaying';
 
 export function TimeReadout() {
   const t = usePlayhead(33);
@@ -15,6 +16,19 @@ export function TimeReadout() {
     <div className="readout" title={L('再生位置（時間 / ミックス全体の小節.拍）', 'Playhead (time / bar.beat of the mix)')}>
       <div className="readout-main">{Fmt.clock(s.tempoMap.real(t))}</div>
       <div className="readout-sub">{L(`小節 ${p.bar}.${p.beat}`, `Bar ${p.bar}.${p.beat}`)}</div>
+    </div>
+  );
+}
+
+/** The track you hear now and the time in it (as a DJ player shows it: from the track's start, at its own tempo). */
+export function TrackTimeReadout() {
+  const t = usePlayhead(33);
+  useStore();
+  const now = nowPlaying(t);
+  return (
+    <div className="readout track-readout" title={now ? L(`再生中の曲「${now.clip.title}」の中の時間（曲の頭から、曲の元の速さで）`, `Time in the playing track “${now.clip.title}” (from its start, at its own tempo)`) : L('ここで鳴っている曲はありません', 'No track playing here')}>
+      <div className="readout-main" style={now ? { color: clipColor(now.index) } : undefined}>{now ? Fmt.time(now.sourceTime) : '–:––.–'}</div>
+      <div className="readout-sub track-readout-title">{now ? `♪ ${now.clip.title}` : L('曲の時間', 'Track time')}</div>
     </div>
   );
 }
@@ -82,6 +96,7 @@ export function Toolbar() {
         <button className="tbtn icon" onClick={() => { s.seek(0); s.requestScroll(0); }} title={L('先頭へ（Home）', 'Go to start (Home)')}><Icon name="toStart" /></button>
         <button className={'tbtn icon play' + (s.isPlaying ? ' playing' : '')} onClick={() => s.togglePlay()} disabled={!s.clips.length} title={L('再生 / 一時停止（Space）', 'Play / pause (Space)')}><Icon name={s.isPlaying ? 'pause' : 'play'} /></button>
         <TimeReadout />
+        <TrackTimeReadout />
         <MasterBPMField />
         <select className="tselect" value={s.snap} onChange={e => s.setSnap(e.target.value as never)} title={L('タイムラインでドラッグした時に動く単位（Alt で1拍単位）', 'How far things move when dragging (hold Alt for 1 beat)')}>
           {snapUnits.map(u => <option key={u} value={u}>{Snap.title(u)}</option>)}

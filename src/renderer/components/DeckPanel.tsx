@@ -161,6 +161,7 @@ function Turntable({ info, side, deck, compact, playing, master }: { info: DeckI
           {info.state && !isQuietFX(info.state.fx) && <div className="deck-fx">{activeFX(info.state.fx).map(n => <span key={n} className="lamp orange">{n}</span>)}</div>}
           {info.loop && <div className="deck-loop">⟲ LOOP {info.loop.bars < 1 ? `${info.loop.bars * 4}/4` : info.loop.bars}  {info.loop.pass}/{info.loop.of}</div>}
           <div className="deck-readouts" style={{ flexDirection: side === 0 ? 'row' : 'row-reverse' }}>
+            <div title={L('曲の中の時間（曲の頭から、曲の元の速さで）', 'Time in the track (from its start, at its own tempo)')}><div className="cap">{L('経過', 'ELAPSED')}</div><div className="mono big">{Fmt.time(Math.max(0, info.sourceTime))}</div></div>
             <div><div className="cap">{L('小節', 'BAR')}</div><div className="mono big">{barLabel(Math.floor(barAtSource(clip, info.sourceTime)))}</div></div>
             <div><div className="cap">{L('残り', 'REMAIN')}</div><div className="mono big">−{Fmt.time(Math.max(0, clip.duration - info.sourceTime))}</div></div>
           </div>

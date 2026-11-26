@@ -1241,5 +1241,9 @@
  "no app in the disk image": "디스크 이미지에 앱이 없습니다",
  "unreadable": "읽을 수 없음",
  "stem model unavailable": "스템 분리 모델이 없습니다",
- "Time in the track (from its start, at its own tempo)": "곡 안의 시간 (곡의 처음부터, 원래 템포 기준)"
+ "Time in the track (from its start, at its own tempo)": "곡 안의 시간 (곡의 처음부터, 원래 템포 기준)",
+ "ELAPSED": "경과",
+ "Time in the playing track “{0}” (from its start, at its own tempo)": "재생 중인 곡 “{0}”의 시간 (곡 처음부터, 원래 템포 기준)",
+ "No track playing here": "여기서 재생 중인 곡이 없습니다",
+ "Track time": "곡 시간"
 }
