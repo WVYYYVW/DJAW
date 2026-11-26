@@ -211,10 +211,12 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
     });
     check('playback: audio flows', play.playing && play.advanced > 2 && play.advanced < 5 && play.blocks > 10 && play.rms > 0.02, play);
     await logMem('after playback');
-    // Opened once early on purpose: on Windows, Playwright attaching to the first preview window after the heavier
-    // steps below killed the renderer (4 of 5 runs), while the app itself opened it 20 times without trouble
-    // (preview-stress.cjs, plain CDP). SMOKE_EARLY_PREVIEW=0 skips this to look at that again.
-    if (process.env.SMOKE_EARLY_PREVIEW !== '0') {
+    // On Windows, Playwright attaching to the video preview window (a window.open child in the same renderer)
+    // often kills the renderer, while the app opens it without trouble when no Playwright is attached
+    // (preview-stress.cjs, plain CDP, 10 times per run plus the fill check). So the preview is checked there on
+    // Windows; SMOKE_PREVIEW=1 forces it here anyway.
+    const previewHere = process.platform !== 'win32' || process.env.SMOKE_PREVIEW === '1';
+    if (previewHere) {
       const earlyPreview = await previewOnce();
       check('video preview opens and closes (early)', !earlyPreview.error && earlyPreview.windows >= 2, earlyPreview);
     }
@@ -381,7 +383,7 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
     await logMem('before the preview');
     // The video preview window fills its window when that is enlarged (maximized with the title bar's button).
     const previewFill = { opened: false };
-    try {
+    if (previewHere) try {
       await ev(() => { window.djaw.showVisualPreview = true; window.djaw.changed(); });
       const t0 = Date.now();
       let pv = null;
@@ -394,7 +396,8 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
       }
       await ev(() => { window.djaw.showVisualPreview = false; window.djaw.changed(); });
     } catch (e) { previewFill.error = String(e); }
-    check('video preview fills an enlarged window', previewFill.opened && previewFill.shownW >= previewFill.winW - 2 && previewFill.drawW === 1920, previewFill);
+    if (previewHere) check('video preview fills an enlarged window', previewFill.opened && previewFill.shownW >= previewFill.winW - 2 && previewFill.drawW === 1920, previewFill);
+    else console.log('  (video preview: checked by preview-stress.cjs on Windows)');
     // The panel maximized (the arrangement hidden), the overview drawn, the tabs without sideways scrolling.
     await ev(() => { window.djaw.openPanel('overview'); window.djaw.togglePanelMaximized(true); });
     // Drawn within a few frames; slow machines get up to 4 s.

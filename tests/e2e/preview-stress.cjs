@@ -105,6 +105,24 @@ const out = (...a) => { const l = a.join(' '); log.push(l); console.log(l); };
       out(`round ${r}${playing ? ' (playing)' : ''}: ${alive === 2 ? 'ok' : 'FAIL ' + alive}`);
       if (alive !== 2 || gone) ok = false;
     }
+    // The picture fills its window when that is made big (as with the title bar's maximize button), drawn at 1920.
+    if (ok) {
+      const fill = await ev(`(async () => {
+        const s = window.djaw; s.showVisualPreview = true; s.changed();
+        await new Promise(r => setTimeout(r, 1200));
+        const w = window.open('', 'djaw-visuals');        // the open preview window (named), not a new one
+        w.resizeTo(1600, 1000);
+        await new Promise(r => setTimeout(r, 1500));
+        const c = w.document.querySelector('canvas');
+        const res = c ? { shownW: Math.round(c.clientWidth), shownH: Math.round(c.clientHeight), drawW: c.width, winW: w.innerWidth, winH: w.innerHeight } : { canvas: false };
+        s.showVisualPreview = false; s.changed();
+        return res;
+      })()`);
+      // (A screen smaller than 1600 px keeps the window smaller; above 1100 px shown it is drawn at 1920.)
+      const good = fill.shownW >= fill.winW - 2 && fill.winW > 600 && (fill.winW > 1100 ? fill.drawW === 1920 : fill.drawW > 0);
+      out(`${good ? 'ok' : 'FAIL'} preview fills an enlarged window ${JSON.stringify(fill)}`);
+      if (!good) ok = false;
+    }
   } catch (e) { ok = false; out('FAIL', String(e)); }
   if (gone) out('FAIL renderer:', gone);
   out(ok ? `preview stress: ${rounds} rounds, renderer alive` : 'preview stress FAILED');
