@@ -199,14 +199,21 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
       const s = window.djaw, c = s.clips[1];
       const t = c.start + (c.duration > 60 ? 40 : c.duration / 2) / (s.masterBPM / c.bpm) ;
       s.seek(t); s.changed();
-      await new Promise(r => setTimeout(r, 300));
+      // The readout follows within a frame or two; on slow machines give it up to 1.5 s.
+      for (let i = 0; i < 15; i++) {
+        await new Promise(r => setTimeout(r, 100));
+        const txt = document.querySelector('.track-readout .readout-main')?.textContent ?? '';
+        const mm = /^(\d+):(\d+(?:\.\d)?)$/.exec(txt);
+        if (mm && Math.abs(+mm[1] * 60 + +mm[2] - (c.trimStart + (t - c.start) * (s.masterBPM / c.bpm))) < 0.2) break;
+      }
       const el = document.querySelector('.track-readout');
       const text = el?.querySelector('.readout-main')?.textContent ?? '';
       const m = /^(\d+):(\d+(?:\.\d)?)$/.exec(text);
       const rate = s.masterBPM / c.bpm;
       // Which track is loudest at t decides the readout; compute the time for each playing one.
-      const expect = s.clips.filter(x => x.start <= t && t <= x.start + x.duration * 2).map(x => ({ title: x.title, sec: x.trimStart + (t - x.start) * (s.masterBPM / x.bpm) }));
-      return { text, shown: m ? +m[1] * 60 + +m[2] : null, title: el?.getAttribute('title') ?? '', expect, rate };
+      const p = s.playhead;
+      const expect = s.clips.filter(x => x.start <= p && p <= x.start + x.duration * 2).map(x => ({ title: x.title, sec: x.trimStart + (p - x.start) * (s.masterBPM / x.bpm) }));
+      return { text, shown: m ? +m[1] * 60 + +m[2] : null, title: el?.getAttribute('title') ?? '', expect, rate, playhead: p, wanted: t, playing: s.isPlaying };
     });
     const tt = trackTime.expect.find(x => trackTime.title.includes(x.title));
     check('toolbar shows the time in the playing track', trackTime.shown != null && tt && Math.abs(trackTime.shown - tt.sec) < 0.2, trackTime);

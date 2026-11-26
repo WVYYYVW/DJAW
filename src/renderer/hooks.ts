@@ -11,10 +11,18 @@ export function useStore() {
 export function usePlayhead(throttleMs = 0) {
   const [t, setT] = useState(store.playhead);
   const last = useRef(0);
-  useEffect(() => store.onClock(v => {
-    const now = performance.now();
-    if (now - last.current >= throttleMs) { last.current = now; setT(v); }
-  }), [throttleMs]);
+  useEffect(() => {
+    // Throttled, but the last value always arrives (a seek right after another update would otherwise be dropped
+    // and the readout would keep showing the old position until playback moves it).
+    let pending: ReturnType<typeof setTimeout> | null = null, latest = store.playhead;
+    const off = store.onClock(v => {
+      latest = v;
+      const now = performance.now(), wait = throttleMs - (now - last.current);
+      if (wait <= 0) { last.current = now; setT(v); return; }
+      if (!pending) pending = setTimeout(() => { pending = null; last.current = performance.now(); setT(latest); }, wait);
+    });
+    return () => { off(); if (pending) clearTimeout(pending); };
+  }, [throttleMs]);
   return t;
 }
 
