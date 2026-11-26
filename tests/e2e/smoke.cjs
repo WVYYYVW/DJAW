@@ -211,6 +211,9 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
     });
     check('playback: audio flows', play.playing && play.advanced > 2 && play.advanced < 5 && play.blocks > 10 && play.rms > 0.02, play);
     await logMem('after playback');
+    // Opened once early on purpose: on Windows, Playwright attaching to the first preview window after the heavier
+    // steps below killed the renderer (4 of 5 runs), while the app itself opened it 20 times without trouble
+    // (preview-stress.cjs, plain CDP). SMOKE_EARLY_PREVIEW=0 skips this to look at that again.
     if (process.env.SMOKE_EARLY_PREVIEW !== '0') {
       const earlyPreview = await previewOnce();
       check('video preview opens and closes (early)', !earlyPreview.error && earlyPreview.windows >= 2, earlyPreview);

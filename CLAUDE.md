@@ -147,6 +147,8 @@ Windows では WebCodecs（H.264）＋ mp4 マルチプレクサ、または ffm
   - main プロセスの L は coreL そのもの（ラッパーで包むと、組み立て時に足される鍵が落ちて訳されない）
   - `scripts/i18n.mjs extract` は鍵の順番を保つ（新しい鍵は最後に追加、使わなくなった鍵も残す）。1 つの訳を直すときは `node scripts/i18n-set.mjs <lang> '<English>' '<訳>'` → `i18n-merge.mjs`
   - E2E の言語チェックは、全タブ・全シート・右クリックメニュー（サブメニュー含む）・古い版の名前を、10 言語で見る
+- 0.4.2（2026-11-27）：CUE タブに曲の中の時間、ツールバーに流している曲の時間（`renderer/nowPlaying.ts`＝その時いちばん音の大きい曲）、デッキに経過時間。`usePlayhead` の間引きで最後の位置が落ちていたのを直した
+  - Windows の E2E で、重い操作の後に初めて映像プレビューを開くと Playwright が新しいウィンドウに付く時にレンダラーが落ちる（killed 1）。アプリ単体では落ちない（`tests/e2e/preview-stress.cjs`＝Playwright なし・素の CDP で 10 回開閉、ワークフローで毎回実行）。smoke は早めに一度開いて回避（`SMOKE_EARLY_PREVIEW=0` で再現を見られる）
 - リリースの前に E2E を Mac・Windows で通すこと（Linux のクラウドだけの確認で Mac 版が壊れていた前例あり）
 - まだ Windows 実機で確認していないもの：AAC（Media Foundation）での M4A／映像書き出し、映像プレビューの別ウィンドウ、iTunes XML の実データ
 
