@@ -116,6 +116,23 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
     const playing = s.isPlaying; s.pause(); await s.player.setTap(false);
     return { playing, rms: Math.sqrt(sum / Math.max(1, count)) };
   }, [t, secs]);
+  // Memory of each process (to see what a renderer that gets killed was carrying).
+  const logMem = async label => {
+    const m = await app.evaluate(({ app }) => app.getAppMetrics().map(p => ({ type: p.type, mb: Math.round((p.memory.workingSetSize ?? 0) / 1024), priv: Math.round((p.memory.privateBytes ?? 0) / 1024) }))).catch(() => []);
+    const js = await win.evaluate(() => performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null).catch(() => null);
+    console.log(`  memory ${label}: renderer JS heap ${js} MB; ` + m.map(p => `${p.type} ${p.mb}/${p.priv} MB`).join(', '));
+  };
+  // Opens and closes the video preview; returns what went wrong, if anything.
+  const previewOnce = async () => {
+    try {
+      await ev(() => { window.djaw.showVisualPreview = true; window.djaw.changed(); });
+      await win.waitForTimeout(1500);
+      const n = app.windows().length;
+      await ev(() => { window.djaw.showVisualPreview = false; window.djaw.changed(); });
+      await win.waitForTimeout(500);
+      return { windows: n };
+    } catch (e) { return { error: String(e) }; }
+  };
   const setSize = (w, h) => app.evaluate(({ BrowserWindow }, [w, h]) => { const b = BrowserWindow.getAllWindows()[0]; b.setContentSize(w, h); }, [w, h]);
 
   try {
@@ -193,6 +210,9 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
       return { playing, advanced: t1 - t0, blocks, rms: Math.sqrt(sum / Math.max(1, count)), ctxState: ctx?.state, sampleRate: ctx?.sampleRate, outputLatency: ctx?.outputLatency };
     });
     check('playback: audio flows', play.playing && play.advanced > 2 && play.advanced < 5 && play.blocks > 10 && play.rms > 0.02, play);
+    await logMem('after playback');
+    const earlyPreview = await previewOnce();
+    check('video preview opens and closes (early)', !earlyPreview.error && earlyPreview.windows >= 2, earlyPreview);
 
     // The toolbar shows the time in the track you hear (from the track's start, at its own tempo), like a DJ player.
     const trackTime = await ev(async () => {
@@ -353,6 +373,7 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
     }
     await ev(d => { const s = window.djaw; while (s.undoStack.length > d) s.undo(); }, undoDepth);
     check('points of a preset transition can be deleted', presetDelete.all > 2 && presetDelete.afterDouble === presetDelete.all - 1 && presetDelete.afterKey === presetDelete.all - 1, presetDelete);
+    await logMem('before the preview');
     // The video preview window fills its window when that is enlarged (maximized with the title bar's button).
     const previewFill = { opened: false };
     try {
