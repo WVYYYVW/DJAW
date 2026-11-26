@@ -211,8 +211,10 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
     });
     check('playback: audio flows', play.playing && play.advanced > 2 && play.advanced < 5 && play.blocks > 10 && play.rms > 0.02, play);
     await logMem('after playback');
-    const earlyPreview = await previewOnce();
-    check('video preview opens and closes (early)', !earlyPreview.error && earlyPreview.windows >= 2, earlyPreview);
+    if (process.env.SMOKE_EARLY_PREVIEW !== '0') {
+      const earlyPreview = await previewOnce();
+      check('video preview opens and closes (early)', !earlyPreview.error && earlyPreview.windows >= 2, earlyPreview);
+    }
 
     // The toolbar shows the time in the track you hear (from the track's start, at its own tempo), like a DJ player.
     const trackTime = await ev(async () => {

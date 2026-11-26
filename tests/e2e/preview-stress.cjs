@@ -87,6 +87,14 @@ const out = (...a) => { const l = a.join(' '); log.push(l); console.log(l); };
     // Some of what the smoke test does before it opens the preview: play, edit a transition, undo.
     await ev(`(async () => { const s = window.djaw; s.seek(s.clips[0].start + 5); await s.play(); await new Promise(r => setTimeout(r, 2000)); s.pause();
       s.selectedClipID = s.clips[1].id; s.openPanel('transition'); s.setTransitionLength(s.clips[1].id, 8); s.undo(); s.openPanel('overview'); return true; })()`);
+    // The heavier state the smoke test reaches before its first preview (where Windows lost the renderer under
+    // Playwright): separated stems, a tempo change, every panel tab drawn.
+    await ev(`(async () => { const s = window.djaw, c = s.clips[0]; s.prepareStems([c.url]); const t0 = Date.now();
+      while (s.stemProgress.has(c.url) && Date.now() - t0 < 240000) await new Promise(r => setTimeout(r, 500));
+      s.setTransitionLength(s.clips[2].id, 8); s.setTempoChange(s.clips[2].id, true);
+      for (const t of ['overview', 'mix', 'track', 'transition', 'cue', 'loop', 'fx', 'sampler', 'deck']) { s.openPanel(t); await new Promise(r => setTimeout(r, 300)); }
+      return true; })()`, 300000);
+    out('stems, tempo change, tabs done');
     for (let r = 1; r <= rounds && ok; r++) {
       const playing = r % 2 === 0;
       await ev(`(async () => { const s = window.djaw; if (${playing}) { s.seek(s.clips[1].start + 3); await s.play(); } s.showVisualPreview = true; s.changed(); return true; })()`);
