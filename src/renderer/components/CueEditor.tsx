@@ -233,14 +233,14 @@ function CueDetail({ clip, wf, position, outgoingBars, preview, onSeek, onResume
       ctx.beginPath(); ctx.roundRect(px, 4, tw + 8, 16, 3); ctx.fill();
       ctx.fillStyle = '#000'; ctx.textBaseline = 'middle'; ctx.fillText(label, px + 4, 12);
     };
-    for (const cue of cueList(clip)) flag(x(sourceTimeAtBar(clip, cue.bar)), TEAL, ShownName.cue(cue.label));
-    flag(x(sIn), GREEN, 'IN ' + barLabel(clip.mixInBar));
+    for (const cue of cueList(clip)) flag(x(sourceTimeAtBar(clip, cue.bar)), TEAL, `${ShownName.cue(cue.label)} · ${trackTime(sourceTimeAtBar(clip, cue.bar))}`);
+    flag(x(sIn), GREEN, `IN ${barLabel(clip.mixInBar)} · ${trackTime(sIn)}`);
     if (keepsLanding(clip) || clip.transitionBars > 0.01) {
       const sLand = sourceTimeAtBar(clip, landingBar(clip));
       if (clip.transitionBars > 0.01) { ctx.fillStyle = 'rgba(191,90,242,0.8)'; ctx.fillRect(x(sIn), h - 22, x(sLand) - x(sIn), 4); }
-      flag(x(sLand), PURPLE, L('切替 ', 'SW ') + barLabel(landingBar(clip)));
+      flag(x(sLand), PURPLE, `${L('切替 ', 'SW ')}${barLabel(landingBar(clip))} · ${trackTime(sLand)}`);
     }
-    flag(x(sOut), ORANGE, 'OUT ' + barLabel(clip.mixOutBar));
+    flag(x(sOut), ORANGE, `OUT ${barLabel(clip.mixOutBar)} · ${trackTime(sOut)}`);
     ctx.fillStyle = Theme.playhead; ctx.fillRect(w / 2 - 1, 0, 2, h);
   });
   const down = (e: React.PointerEvent) => {
@@ -265,15 +265,18 @@ function CueDetail({ clip, wf, position, outgoingBars, preview, onSeek, onResume
 
 // MARK: Tiles
 
-function CueTile({ title, subtitle, keyName, color, value, info, onSet, onPlay, playLabel, onNudge, extra, disabled }: {
-  title: string; subtitle: string; keyName: string; color: string; value: number; info: string | null; onSet: () => void; onPlay: () => void;
+function CueTile({ title, subtitle, keyName, color, value, seconds, info, onSet, onPlay, playLabel, onNudge, extra, disabled }: {
+  title: string; subtitle: string; keyName: string; color: string; value: number; seconds: number; info: string | null; onSet: () => void; onPlay: () => void;
   playLabel?: string; onNudge: (d: number) => void; extra?: React.ReactNode; disabled?: boolean;
 }) {
   return (
     <div className={'cue-tile' + (disabled ? ' disabled' : '')} style={{ ['--tile' as never]: color }} title={subtitle + (info ? '\n' + info : '')}>
       <div className="cue-tile-head">
         <span className="cue-tile-title">{title}</span>
-        <span className="readout-num" style={{ color }}>{Fmt.barOrdinal(value)}</span>
+        <span className="cue-tile-pos">
+          <span className="readout-num" style={{ color }}>{Fmt.barOrdinal(value)}</span>
+          <span className="cue-tile-time" title={TRACK_TIME_TIP()}>{trackTime(seconds)}</span>
+        </span>
       </div>
       <div className="cue-tile-row">
         <button className="btn small tinted" style={{ background: color }} onClick={onSet} title={L('再生位置にセット', 'Set at the playhead')}>◎ {L('セット', 'Set')} <span className="keycap">{keyName}</span></button>
@@ -290,6 +293,12 @@ function CueTile({ title, subtitle, keyName, color, value, info, onSet, onPlay, 
     </div>
   );
 }
+
+/** A position in the track as time (as the player shows it: at the track's own tempo); before the start with "−". */
+export function trackTime(t: number): string {
+  return t < -0.05 ? '−' + Fmt.time(-t) : Fmt.time(t);
+}
+const TRACK_TIME_TIP = () => L('曲の中の時間（曲の元の速さで、曲の頭から）', 'Time in the track (from its start, at its own tempo)');
 
 // MARK: Editor
 
@@ -381,7 +390,7 @@ export function CueEditor({ id }: { id: string }) {
         <div className="cue-transport">
           <div className="cue-pos">
             <span className="readout-main">{barBeat}</span>
-            <span className="readout-sub">{Fmt.clock(preview.position)}</span>
+            <span className="readout-sub" title={TRACK_TIME_TIP()}>{Fmt.clock(preview.position)} <span className="dim">/ {Fmt.duration(clip.duration)}</span></span>
           </div>
           <div className="cue-buttons">
             <button className="round" title={L('4小節戻る（Shift+←）', 'Back 4 bars (Shift+←)')} onClick={() => moveBars(clip, -4)}>⏪</button>
@@ -401,24 +410,24 @@ export function CueEditor({ id }: { id: string }) {
       </div>
       <div className="cue-side">
         {notice && <div className="notice">⚠ {notice}</div>}
-        <CueTile title={L('IN（入口）', 'IN')} subtitle={L('この曲が入り始める位置', 'Where this track starts')} keyName="I" color={GREEN} value={clip.mixInBar}
+        <CueTile title={L('IN（入口）', 'IN')} subtitle={L('この曲が入り始める位置', 'Where this track starts')} keyName="I" color={GREEN} value={clip.mixInBar} seconds={sourceTimeAtBar(clip, clip.mixInBar)}
           info={prev ? L(`「${prev.title}」の OUT で入ります`, `Enters at the OUT of “${prev.title}”`) : null}
           onSet={() => setIn(clip)} onPlay={() => play(clip, clip.mixInBar)} onNudge={d => s.setMixIn(clip.id, clip.mixInBar + d)} />
-        <CueTile title={L('切替完了', 'Switch')} subtitle={L('前の曲が消えて、この曲だけになる位置', 'Where only this track remains')} keyName="L" color={PURPLE} value={landingBar(clip)}
+        <CueTile title={L('切替完了', 'Switch')} subtitle={L('前の曲が消えて、この曲だけになる位置', 'Where only this track remains')} keyName="L" color={PURPLE} value={landingBar(clip)} seconds={sourceTimeAtBar(clip, landingBar(clip))}
           disabled={!prev}
           info={!prev ? L('前の曲がないので使いません', 'Not used: there is no previous track')
             : clip.transitionBars > 0.01 ? L(`入口の ${Fmt.bars(clip.transitionBars)} 後`, `${Fmt.bars(clip.transitionBars)} after the mix-in`)
             : L('つなぎの長さを選ぶと入口が自動で決まります', 'Picking a length places the mix-in automatically')}
           onSet={() => setLanding(clip)} onPlay={() => play(clip, landingBar(clip))} onNudge={d => s.setLandingBar(clip.id, landingBar(clip) + d)}
           extra={<label className="check caption" title={L('つなぎの長さを変えてもこの位置を保つ', 'Keep this when the length changes')}><input type="checkbox" disabled={!prev} checked={keepsLanding(clip)} onChange={e => s.setLandingLock(clip.id, e.target.checked)} />{L('保つ', 'Keep')}</label>} />
-        <CueTile title={L('OUT（出口）', 'OUT')} subtitle={L('次の曲へのつなぎが始まる位置', 'Where the next transition begins')} keyName="O" color={ORANGE} value={clip.mixOutBar}
+        <CueTile title={L('OUT（出口）', 'OUT')} subtitle={L('次の曲へのつなぎが始まる位置', 'Where the next transition begins')} keyName="O" color={ORANGE} value={clip.mixOutBar} seconds={sourceTimeAtBar(clip, clip.mixOutBar)}
           info={next ? (next.transitionBars < 0.01 ? L(`ここで「${next.title}」に切り替え`, `Switches to “${next.title}” here`) : L(`ここから「${next.title}」と ${Fmt.bars(next.transitionBars)} 重なる`, `Overlaps “${next.title}” for ${Fmt.bars(next.transitionBars)}`)) : null}
           onSet={() => setOut(clip)} onPlay={() => play(clip, clip.mixOutBar - 4)} playLabel={L('4小節前から', 'From −4 bars')} onNudge={d => s.setMixOut(clip.id, clip.mixOutBar + d)} />
         <div className="memo-strip">
           <button className="btn small" title={L('ドロップやブレイクの頭に目印を付けておくと、IN / OUT を選ぶ時に使えます', 'Mark drops and breakdowns to use them as IN / OUT later')} onClick={() => addMemo(clip)}>🔖 {L('メモ（M）', 'Memo (M)')}</button>
           {cueList(clip).map(cue => (
             <button key={cue.id} className="btn small memo" onClick={() => play(clip, cue.bar)} onContextMenu={e => { e.preventDefault(); memoMenu(e, cue.bar, cue.id); }}>
-              {ShownName.cue(cue.label)} · {barLabel(cue.bar)} <span className="chev" onClick={e => { e.stopPropagation(); memoMenu(e, cue.bar, cue.id); }}>▾</span>
+              {ShownName.cue(cue.label)} · {barLabel(cue.bar)} · <span className="memo-time" title={TRACK_TIME_TIP()}>{trackTime(sourceTimeAtBar(clip, cue.bar))}</span> <span className="chev" onClick={e => { e.stopPropagation(); memoMenu(e, cue.bar, cue.id); }}>▾</span>
             </button>
           ))}
           <div className="spacer" />

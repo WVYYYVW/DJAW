@@ -1240,5 +1240,6 @@
  "incomplete download ({0} / {1} bytes)": "téléchargement incomplet ({0} / {1} octets)",
  "no app in the disk image": "aucune app dans l’image disque",
  "unreadable": "illisible",
- "stem model unavailable": "modèle de séparation des stems indisponible"
+ "stem model unavailable": "modèle de séparation des stems indisponible",
+ "Time in the track (from its start, at its own tempo)": "Temps dans le morceau (depuis son début, à son tempo d’origine)"
 }

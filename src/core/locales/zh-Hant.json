@@ -1240,5 +1240,6 @@
  "incomplete download ({0} / {1} bytes)": "下載不完整（{0} / {1} 位元組）",
  "no app in the disk image": "磁碟映像中沒有 App",
  "unreadable": "無法讀取",
- "stem model unavailable": "沒有分軌分離模型"
+ "stem model unavailable": "沒有分軌分離模型",
+ "Time in the track (from its start, at its own tempo)": "曲目中的時間（從曲目開頭算起，按原速）"
 }

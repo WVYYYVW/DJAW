@@ -1240,5 +1240,6 @@
  "incomplete download ({0} / {1} bytes)": "загрузка не завершена ({0} / {1} байт)",
  "no app in the disk image": "в образе диска нет приложения",
  "unreadable": "не читается",
- "stem model unavailable": "модель разделения на стемы недоступна"
+ "stem model unavailable": "модель разделения на стемы недоступна",
+ "Time in the track (from its start, at its own tempo)": "Время в треке (от его начала, в исходном темпе)"
 }

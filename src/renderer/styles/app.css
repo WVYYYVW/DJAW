@@ -358,6 +358,8 @@ progress::-webkit-progress-value { background: var(--accent); }
 .cue-tile.disabled { opacity: 0.5; pointer-events: none; }
 .cue-tile-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .cue-tile-title { font-weight: 700; font-size: 13.5px; }
+.cue-tile-pos { display: inline-flex; align-items: baseline; gap: 8px; }
+.cue-tile-time, .memo-time { font: 500 12px ui-monospace, monospace; color: var(--dim); font-variant-numeric: tabular-nums; }
 .readout-num { font-family: var(--mono); font-size: 18px; white-space: nowrap; }
 .memo-strip { display: flex; align-items: center; gap: 8px; padding: 10px 20px 12px; }
 .memo-list { display: flex; gap: 6px; overflow-x: auto; min-width: 0; }

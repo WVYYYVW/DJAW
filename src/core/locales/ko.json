@@ -1240,5 +1240,6 @@
  "incomplete download ({0} / {1} bytes)": "다운로드가 완료되지 않았습니다 ({0} / {1} 바이트)",
  "no app in the disk image": "디스크 이미지에 앱이 없습니다",
  "unreadable": "읽을 수 없음",
- "stem model unavailable": "스템 분리 모델이 없습니다"
+ "stem model unavailable": "스템 분리 모델이 없습니다",
+ "Time in the track (from its start, at its own tempo)": "곡 안의 시간 (곡의 처음부터, 원래 템포 기준)"
 }

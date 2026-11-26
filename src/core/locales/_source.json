@@ -1240,5 +1240,6 @@
  "incomplete download ({0} / {1} bytes)": "ダウンロードが途中で止まりました（{0} / {1} バイト）",
  "no app in the disk image": "ディスクイメージにアプリがありません",
  "unreadable": "読めません",
- "stem model unavailable": "ステム分離のモデルがありません"
+ "stem model unavailable": "ステム分離のモデルがありません",
+ "Time in the track (from its start, at its own tempo)": "曲の中の時間（曲の元の速さで、曲の頭から）"
 }
