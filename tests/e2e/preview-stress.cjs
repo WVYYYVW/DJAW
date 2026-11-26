@@ -81,7 +81,7 @@ const out = (...a) => { const l = a.join(' '); log.push(l); console.log(l); };
   let ok = true;
   try {
     await until(`!!window.djaw && !!document.querySelector('.toolbar')`, 60000);
-    await ev(`window.djaw.addFiles(${JSON.stringify(files)}, { kind: 'mix', index: null })`);
+    await ev(`(window.djaw.addFiles(${JSON.stringify(files)}, { kind: 'mix', index: null }), true)`); // not awaited: analysis can take minutes
     const ready = await until(`window.djaw.pending.length === 0 && window.djaw.clips.length === 3 && window.djaw.clips.every(c => window.djaw.waveforms.get(c.url))`, 300000);
     out(ready ? 'tracks ready' : 'FAIL tracks not ready'); if (!ready) ok = false;
     // Some of what the smoke test does before it opens the preview: play, edit a transition, undo.

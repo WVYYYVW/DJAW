@@ -394,7 +394,8 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
     check('video preview fills an enlarged window', previewFill.opened && previewFill.shownW >= previewFill.winW - 2 && previewFill.drawW === 1920, previewFill);
     // The panel maximized (the arrangement hidden), the overview drawn, the tabs without sideways scrolling.
     await ev(() => { window.djaw.openPanel('overview'); window.djaw.togglePanelMaximized(true); });
-    await win.waitForTimeout(800);
+    // Drawn within a few frames; slow machines get up to 4 s.
+    await until(() => { const c = document.querySelector('.overview-canvas canvas'); if (!c || !c.width) return false; const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; for (let k = 3; k < d.length; k += 64) if (d[k] > 0) return true; return false; }, 4000);
     await shot('03-overview-maximized');
     const big = await ev(() => {
       const arr = document.querySelector('.arrangement');
