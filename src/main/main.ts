@@ -217,7 +217,10 @@ function createWindow(fileToOpen?: string) {
   });
   // The visuals preview (a window the renderer draws into, so it can go on a second screen).
   win.webContents.setWindowOpenHandler(d => d.frameName === 'djaw-visuals'
-    ? { action: 'allow', overrideBrowserWindowOptions: { width: 960, height: 600, minWidth: 480, minHeight: 320, backgroundColor: '#000000', autoHideMenuBar: true, fullscreenable: true, title: L('映像プレビュー', 'Visuals Preview') } }
+    ? { action: 'allow', overrideBrowserWindowOptions: { width: 960, height: 600, minWidth: 480, minHeight: 320, backgroundColor: '#000000', autoHideMenuBar: true, fullscreenable: true, title: L('映像プレビュー', 'Visuals Preview'),
+      // The preview window is drawn by this window's script and needs no Node of its own. Inheriting Node made the
+      // renderer start a second Node environment for it, and on Windows the renderer was sometimes killed there.
+      webPreferences: { nodeIntegration: false, nodeIntegrationInWorker: false, nodeIntegrationInSubFrames: false, contextIsolation: false, sandbox: false } } }
     : { action: 'deny' });
   win.webContents.on('did-create-window', w => w.setMenu(null));
   win.webContents.on('render-process-gone', (_e, d) => console.error('[DJAW] renderer gone:', d.reason, d.exitCode));
