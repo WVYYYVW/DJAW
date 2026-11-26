@@ -83,6 +83,9 @@ jobs:
         run: npx electron-builder ${{ matrix.os == 'macos-latest' && '--mac --arm64' || '--win --x64' }} --dir --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Video preview without Playwright (packaged app)
+        run: node tests/e2e/preview-stress.cjs ${{ matrix.os == 'macos-latest' && 'dist/mac-arm64/DJAW.app/Contents/MacOS/DJAW' || 'dist/win-unpacked/DJAW.exe' }} 10
+        continue-on-error: true
       - name: Smoke test (packaged app)
         run: node tests/e2e/smoke.cjs ${{ matrix.os == 'macos-latest' && 'dist/mac-arm64/DJAW.app/Contents/MacOS/DJAW' || 'dist/win-unpacked/DJAW.exe' }}
         env:
