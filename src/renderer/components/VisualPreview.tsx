@@ -53,24 +53,33 @@ function Preview({ win }: { win: Window }) {
     const live = new LiveFeatures();
     s.player.onTap = (mono, start) => live.feed(mono, start);
     void s.player.setTap(true);
-    let painter: VisualPainter | null = null, key = '', raf = 0, lastDraw = 0;
+    let painter: VisualPainter | null = null, key = '', raf = 0, lastFrame = -1, lastNow = 0, interval = 1000 / 60;
     const draw = (now: number) => {
       if (win.closed) return;
       raf = win.requestAnimationFrame(draw);
-      if (now - lastDraw < 1000 / 31) return;
-      lastDraw = now;
+      // The screen's refresh interval (what is drawn now is seen at the next refresh).
+      if (lastNow) interval += (Math.min(100, Math.max(4, now - lastNow)) - interval) * 0.1;
+      lastNow = now;
       // Drawn at full HD when shown large (full screen, or the window maximized / enlarged), otherwise at half.
       const shown = canvas.current ? canvas.current.clientWidth * (win.devicePixelRatio || 1) : 0;
       const [W, H] = fullRef.current || shown > 1100 ? [1920, 1080] : [960, 540];
       const k = painterKey() + W;
       const tempo = store.tempoMap;
+      let rebuilt = false;
       if (!painter || k !== key) {
-        key = k;
+        key = k; rebuilt = true;
         painter = new VisualPainter({ width: W, height: H, fps: 30, style: store.visualStyle, showTrackInfo: store.visualShowInfo, trackInfo: store.visualInfo, mixTitle: '' },
           store.previewTrackVisuals(), live, tempo, store.gridOffset, store.masterBPM);
       }
+      // The picture for the moment it will be on the screen — one refresh after this one — and the nearest of the
+      // 30 pictures a second (each is shown for the half picture before and after its moment), so it is in time with
+      // the sound heard then (player.currentTime already takes off the audio output's delay).
       const t = store.isPlaying ? store.player.currentTime : store.playhead;
-      painter.draw(Math.trunc(tempo.real(t) * 30));
+      const lead = store.isPlaying ? Math.min(0.05, interval / 1000) : 0;
+      const f = Math.round((tempo.real(t) + lead) * 30);
+      if (f === lastFrame && !rebuilt && canvas.current?.width === W) return;
+      lastFrame = f;
+      painter.draw(f);
       const c = canvas.current;
       if (!c) return;
       const ctx = c.getContext('2d');

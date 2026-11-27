@@ -154,6 +154,8 @@ Windows では WebCodecs（H.264）＋ mp4 マルチプレクサ、または ffm
   - キーロックオフ（キーシフトなし）の曲は伸縮を通さず `core/render/vinyl.ts`（窓付き sinc、ランダムアクセスで遅延なし）でリサンプリング。ピークは元のまま
   - 測り方：実曲を 30 秒描画して、帯域ごとの dB・ピーク・RMS を元と比べる（高域の減りはない。問題はピークだった）
   - 映像の曲名カード（`visuals.ts` の `trackInfo`）：曲名・アーティストは 1 行（`fitLine` で縮め、入らなければ `scrollLine` で横に流す。時間はカードが出てからの秒数で決まるので書き出しとプレビューで同じ。端のフェードはグラデーションの塗りで＝下の絵を消さない）。形式・長さ・後の字幕は `TrackInfoSettings`（`store.visualInfo`、設定に保存、`VisualOptions.trackInfo`）、画面は `components/TrackInfoOptions.tsx`（書き出し画面と映像プレビューで共有）
+  - 映像と音のずれ：AAC のエンコーダは先頭に無音（プライミング、Mac で 2112 サンプル）を付けるが mp4-muxer は edit list を書かない → 音が映像より約 44 ms 遅れていた。`core/render/mp4edit.ts`：`encoderDelay`（そのパソコンのエンコーダでクリックをエンコード→デコードして遅れを測る。Opus は pre-skip がヘッダにあり 0）と `addAudioEditList`（書き終えた mp4 の moov の音声 trak に edts/elst を挿入）。Mp4Writer.close の後に適用（M4A も）。確認：`tests/mp4edit.test.ts`（ffmpeg の AAC で）、`tests/e2e/av-sync.cjs`（WAV と MP4／M4A の音の位置を ffmpeg で相互相関、2 ms 以内。E2E で ffmpeg を入れて実行）
+  - 映像プレビューは、表示されるまでの 1 リフレッシュ分先の瞬間を、最も近い 30fps のコマで描く（`VisualPreview.tsx`。以前は切り捨て＋31fps 間引きで 1〜2 コマ遅れ）
 - リリースの前に E2E を Mac・Windows で通すこと（Linux のクラウドだけの確認で Mac 版が壊れていた前例あり）
 - まだ Windows 実機で確認していないもの：AAC（Media Foundation）での M4A／映像書き出し、映像プレビューの別ウィンドウ、iTunes XML の実データ
 

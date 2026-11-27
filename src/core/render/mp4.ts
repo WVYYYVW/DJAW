@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import { L } from '../i18n';
 import { Muxer, StreamTarget } from 'mp4-muxer';
+import { addAudioEditList, encoderDelay } from './mp4edit';
 
 export interface Mp4Video { width: number; height: number; fps: number; bitrate: number; /** Use the GPU's encoder. */ hardware?: boolean }
 export type Mp4Audio = 'aac' | 'opus';
@@ -17,6 +18,8 @@ export class Mp4Writer {
 
   /** The video goes through the GPU's encoder. */
   hardware = false;
+  /** Samples of silence the audio encoder puts in front, skipped with an edit list (see mp4edit.ts). */
+  audioDelay = 0;
   private fdClosed = false;
 
   private constructor(readonly path: string, readonly sampleRate: number, bitrate: number,
@@ -78,6 +81,7 @@ export class Mp4Writer {
     }
     const w = new Mp4Writer(path, sampleRate, bitrate, video ? { ...video, mode: mode! } : null, audioCodec);
     w.hardware = mode === 'prefer-hardware';
+    w.audioDelay = await encoderDelay(audioCodec === 'aac' ? 'mp4a.40.2' : 'opus', sampleRate, bitrate);
     return w;
   }
 
@@ -117,6 +121,11 @@ export class Mp4Writer {
       try { this.audio.close(); } catch { /* closed */ }
       try { this.video?.close(); } catch { /* closed */ }
       if (!this.fdClosed) { this.fdClosed = true; fs.closeSync(this.fd); }
+    }
+    // The sound starts with the pictures (and at the mix's time 0), not after the encoder's silence.
+    if (this.audioDelay > 0) {
+      const ok = addAudioEditList(this.path, this.audioDelay, this.sampleRate);
+      console.info(`[DJAW] audio encoder delay ${this.audioDelay} samples (${(this.audioDelay / this.sampleRate * 1000).toFixed(1)} ms)${ok ? ', skipped with an edit list' : ', edit list NOT written'}`);
     }
   }
 

@@ -44,7 +44,7 @@ async function decodeArtwork(bytes: Uint8Array | null) {
 }
 
 /** Seconds spent in each stage (shown in the console after an export, to see where the time goes). */
-export interface VideoExportStats { audio: number; features: number; draw: number; frame: number; encodeWait: number; audioEncode: number; frames: number; total: number; hardware: number }
+export interface VideoExportStats { audio: number; features: number; draw: number; frame: number; encodeWait: number; audioEncode: number; frames: number; total: number; hardware: number; /** Samples of encoder delay skipped with an edit list. */ audioDelay: number }
 
 export async function exportVideo(m: MixInput, dest: string, o: VideoExportOptions, trackMsgs: TrackVisualMessage[],
   cancel: CancelFlag, progress: (p: number) => void, knownPeak?: number | null, stats?: VideoExportStats): Promise<void> {
@@ -99,7 +99,7 @@ export async function exportVideo(m: MixInput, dest: string, o: VideoExportOptio
     const encode = async (hardware: boolean) => {
       out.writer = await Mp4Writer.create(dest, rate, aac ? 320_000 : 256_000, { width: o.width, height: o.height, fps: o.fps, bitrate, hardware }, aac ? 'aac' : 'opus');
       const w = out.writer;
-      if (stats) stats.hardware = w.hardware ? 1 : 0;
+      if (stats) { stats.hardware = w.hardware ? 1 : 0; stats.audioDelay = w.audioDelay; }
       const painter = new VisualPainter(o, tracks, features, m.tempo, m.gridOffset, m.master);
       const total = features.frames;
       const audioPiece = 4096;

@@ -148,7 +148,7 @@ self.onmessage = async (e: MessageEvent) => {
         const flag = new CancelFlag();
         jobs.set(m.job, flag);
         let last = 0;
-        const stats = { audio: 0, features: 0, draw: 0, frame: 0, encodeWait: 0, audioEncode: 0, frames: 0, total: 0, hardware: 0 };
+        const stats = { audio: 0, features: 0, draw: 0, frame: 0, encodeWait: 0, audioEncode: 0, frames: 0, total: 0, hardware: 0, audioDelay: 0 };
         await exportVideo(mixInput(m), m.dest, m.options, m.tracks, flag, p => {
           const now = Date.now();
           if (now - last > 100 || p >= 1) { last = now; postMessage({ type: 'progress', job: m.job, progress: p }); }

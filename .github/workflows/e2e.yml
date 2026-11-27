@@ -90,6 +90,11 @@ jobs:
         env:
           # Chromium's own warnings and errors (why a renderer was killed) go to the app's stderr, which the test prints.
           ELECTRON_ENABLE_LOGGING: '1'
+      - name: ffmpeg (to check the exported files)
+        shell: bash
+        run: command -v ffmpeg || ( [ "$RUNNER_OS" = "Windows" ] && choco install ffmpeg -y --no-progress >/dev/null || brew install ffmpeg >/dev/null ); ffmpeg -version | head -1
+      - name: Sound and pictures in step (exported MP4 / M4A)
+        run: node tests/e2e/av-sync.cjs ${{ matrix.os == 'macos-latest' && 'dist/mac-arm64/DJAW.app/Contents/MacOS/DJAW' || 'dist/win-unpacked/DJAW.exe' }}
       - name: Windows crash reports (when something crashed)
         if: failure() && runner.os == 'Windows'
         shell: pwsh
