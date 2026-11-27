@@ -1245,5 +1245,8 @@
  "ELAPSED": "経過",
  "Time in the playing track “{0}” (from its start, at its own tempo)": "再生中の曲「{0}」の中の時間（曲の頭から、曲の元の速さで）",
  "No track playing here": "ここで鳴っている曲はありません",
- "Track time": "曲の時間"
+ "Track time": "曲の時間",
+ "Club-loud (the limiter keeps it from clipping)": "クラブ向けの大きめの音量（リミッターで音割れを防ぎます）",
+ "Loudness for new mixes": "新しいミックスの音量合わせ",
+ "New mixes even out the loudness of the tracks you load this way, automatically. A mix you open keeps its own setting": "新しく作るミックスは、読み込んだ曲の音量（ラウドネス）をこの方法で自動でそろえます。開いたミックスは保存したときの設定のまま"
 }

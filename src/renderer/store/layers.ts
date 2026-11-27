@@ -69,6 +69,7 @@ P.addLayer = function (hostID, trackID, hostBar = null) {
   this.pushUndo();
   this.layers = next;
   this.selectedClipID = layer.id;
+  this.applyLoudness();
   this.changed();
   return layer.id;
 };

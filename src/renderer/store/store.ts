@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { ipcRenderer, clipboard, shell } from 'electron';
 import { L } from '../../core/i18n';
 import { LibraryFolder,
-  Clip, ClipFX, ClipEdit, CustomTransition, FXKind, Grid, LoudnessMode, Mathx, ProjectFile, SnapUnit, Snap, Style,
+  Clip, ClipFX, ClipEdit, CustomTransition, FXKind, Grid, LoudnessMode, loudnessModes, Mathx, ProjectFile, SnapUnit, Snap, Style,
   Take, TransitionLanes, TransitionPreset, TransitionShape, TransitionStyle, TransitionTake, Waveform, EQBand,
   barAtSource, barLabel, barSource, clipEnd, clipLength, effectiveLanes, keepsLanding, landingBar, lastBar,
   lastSoundTime, newClip, projectFormatID, projectVersion, resetToWholeTrack, sourceTimeAtBar, sourceTimeAtTimeline,
@@ -78,7 +78,9 @@ export class MixStore {
   isDirty = false;
   notes = '';
   projectID = uuid();
-  loudnessMode: LoudnessMode = 'off';
+  loudnessMode: LoudnessMode = 'match';
+  /** Loudness normalization a new mix starts with (a setting; 'match' unless changed). */
+  defaultLoudness: LoudnessMode = 'match';
   missingFiles = new Set<string>();
   /** Mac analyses stored in the opened .djaw: kept as they are when saving. */
   private macAnalyses: Record<string, string> | null = null;
@@ -230,6 +232,8 @@ export class MixStore {
     this.browserWidth = typeof s.browserWidth === 'number' ? s.browserWidth : 264;
     this.showSamplerLane = (s.showSamplerLane as boolean) ?? true;
     this.keepInLibrary = (s.keepInLibrary as boolean) ?? false;
+    this.defaultLoudness = loudnessModes.includes(s.defaultLoudness as LoudnessMode) ? (s.defaultLoudness as LoudnessMode) : 'match';
+    if (!this.documentPath && !this.clips.length) this.loudnessMode = this.defaultLoudness;
     this.reopenLast = (s.reopenLast as boolean) ?? true;
     this.compressAudio = (s.compressAudio as boolean) ?? true;
     this.embedLibraryAudio = (s.embedLibraryAudio as boolean) ?? true;
@@ -248,7 +252,7 @@ export class MixStore {
   saveSettings() {
     const s = {
       showPanel: this.showPanel, panelHeight: this.panelHeight, transitionPanelHeight: this.transitionPanelHeight, showBrowser: this.showBrowser, editGrid: this.editGrid,
-      browserWidth: this.browserWidth, browserSplit: this.browserSplit, showSamplerLane: this.showSamplerLane, keepInLibrary: this.keepInLibrary, reopenLast: this.reopenLast, compressAudio: this.compressAudio, embedLibraryAudio: this.embedLibraryAudio,
+      browserWidth: this.browserWidth, browserSplit: this.browserSplit, showSamplerLane: this.showSamplerLane, keepInLibrary: this.keepInLibrary, defaultLoudness: this.defaultLoudness, reopenLast: this.reopenLast, compressAudio: this.compressAudio, embedLibraryAudio: this.embedLibraryAudio,
       showDecks: this.showDecks, showMixer: this.showMixer, exportNormalize: this.exportNormalize, embedMedia: this.embedMedia,
       openCueEditorOnAdd: this.openCueEditorOnAdd, showMixWaveform: this.showMixWaveform, customTransitions: this.customTransitions,
       recentDocuments: this.recentDocuments.slice(0, 10), defaultTransitionStyle: this.defaultTransitionStyle,
@@ -1390,13 +1394,16 @@ export class MixStore {
   // MARK: Loudness (MixStore+Loudness)
 
   setLoudnessMode(m: LoudnessMode) { this.loudnessMode = m; this.markDirty(); this.applyLoudness(); this.changed(); }
+  setDefaultLoudness(m: LoudnessMode) { this.defaultLoudness = m; this.saveSettings(); this.changed(); }
 
   applyLoudness() {
+    const clear = (cs: Clip[]) => (cs.some(c => c.loudnessGainDB != null || c.lufs != null) ? cs.map(c => ({ ...c, loudnessGainDB: null, lufs: null })) : cs);
     if (this.loudnessMode === 'off') {
-      if (this.clips.some(c => c.loudnessGainDB != null || c.lufs != null)) this.clips = this.clips.map(c => ({ ...c, loudnessGainDB: null, lufs: null }));
+      this.clips = clear(this.clips);
+      this.layers = clear(this.layers);
       return;
     }
-    for (const url of new Set(this.clips.map(c => c.url))) {
+    for (const url of new Set([...this.clips, ...this.layers].map(c => c.url))) {
       if (this.loudnessSegments.has(url) || this.loudnessInFlight.has(url) || this.missingFiles.has(url)) continue;
       this.loudnessInFlight.add(url);
       loadLoudness(url).then(seg => {
@@ -1406,21 +1413,23 @@ export class MixStore {
         this.changed();
       });
     }
-    const measured = new Map<number, number>();
-    this.clips.forEach((c, i) => {
+    const measure = (c: Clip) => {
       const seg = this.loudnessSegments.get(c.url);
-      const l = seg ? integratedLoudness(seg, c.trimStart, c.trimEnd) : null;
-      if (l != null) measured.set(i, l);
-    });
+      return seg ? integratedLoudness(seg, c.trimStart, c.trimEnd) : null;
+    };
+    const measured = new Map<number, number>();
+    this.clips.forEach((c, i) => { const l = measure(c); if (l != null) measured.set(i, l); });
     if (!measured.size) return;
     let target = Loudness.target(this.loudnessMode);
     if (target == null) { const s = [...measured.values()].sort((a, b) => a - b); target = s[Math.floor(s.length / 2)]; }
-    this.clips = this.clips.map((c, i) => {
-      const l = measured.get(i);
+    const level = (c: Clip, l: number | null) => {
       if (l == null) return c;
       const g = Math.round(Math.min(12, Math.max(-12, target! - l)) * 10) / 10;
-      return { ...c, loudnessGainDB: g, lufs: Math.round(l * 10) / 10 };
-    });
+      return c.loudnessGainDB === g && c.lufs === Math.round(l * 10) / 10 ? c : { ...c, loudnessGainDB: g, lufs: Math.round(l * 10) / 10 };
+    };
+    this.clips = this.clips.map((c, i) => level(c, measured.get(i) ?? null));
+    // Layered tracks are brought to the same level as the mix's tracks.
+    this.layers = this.layers.map(c => level(c, measure(c)));
   }
 
   // MARK: Playback
@@ -1705,7 +1714,7 @@ export class MixStore {
     this.pause();
     this.projectID = uuid();
     this.clips = []; this.library = []; this.layers = []; this.libraryFolders = []; this.samples = []; this.sampleHits = [];
-    this.notes = ''; this.loudnessMode = 'off';
+    this.notes = ''; this.loudnessMode = this.defaultLoudness;
     this.masterBPM = 124; this.gridOffset = 0;
     this.documentPath = null;
     this.undoStack = []; this.redoStack = [];

@@ -89,7 +89,7 @@ export const Loudness = {
       case 'match': return L('全体の音量感は保ったまま、曲ごとの差だけをなくします', 'Evens out the tracks around their average level');
       case 'lufs14': return L('配信サービスの基準くらい', 'About streaming-service level');
       case 'lufs11': return L('やや大きめ', 'A bit louder');
-      case 'lufs9': return L('クラブ向けの大きめの音量（書き出しの正規化で音割れを防ぎます）', 'Club-loud (export normalization keeps it from clipping)');
+      case 'lufs9': return L('クラブ向けの大きめの音量（リミッターで音割れを防ぎます）', 'Club-loud (the limiter keeps it from clipping)');
     }
   },
   target(m: LoudnessMode): number | null {

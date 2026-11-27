@@ -1245,5 +1245,8 @@
  "ELAPSED": "TRASC.",
  "Time in the playing track “{0}” (from its start, at its own tempo)": "Tempo nel brano in riproduzione “{0}” (dal suo inizio, al suo tempo originale)",
  "No track playing here": "Qui non suona nessun brano",
- "Track time": "Tempo del brano"
+ "Track time": "Tempo del brano",
+ "Club-loud (the limiter keeps it from clipping)": "Volume da club (il limitatore evita la distorsione)",
+ "Loudness for new mixes": "Loudness dei nuovi mix",
+ "New mixes even out the loudness of the tracks you load this way, automatically. A mix you open keeps its own setting": "I nuovi mix uniformano automaticamente così la loudness dei brani caricati. Un mix aperto mantiene la propria impostazione"
 }

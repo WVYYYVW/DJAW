@@ -1245,5 +1245,8 @@
  "ELAPSED": "TRANSC.",
  "Time in the playing track “{0}” (from its start, at its own tempo)": "Tiempo en la pista que suena “{0}” (desde su inicio, a su tempo original)",
  "No track playing here": "Aquí no suena ninguna pista",
- "Track time": "Tiempo de pista"
+ "Track time": "Tiempo de pista",
+ "Club-loud (the limiter keeps it from clipping)": "Volumen de club (el limitador evita la distorsión)",
+ "Loudness for new mixes": "Sonoridad de las mezclas nuevas",
+ "New mixes even out the loudness of the tracks you load this way, automatically. A mix you open keeps its own setting": "Las mezclas nuevas igualan automáticamente la sonoridad de las pistas que cargas de esta forma. Una mezcla que abres conserva su propio ajuste"
 }

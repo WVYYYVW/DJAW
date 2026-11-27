@@ -210,6 +210,10 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
       return { playing, advanced: t1 - t0, blocks, rms: Math.sqrt(sum / Math.max(1, count)), ctxState: ctx?.state, sampleRate: ctx?.sampleRate, outputLatency: ctx?.outputLatency };
     });
     check('playback: audio flows', play.playing && play.advanced > 2 && play.advanced < 5 && play.blocks > 10 && play.rms > 0.02, play);
+    // A new mix evens out the loudness of the tracks it loads (setting: Loudness for new mixes, default "Match").
+    const loud = await until(() => window.djaw.clips.every(c => c.loudnessGainDB != null && c.lufs != null), 60000);
+    const loudness = await ev(() => ({ mode: window.djaw.loudnessMode, byDefault: window.djaw.defaultLoudness, clips: window.djaw.clips.map(c => [c.lufs, c.loudnessGainDB]) }));
+    check('loaded tracks get loudness normalization automatically', loud && loudness.mode === 'match' && loudness.byDefault === 'match', loudness);
     await logMem('after playback');
     // On Windows, Playwright attaching to the video preview window (a window.open child in the same renderer)
     // often kills the renderer, while the app opens it without trouble when no Playwright is attached

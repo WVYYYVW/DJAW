@@ -1245,5 +1245,8 @@
  "ELAPSED": "경과",
  "Time in the playing track “{0}” (from its start, at its own tempo)": "재생 중인 곡 “{0}”의 시간 (곡 처음부터, 원래 템포 기준)",
  "No track playing here": "여기서 재생 중인 곡이 없습니다",
- "Track time": "곡 시간"
+ "Track time": "곡 시간",
+ "Club-loud (the limiter keeps it from clipping)": "클럽용 큰 음량 (리미터가 음이 깨지는 것을 막습니다)",
+ "Loudness for new mixes": "새 믹스의 음량 맞추기",
+ "New mixes even out the loudness of the tracks you load this way, automatically. A mix you open keeps its own setting": "새로 만드는 믹스는 불러온 곡의 음량(라우드니스)을 이 방법으로 자동으로 맞춥니다. 열어 본 믹스는 저장할 때의 설정 그대로입니다"
 }

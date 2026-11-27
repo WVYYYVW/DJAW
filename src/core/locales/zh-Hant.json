@@ -1245,5 +1245,8 @@
  "ELAPSED": "已播放",
  "Time in the playing track “{0}” (from its start, at its own tempo)": "正在播放的曲目「{0}」中的時間（從曲目開頭算起，按原速）",
  "No track playing here": "這裡沒有正在播放的曲目",
- "Track time": "曲目時間"
+ "Track time": "曲目時間",
+ "Club-loud (the limiter keeps it from clipping)": "夜店級的大音量（限幅器防止破音）",
+ "Loudness for new mixes": "新混音的音量統一",
+ "New mixes even out the loudness of the tracks you load this way, automatically. A mix you open keeps its own setting": "新建的混音會依此方式自動統一載入曲目的響度。打開的混音維持儲存時的設定"
 }

@@ -1245,5 +1245,8 @@
  "ELAPSED": "DECORR.",
  "Time in the playing track “{0}” (from its start, at its own tempo)": "Tempo na faixa que está tocando “{0}” (desde o início, no andamento original)",
  "No track playing here": "Nenhuma faixa tocando aqui",
- "Track time": "Tempo da faixa"
+ "Track time": "Tempo da faixa",
+ "Club-loud (the limiter keeps it from clipping)": "Volume de clube (o limitador evita distorção)",
+ "Loudness for new mixes": "Loudness das mixagens novas",
+ "New mixes even out the loudness of the tracks you load this way, automatically. A mix you open keeps its own setting": "As mixagens novas igualam automaticamente assim a loudness das faixas carregadas. Uma mixagem aberta mantém a própria configuração"
 }

@@ -779,6 +779,11 @@ export function MixInspector() {
           </select>
         </Row>
         <div className="caption">{Loudness.detail(s.loudnessMode)}</div>
+        <Row label={L('新しいミックスの音量合わせ', 'Loudness for new mixes')} title={L('新しく作るミックスは、読み込んだ曲の音量（ラウドネス）をこの方法で自動でそろえます。開いたミックスは保存したときの設定のまま', 'New mixes even out the loudness of the tracks you load this way, automatically. A mix you open keeps its own setting')}>
+          <select value={s.defaultLoudness} onChange={e => s.setDefaultLoudness(e.target.value as never)}>
+            {loudnessModes.map(m => <option key={m} value={m}>{Loudness.title(m)}</option>)}
+          </select>
+        </Row>
         <Row label={L('起動時に前回のミックスを開く', 'Open the last mix at start')}><input type="checkbox" checked={s.reopenLast} onChange={() => s.toggle('reopenLast')} /></Row>
         <Row label={L('ミックスに入れてもライブラリに残す', 'Keep tracks in the library when adding them to the mix')} title={L('オンにすると、ライブラリの曲をミックス順に入れても、ライブラリ（とそのフォルダ）からは消えません', 'When on, tracks stay in the library (and its folders) after you add them to the mix order')}><input type="checkbox" checked={s.keepInLibrary} onChange={() => s.toggle('keepInLibrary')} /></Row>
         <Row label={L('曲を追加したら CUE タブを開く', 'Open the CUE tab after adding')}><input type="checkbox" checked={s.openCueEditorOnAdd} onChange={() => s.toggle('openCueEditorOnAdd')} /></Row>
