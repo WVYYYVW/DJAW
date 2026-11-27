@@ -260,3 +260,64 @@ test('a layered track plays on its mix track’s bar, at the mix tempo, for its 
   assert.equal(got.length, 16, `clicks: ${got.map(t => t.toFixed(3)).join(' ')}`);
   got.forEach((t, k) => assert.ok(Math.abs(t - (t0 + 0.25 + k * 0.5)) < 0.0015, `click ${k} at ${t.toFixed(4)}, want ${(t0 + 0.25 + k * 0.5).toFixed(4)}`));
 });
+
+/** Peak of a buffer. */
+const peakOf = (x: Float32Array) => { let m = 0; for (const v of x) m = Math.max(m, Math.abs(v)); return m; };
+
+/** Dominant frequency of x near `around` (Hz), by a fine DFT scan. */
+function frequency(x: Float32Array, around: number) {
+  let best = 0, bestF = around;
+  for (let f = around * 0.85; f <= around * 1.15; f += 0.05) {
+    let re = 0, im = 0;
+    for (let i = 0; i < x.length; i++) { const a = (2 * Math.PI * f * i) / sr; re += x[i] * Math.cos(a); im += x[i] * Math.sin(a); }
+    const p = re * re + im * im;
+    if (p > best) { best = p; bestF = f; }
+  }
+  return bestF;
+}
+
+test('key lock off: speed changes by resampling — on the beat, pitch follows the speed, the waveform stays clean', async () => {
+  // Beat positions (clicks) as in the stretched case.
+  const src = clickTrack(120, 40);
+  const c = clip('a', 120, 40); c.keyLock = false;
+  const { out, clips } = await render([c], 126, 36, { a: src });
+  const r = 126 / 120;
+  let worst = 0;
+  const got = onsets(out);
+  for (const t of got) {
+    const k = Math.round(((t - clips[0].start) * r + clips[0].trimStart - 0.5) / 0.5);
+    const want = clips[0].start + (0.5 + k * 0.5 - clips[0].trimStart) / r;
+    worst = Math.max(worst, Math.abs(t - want));
+  }
+  assert.ok(got.length > 60 && worst < 0.0015, `clicks ${got.length}, worst ${(worst * 1000).toFixed(2)} ms`);
+
+  // A 440 Hz tone at 0.95× comes out at 418 Hz, with no more than a trace of anything else.
+  const tone = new Float32Array(sr * 20);
+  for (let i = 0; i < tone.length; i++) tone[i] = 0.5 * Math.sin((2 * Math.PI * 440 * i) / sr);
+  const t = clip('t', 120, 20); t.keyLock = false;
+  const res = await render([t], 114, 12, { t: tone });
+  const seg = res.out.subarray(sr * 4, sr * 6);
+  const f = frequency(seg, 418);
+  assert.ok(Math.abs(f - 440 * 0.95) < 0.2, `frequency ${f.toFixed(2)} Hz`);
+  // Residual after removing the best-fitting sine: below −80 dB of the tone.
+  let re = 0, im = 0;
+  for (let i = 0; i < seg.length; i++) { const a = (2 * Math.PI * f * i) / sr; re += seg[i] * Math.cos(a); im += seg[i] * Math.sin(a); }
+  re *= 2 / seg.length; im *= 2 / seg.length;
+  let e = 0, s = 0;
+  for (let i = 0; i < seg.length; i++) { const a = (2 * Math.PI * f * i) / sr; const fit = re * Math.cos(a) + im * Math.sin(a); e += (seg[i] - fit) ** 2; s += fit * fit; }
+  assert.ok(10 * Math.log10(e / s) < -80, `residual ${(10 * Math.log10(e / s)).toFixed(1)} dB`);
+  assert.ok(Math.abs(peakOf(seg) - 0.5) < 0.01, `peak ${peakOf(seg)}`);
+});
+
+test('the master limiter keeps peaks under −0.5 dBFS without moving anything in time', async () => {
+  // Two loud click tracks overlapping: the sum would reach 1.8.
+  const a = clickTrack(120, 30), b = clickTrack(120, 30);
+  const ca = clip('a', 120, 30), cb = clip('b', 120, 30);
+  cb.transitionBars = 8;
+  const { out } = await render([ca, cb], 120, 40, { a, b });
+  assert.ok(peakOf(out) <= Math.pow(10, -0.5 / 20) + 1e-4, `peak ${peakOf(out)}`);
+  // Single track: clicks where they belong (the limiter's look-ahead is rendered ahead, not added as delay).
+  const r1 = await render([clip('a', 120, 30)], 120, 20, { a });
+  const first = onsets(r1.out)[0], want = r1.clips[0].start + 0.5 - r1.clips[0].trimStart;
+  assert.ok(Math.abs(first - want) < 0.0015, `first click at ${first}, want ${want}`);
+});

@@ -149,6 +149,10 @@ Windows では WebCodecs（H.264）＋ mp4 マルチプレクサ、または ffm
   - E2E の言語チェックは、全タブ・全シート・右クリックメニュー（サブメニュー含む）・古い版の名前を、10 言語で見る
 - 0.4.2（2026-11-27）：CUE タブに曲の中の時間、ツールバーに流している曲の時間（`renderer/nowPlaying.ts`＝その時いちばん音の大きい曲）、デッキに経過時間。`usePlayhead` の間引きで最後の位置が落ちていたのを直した
   - Windows の E2E で、重い操作の後に初めて映像プレビューを開くと Playwright が新しいウィンドウに付く時にレンダラーが落ちる（killed 1）。アプリ単体では落ちない（`tests/e2e/preview-stress.cjs`＝Playwright なし・素の CDP で 10 回開閉、ワークフローで毎回実行）。smoke は早めに一度開いて回避（`SMOKE_EARLY_PREVIEW=0` で再現を見られる）
+- 0.4.3（2026-11-27）：音質
+  - signalsmith-stretch（位相ボコーダー）は音圧を上げた曲のピークを最大 +6 dB 増やす（RMS は同じ）。それが ±1 で切られて音割れ、書き出しの正規化は全体を −6 dB 下げていた（こもって聞こえる）。対策：マスターのリミッター `core/render/limiter.ts`（−0.5 dBFS、先読み 3 ms、リリース 40 ms、ステレオ連動）。RenderSession は先読みの分だけ先に描画する（`renderFrame` が `absoluteFrame` より lookahead 先）ので時間はずれない。重ねる曲のサブセッションは `limit: false`
+  - キーロックオフ（キーシフトなし）の曲は伸縮を通さず `core/render/vinyl.ts`（窓付き sinc、ランダムアクセスで遅延なし）でリサンプリング。ピークは元のまま
+  - 測り方：実曲を 30 秒描画して、帯域ごとの dB・ピーク・RMS を元と比べる（高域の減りはない。問題はピークだった）
 - リリースの前に E2E を Mac・Windows で通すこと（Linux のクラウドだけの確認で Mac 版が壊れていた前例あり）
 - まだ Windows 実機で確認していないもの：AAC（Media Foundation）での M4A／映像書き出し、映像プレビューの別ウィンドウ、iTunes XML の実データ
 

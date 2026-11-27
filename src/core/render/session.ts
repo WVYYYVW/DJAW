@@ -4,13 +4,15 @@
 // evaluated at the same moments wherever rendering starts); every track's voice starts on its exact frame.
 import { AutoState, Automation } from '../automation';
 import {
-  Clip, Lanes, PlaySegment, clipEnd, pitchCents, playSegments, rate, sourceAtElapsed,
+  Clip, Lanes, PlaySegment, clipEnd, keepsKey, pitchCents, semitoneShift, playSegments, rate, sourceAtElapsed,
 } from '../models';
 import { OutroFX, TempoMap, outro } from '../tempo';
 import { DJEQ, Echo, Reverb } from './dsp';
 import { FXKernel } from './fxkernel';
 import { AudioSource } from './source';
 import { MAX_BLOCK, StretchPool, Stretcher } from './stretch';
+import { Limiter } from './limiter';
+import { Vinyl } from './vinyl';
 import { turntableBuffer } from './turntable';
 import { SamplerInput, SamplerVoice } from '../sampler';
 
@@ -145,6 +147,9 @@ class Voice {
   private vR = new Float32Array(0);
   private pos: number;
   private acc = 0;
+  /** Key lock off (and no key shift): the speed change by resampling, the pitch following (no time-stretch). */
+  private readonly vinyl: Vinyl | null;
+  private x = 0;
   private volume: number | null = null;
   private lastDelay = -1;
   private readonly L = new Float32Array(MAX_BLOCK);
@@ -172,6 +177,9 @@ class Voice {
     this.echo = new Echo(sr);
     this.echo.setDelay(60 / Math.max(tempoNow, 1) * 0.75);
     this.reverb = usesReverb ? new Reverb(sr) : null;
+    this.vinyl = !keepsKey(clip) && semitoneShift(clip) === 0 ? new Vinyl() : null;
+    this.pos = 0;
+    if (this.vinyl) return;
     // Prime the stretch with silence before the start, then drop its latency: output frame 0 = stream frame 0.
     const r0 = stretchRate(rate(clip, tempoNow));
     const st = this.stretcher;
@@ -207,6 +215,7 @@ class Voice {
 
   /** Stretched audio for n output frames into this.L / this.R. */
   private pull(n: number, r: number) {
+    if (this.vinyl) { this.x = this.vinyl.render(this.x, r, n, this.L, this.R, (i0, c, L, R) => this.read(i0, c, L, R)); return; }
     this.acc += n * r;
     const inN = Math.floor(this.acc);
     this.acc -= inN;
@@ -219,8 +228,8 @@ class Voice {
   /** Chain.apply + render: n ≤ MAX_BLOCK frames, added into outL / outR. */
   render(n: number, s: AutoState, tempo: number, beat: number, snapTolerance: number, outL: Float32Array, outR: Float32Array) {
     const c = this.clip;
-    const r = stretchRate(rate(c, tempo));
-    this.stretcher.setPitch(Math.min(24, Math.max(-24, pitchCents(c, tempo) / 100)));
+    const r = this.vinyl ? rate(c, tempo) : stretchRate(rate(c, tempo));
+    if (!this.vinyl) this.stretcher.setPitch(Math.min(24, Math.max(-24, pitchCents(c, tempo) / 100)));
     if (this.others.length) {
       const inst = Math.max(0, s.instrumental);
       this.stemGains = [Math.max(0, s.vocal), inst * Math.max(0, s.drums), inst * Math.max(0, s.bass), inst * Math.max(0, s.melody)];
@@ -293,6 +302,8 @@ export interface SessionOptions {
   pool: StretchPool;
   /** Layered tracks, placed (core/layers.ts placeLayers): each renders as a track on its own, added to the mix. */
   layers?: Clip[] | null;
+  /** The master limiter (default on; off for the layered tracks' own sessions, which the main one limits). */
+  limit?: boolean;
 }
 
 export class RenderSession {
@@ -312,7 +323,12 @@ export class RenderSession {
   private voices: Voice[] = [];
   private sources = new Map<number, AudioSource>();
   private waiting: { index: number; frame: number }[] = [];
+  /** Frame of the next output frame. */
   absoluteFrame: number;
+  /** Frame of the next rendered frame: `limiter.lookahead` ahead of the output (the limiter's delay). */
+  private renderFrame: number;
+  private readonly limiter: Limiter | null;
+  private primed = false;
   readonly startFrame: number;
   private readonly ownKey: string;
   /** One session per layered track (no neighbours, so only its own fades, levels and effects apply). */
@@ -340,6 +356,8 @@ export class RenderSession {
     const t0 = o.from ?? 0;
     this.startFrame = Math.round(o.tempo.real(t0) * o.sampleRate);
     this.absoluteFrame = this.startFrame;
+    this.renderFrame = this.startFrame;
+    this.limiter = o.limit === false ? null : new Limiter(o.sampleRate);
     for (const i of o.indices ?? o.clips.map((_, k) => k)) {
       if (i < 0 || i >= o.clips.length) continue;
       const c = o.clips[i];
@@ -351,7 +369,7 @@ export class RenderSession {
     this.waiting.sort((a, b) => a.frame - b.frame);
     if (o.layers?.length && !o.indices) {
       this.layerKey = RenderSession.structureKey(o.layers, o.master);
-      this.layerSessions = o.layers.map(l => new RenderSession({ ...o, clips: [l], layers: null, sampler: null, fixed: undefined, indices: undefined }));
+      this.layerSessions = o.layers.map(l => new RenderSession({ ...o, clips: [l], layers: null, sampler: null, fixed: undefined, indices: undefined, limit: false }));
     }
   }
 
@@ -430,36 +448,54 @@ export class RenderSession {
 
   /** Length of the next step: up to the next multiple of 512 frames (shorter when a track comes in sooner). */
   get nextChunk(): number {
-    let n = CHUNK - (((this.absoluteFrame % CHUNK) + CHUNK) % CHUNK);
+    let n = CHUNK - (((this.renderFrame % CHUNK) + CHUNK) % CHUNK);
     const w = this.waiting[0];
-    if (w && w.frame > this.absoluteFrame && w.frame - this.absoluteFrame < n) n = w.frame - this.absoluteFrame;
+    if (w && w.frame > this.renderFrame && w.frame - this.renderFrame < n) n = w.frame - this.renderFrame;
     for (const l of this.layerSessions) n = Math.min(n, l.nextChunk);
     return n;
   }
 
   /** Renders the next step into L / R; returns the number of frames. */
   renderNext(): number {
+    const lim = this.limiter;
+    if (lim && !this.primed) {
+      // Render the limiter's look-ahead first, so the output is not late.
+      this.primed = true;
+      for (let left = lim.lookahead; left > 0;) {
+        const n = Math.min(left, this.nextChunk);
+        this.renderMix(n);
+        lim.process(this.L, this.R, n);
+        left -= n;
+      }
+    }
     const n = this.nextChunk;
+    this.renderMix(n);
+    lim?.process(this.L, this.R, n);
+    this.absoluteFrame += n;
+    return n;
+  }
+
+  /** The mix (own tracks, sampler, layered tracks) for the next n rendered frames, into L / R. */
+  private renderMix(n: number) {
     this.renderOwn(n);
     for (const l of this.layerSessions) {
       l.renderOwn(n);
       for (let k = 0; k < n; k++) { this.L[k] += l.L[k]; this.R[k] += l.R[k]; }
     }
-    return n;
   }
 
   /** This session's own tracks (and sampler) for the next `n` frames, into L / R. */
   private renderOwn(n: number) {
-    while (this.waiting.length && this.waiting[0].frame <= this.absoluteFrame) {
+    while (this.waiting.length && this.waiting[0].frame <= this.renderFrame) {
       const w = this.waiting.shift()!;
       this.addVoice(w.index, 0, this.clips[w.index].start);
     }
-    if (this.voices.some(v => v.endFrame < this.absoluteFrame)) {
-      for (const v of this.voices) if (v.endFrame < this.absoluteFrame) this.pool.give(v.stretcher);
-      this.voices = this.voices.filter(v => v.endFrame >= this.absoluteFrame);
+    if (this.voices.some(v => v.endFrame < this.renderFrame)) {
+      for (const v of this.voices) if (v.endFrame < this.renderFrame) this.pool.give(v.stretcher);
+      this.voices = this.voices.filter(v => v.endFrame >= this.renderFrame);
     }
     const sr = this.sampleRate;
-    const t = this.tempo.referenceAtReal((this.absoluteFrame + n / 2) / sr);
+    const t = this.tempo.referenceAtReal((this.renderFrame + n / 2) / sr);
     const bpm = this.tempo.bpm(t);
     const beat = (t - this.gridOffset) * this.master / 60;
     this.L.fill(0, 0, n);
@@ -468,8 +504,8 @@ export class RenderSession {
       const s = this.fixed.get(v.index) ?? Automation.state(this.clips, v.index, t, this.master, this.ends);
       v.render(n, s, bpm, beat, 0.02, this.L, this.R);
     }
-    this.sampler?.render(this.absoluteFrame, n, this.L, this.R);
-    this.absoluteFrame += n;
+    this.sampler?.render(this.renderFrame, n, this.L, this.R);
+    this.renderFrame += n;
   }
 
   /** Takes over changed levels / EQ / effects / curves without starting again. False when audio moves in time. */
