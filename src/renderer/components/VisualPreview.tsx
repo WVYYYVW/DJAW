@@ -7,6 +7,7 @@ import { RenderSession } from '../../core/render/session';
 import { LiveFeatures, VisualPainter, VisualStyle, VisualStyles, visualStyles } from '../../core/visuals';
 import { store } from '../store/store';
 import { useStore } from '../hooks';
+import { TrackInfoOptions } from './TrackInfoOptions';
 
 /** Rebuilt only when the mix itself or the settings change, so the trails and the Auto VJ scenes carry on smoothly. */
 function painterKey() {
@@ -14,7 +15,7 @@ function painterKey() {
   return JSON.stringify([
     RenderSession.structureKey(s.clips, s.masterBPM),
     s.clips.map(c => [c.title, c.artist, c.colorIndex, c.lanes ?? null, c.transition]),
-    s.gridOffset, s.visualStyle, s.visualShowInfo, s.artworkRevision, s.structures.size,
+    s.gridOffset, s.visualStyle, s.visualShowInfo, s.visualInfo, s.artworkRevision, s.structures.size,
   ]);
 }
 
@@ -65,7 +66,7 @@ function Preview({ win }: { win: Window }) {
       const tempo = store.tempoMap;
       if (!painter || k !== key) {
         key = k;
-        painter = new VisualPainter({ width: W, height: H, fps: 30, style: store.visualStyle, showTrackInfo: store.visualShowInfo, mixTitle: '' },
+        painter = new VisualPainter({ width: W, height: H, fps: 30, style: store.visualStyle, showTrackInfo: store.visualShowInfo, trackInfo: store.visualInfo, mixTitle: '' },
           store.previewTrackVisuals(), live, tempo, store.gridOffset, store.masterBPM);
       }
       const t = store.isPlaying ? store.player.currentTime : store.playhead;
@@ -97,7 +98,7 @@ function Preview({ win }: { win: Window }) {
             {visualStyles.map(v => <option key={v} value={v}>{VisualStyles.title(v)}</option>)}
           </select>
         </label>
-        <label><input type="checkbox" checked={s.visualShowInfo} onChange={() => { s.visualShowInfo = !s.visualShowInfo; s.changed(); }} />{L('曲名カード', 'Track cards')}</label>
+        <TrackInfoOptions compact />
         <div style={{ flex: 1 }} />
         {!s.isPlaying && <span style={{ color: '#888', fontSize: 12 }}>{L('再生すると音に合わせて動きます', 'Plays along when you press Play')}</span>}
         <button onClick={() => s.togglePlay()} style={{ minWidth: 40 }}>{s.isPlaying ? '❚❚' : '▶'}</button>

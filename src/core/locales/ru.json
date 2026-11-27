@@ -1248,5 +1248,15 @@
  "Track time": "Время трека",
  "Club-loud (the limiter keeps it from clipping)": "Громко, для клуба (лимитер не даёт звуку искажаться)",
  "Loudness for new mixes": "Громкость новых миксов",
- "New mixes even out the loudness of the tracks you load this way, automatically. A mix you open keeps its own setting": "Новые миксы автоматически выравнивают так громкость загруженных треков. Открытый микс сохраняет свою настройку"
+ "New mixes even out the loudness of the tracks you load this way, automatically. A mix you open keeps its own setting": "Новые миксы автоматически выравнивают так громкость загруженных треков. Открытый микс сохраняет свою настройку",
+ "Card (artwork + title + artist)": "Карточка (обложка + название + исполнитель)",
+ "Card (text only)": "Карточка (только текст)",
+ "Large (bottom centre)": "Крупно (внизу по центру)",
+ "Small caption only (for the whole track)": "Только маленькая подпись (весь трек)",
+ "Until the next track": "До следующего трека",
+ "How the track name is shown": "Как показывать название трека",
+ "How long it stays up": "Сколько показывать",
+ "After the card goes, keep the name small in the corner": "После карточки оставлять название мелко в углу",
+ "Keep a small caption": "Оставлять маленькую подпись",
+ "Track names": "Названия треков"
 }

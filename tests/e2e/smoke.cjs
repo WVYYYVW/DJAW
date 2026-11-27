@@ -527,11 +527,11 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
         // Right-click menus where a view has its own (the timeline's once per language).
         if (['overview', 'cue', 'loop', 'sampler', 'transition'].includes(tab) && which !== 'layer') found.push(...await scanMenus(table, cjk, tab, tab === 'overview'));
       }
-      for (const sheet of ['showAutoArrange', 'showExport', 'showPerformanceGuide', 'showShortcuts', 'showMusicLibrary', 'profile']) {
-        await ev(f => { const s = window.djaw; if (f === 'profile') s.openProfileEditor(s.clips[0].id); else { s[f] = true; s.changed(); } }, sheet);
+      for (const sheet of ['showAutoArrange', 'showExport', 'showExportVideo', 'showPerformanceGuide', 'showShortcuts', 'showMusicLibrary', 'profile']) {
+        await ev(f => { const s = window.djaw; if (f === 'profile') s.openProfileEditor(s.clips[0].id); else if (f === 'showExportVideo') { s.exportVideo = true; s.showExport = true; s.changed(); } else { s[f] = true; s.changed(); } }, sheet);
         await win.waitForTimeout(450);
         (await scan(table, cjk)).forEach(b => found.push(`${sheet}: ${b}`));
-        await ev(f => { const s = window.djaw; if (f === 'profile') s.profileEditorTarget = null; else s[f] = false; s.changed(); }, sheet);
+        await ev(f => { const s = window.djaw; if (f === 'profile') s.profileEditorTarget = null; else if (f === 'showExportVideo') { s.exportVideo = false; s.showExport = false; } else s[f] = false; s.changed(); }, sheet);
         await win.waitForTimeout(150);
       }
       if (found.length) langIssues[lang] = [...new Set(found)].slice(0, 12);
@@ -540,6 +540,22 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok, detail }); 
     }
     await sendMenu('language', 'english'); await win.waitForTimeout(400);
     check('every language shown without leftovers (tabs, sheets, menus, old names)', seeded.pad && Object.keys(langIssues).length === 0, { seeded, langIssues });
+
+    // The track names in the video: format and how long, chosen in the export sheet (and kept in the settings).
+    await ev(() => { window.djaw.exportVideo = true; window.djaw.showExport = true; window.djaw.changed(); });
+    await win.waitForTimeout(400);
+    const infoUI = await win.evaluate(() => {
+      const st = document.querySelector('.track-info-style'), sec = document.querySelector('.track-info-seconds');
+      return { styles: st ? st.options.length : 0, seconds: sec ? [...sec.options].map(o => o.value) : [] };
+    });
+    await win.selectOption('.track-info-style', 'center');
+    await win.selectOption('.track-info-seconds', '0');
+    await win.waitForTimeout(200);
+    const infoSet = await ev(() => window.djaw.visualInfo);
+    const infoSaved = (() => { try { return JSON.parse(fs.readFileSync(path.join(env.DJAW_USER_DATA, 'settings.json'), 'utf8')).visualInfo; } catch (e) { return String(e); } })();
+    await shot('06-export-video-options');
+    await ev(() => { window.djaw.exportVideo = false; window.djaw.showExport = false; window.djaw.changed(); });
+    check('track names in the video: format and length can be chosen (and are kept)', infoUI.styles === 4 && infoUI.seconds.includes('0') && infoSet.style === 'center' && infoSet.seconds === 0 && infoSaved?.style === 'center' && infoSaved?.seconds === 0, { infoUI, infoSet, infoSaved });
 
     // Export a WAV (the save dialog answers with a temp path).
     const wav = path.join(work, 'export.wav');

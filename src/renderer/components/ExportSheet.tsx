@@ -4,6 +4,7 @@ import { L } from '../../core/i18n';
 import { useStore } from '../hooks';
 import { Fmt } from '../format';
 import { VisualStyles, visualStyles, VisualStyle } from '../../core/visuals';
+import { TrackInfoOptions } from './TrackInfoOptions';
 import type { VideoSize } from '../store/video';
 import { Mp4Writer } from '../../core/render/mp4';
 
@@ -52,7 +53,7 @@ function VideoOptions() {
       <select value={s.videoSize} onChange={e => { s.videoSize = e.target.value as VideoSize; s.changed(); }}>
         {sizes.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
       </select></div>
-    <label className="check"><input type="checkbox" checked={s.visualShowInfo} onChange={() => { s.visualShowInfo = !s.visualShowInfo; s.changed(); }} />{L('曲が変わるたびにジャケット・曲名・アーティストを表示', 'Show artwork, title and artist when each track starts')}</label>
+    <TrackInfoOptions />
     <label className="check"><input type="checkbox" checked={s.visualShowTitle} onChange={() => { s.visualShowTitle = !s.visualShowTitle; s.changed(); }} />{L('最初にミックス名を表示', 'Show the mix name at the start')}</label>
     <GPUStatus />
     <div className="caption">{L('映像は曲の音（スペクトラム・低音のキック）とビートのグリッドに合わせて動き、色は各曲の色、中央やカードには「曲の情報」で設定したジャケットを使います。音声は AAC 320kbps で入ります。', 'The visuals follow the mix’s spectrum, kicks and beat grid, use each track’s colour, and show the artwork set in Track Info. Audio is AAC 320 kbps.')}</div>

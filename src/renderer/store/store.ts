@@ -28,6 +28,7 @@ import { dataDir, isBuiltinSample } from '../services/env';
 import { Player } from '../services/player';
 import { Jobs } from '../services/jobs';
 import { MixPeaks } from '../../core/render/offline';
+import { TrackInfoSettings, defaultTrackInfo, readTrackInfo } from '../../core/visuals';
 import { resolveRelative } from '../../core/paths';
 import { MixWaveformChange, MixWaveformInputs, mixWaveformChange, provisionalPeaks, splicePeaks } from '../../core/render/mixWaveform';
 import type { MixMessage } from '../../workers/render.worker';
@@ -81,6 +82,8 @@ export class MixStore {
   loudnessMode: LoudnessMode = 'match';
   /** Loudness normalization a new mix starts with (a setting; 'match' unless changed). */
   defaultLoudness: LoudnessMode = 'match';
+  /** How the video visuals show each track's name (format, how long, the caption afterwards). */
+  visualInfo: TrackInfoSettings = { ...defaultTrackInfo };
   missingFiles = new Set<string>();
   /** Mac analyses stored in the opened .djaw: kept as they are when saving. */
   private macAnalyses: Record<string, string> | null = null;
@@ -234,6 +237,7 @@ export class MixStore {
     this.keepInLibrary = (s.keepInLibrary as boolean) ?? false;
     this.defaultLoudness = loudnessModes.includes(s.defaultLoudness as LoudnessMode) ? (s.defaultLoudness as LoudnessMode) : 'match';
     if (!this.documentPath && !this.clips.length) this.loudnessMode = this.defaultLoudness;
+    this.visualInfo = readTrackInfo(s.visualInfo);
     this.reopenLast = (s.reopenLast as boolean) ?? true;
     this.compressAudio = (s.compressAudio as boolean) ?? true;
     this.embedLibraryAudio = (s.embedLibraryAudio as boolean) ?? true;
@@ -252,7 +256,7 @@ export class MixStore {
   saveSettings() {
     const s = {
       showPanel: this.showPanel, panelHeight: this.panelHeight, transitionPanelHeight: this.transitionPanelHeight, showBrowser: this.showBrowser, editGrid: this.editGrid,
-      browserWidth: this.browserWidth, browserSplit: this.browserSplit, showSamplerLane: this.showSamplerLane, keepInLibrary: this.keepInLibrary, defaultLoudness: this.defaultLoudness, reopenLast: this.reopenLast, compressAudio: this.compressAudio, embedLibraryAudio: this.embedLibraryAudio,
+      browserWidth: this.browserWidth, browserSplit: this.browserSplit, showSamplerLane: this.showSamplerLane, keepInLibrary: this.keepInLibrary, defaultLoudness: this.defaultLoudness, visualInfo: this.visualInfo, reopenLast: this.reopenLast, compressAudio: this.compressAudio, embedLibraryAudio: this.embedLibraryAudio,
       showDecks: this.showDecks, showMixer: this.showMixer, exportNormalize: this.exportNormalize, embedMedia: this.embedMedia,
       openCueEditorOnAdd: this.openCueEditorOnAdd, showMixWaveform: this.showMixWaveform, customTransitions: this.customTransitions,
       recentDocuments: this.recentDocuments.slice(0, 10), defaultTransitionStyle: this.defaultTransitionStyle,

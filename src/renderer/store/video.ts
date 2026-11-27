@@ -90,7 +90,7 @@ P.startVideoExport = async function () {
     tracks.push({ ...timeline[i], artwork: art });
   }
   const options = {
-    width: w || 1920, height: h || 1080, fps: 30, style: this.visualStyle, showTrackInfo: this.visualShowInfo,
+    width: w || 1920, height: h || 1080, fps: 30, style: this.visualStyle, showTrackInfo: this.visualShowInfo, trackInfo: this.visualInfo,
     mixTitle: this.visualShowTitle ? this.documentTitle : '', sampleRate: this.exportSampleRate, normalize: this.exportNormalize,
   };
   const job = Jobs.video(mix, dest, options, tracks, knownPeak, p => {

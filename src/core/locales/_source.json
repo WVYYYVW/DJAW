@@ -464,7 +464,7 @@
  "BAR": "小節",
  "REMAIN": "残り",
  "Empty": "空き",
- "{0} s": "{0}秒",
+ "{0} s": "{0} 秒",
  "{0} min {1} s": "{0}分{1}秒",
  "{0} h {1} min": "{0}時間{1}分",
  "Drawing": "映像の描画",
@@ -1248,5 +1248,15 @@
  "Track time": "曲の時間",
  "Club-loud (the limiter keeps it from clipping)": "クラブ向けの大きめの音量（リミッターで音割れを防ぎます）",
  "Loudness for new mixes": "新しいミックスの音量合わせ",
- "New mixes even out the loudness of the tracks you load this way, automatically. A mix you open keeps its own setting": "新しく作るミックスは、読み込んだ曲の音量（ラウドネス）をこの方法で自動でそろえます。開いたミックスは保存したときの設定のまま"
+ "New mixes even out the loudness of the tracks you load this way, automatically. A mix you open keeps its own setting": "新しく作るミックスは、読み込んだ曲の音量（ラウドネス）をこの方法で自動でそろえます。開いたミックスは保存したときの設定のまま",
+ "Card (artwork + title + artist)": "カード（ジャケット＋曲名＋アーティスト）",
+ "Card (text only)": "カード（文字だけ）",
+ "Large (bottom centre)": "大きく（画面の下の中央）",
+ "Small caption only (for the whole track)": "小さな字幕だけ（曲の間ずっと）",
+ "Until the next track": "次の曲まで",
+ "How the track name is shown": "曲名の表示形式",
+ "How long it stays up": "表示する長さ",
+ "After the card goes, keep the name small in the corner": "カードが消えた後、曲名を画面の隅に小さく残す",
+ "Keep a small caption": "後に小さく残す",
+ "Track names": "曲名の表示"
 }

@@ -1248,5 +1248,15 @@
  "Track time": "곡 시간",
  "Club-loud (the limiter keeps it from clipping)": "클럽용 큰 음량 (리미터가 음이 깨지는 것을 막습니다)",
  "Loudness for new mixes": "새 믹스의 음량 맞추기",
- "New mixes even out the loudness of the tracks you load this way, automatically. A mix you open keeps its own setting": "새로 만드는 믹스는 불러온 곡의 음량(라우드니스)을 이 방법으로 자동으로 맞춥니다. 열어 본 믹스는 저장할 때의 설정 그대로입니다"
+ "New mixes even out the loudness of the tracks you load this way, automatically. A mix you open keeps its own setting": "새로 만드는 믹스는 불러온 곡의 음량(라우드니스)을 이 방법으로 자동으로 맞춥니다. 열어 본 믹스는 저장할 때의 설정 그대로입니다",
+ "Card (artwork + title + artist)": "카드(아트워크 + 곡명 + 아티스트)",
+ "Card (text only)": "카드(텍스트만)",
+ "Large (bottom centre)": "크게(화면 아래 가운데)",
+ "Small caption only (for the whole track)": "작은 자막만(곡이 나오는 동안 계속)",
+ "Until the next track": "다음 곡까지",
+ "How the track name is shown": "곡명 표시 방식",
+ "How long it stays up": "표시 시간",
+ "After the card goes, keep the name small in the corner": "카드가 사라진 뒤 곡명을 화면 구석에 작게 남김",
+ "Keep a small caption": "작은 자막 남기기",
+ "Track names": "곡명 표시"
 }

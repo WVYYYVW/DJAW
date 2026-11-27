@@ -1248,5 +1248,15 @@
  "Track time": "Tiempo de pista",
  "Club-loud (the limiter keeps it from clipping)": "Volumen de club (el limitador evita la distorsión)",
  "Loudness for new mixes": "Sonoridad de las mezclas nuevas",
- "New mixes even out the loudness of the tracks you load this way, automatically. A mix you open keeps its own setting": "Las mezclas nuevas igualan automáticamente la sonoridad de las pistas que cargas de esta forma. Una mezcla que abres conserva su propio ajuste"
+ "New mixes even out the loudness of the tracks you load this way, automatically. A mix you open keeps its own setting": "Las mezclas nuevas igualan automáticamente la sonoridad de las pistas que cargas de esta forma. Una mezcla que abres conserva su propio ajuste",
+ "Card (artwork + title + artist)": "Tarjeta (portada + título + artista)",
+ "Card (text only)": "Tarjeta (solo texto)",
+ "Large (bottom centre)": "Grande (abajo, centrado)",
+ "Small caption only (for the whole track)": "Solo un subtítulo pequeño (durante toda la pista)",
+ "Until the next track": "Hasta la siguiente pista",
+ "How the track name is shown": "Cómo se muestra el nombre de la pista",
+ "How long it stays up": "Cuánto tiempo se muestra",
+ "After the card goes, keep the name small in the corner": "Cuando la tarjeta desaparece, deja el nombre en pequeño en la esquina",
+ "Keep a small caption": "Dejar un subtítulo pequeño",
+ "Track names": "Nombres de pista"
 }

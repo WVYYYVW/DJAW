@@ -20,6 +20,40 @@ export const VisualStyles = {
   })[s],
 };
 
+/** How the track's name is shown when it comes in. */
+export type TrackInfoStyle = 'card' | 'text' | 'center' | 'caption';
+export const trackInfoStyles: TrackInfoStyle[] = ['card', 'text', 'center', 'caption'];
+export const TrackInfoStyles = {
+  title: (s: TrackInfoStyle) => ({
+    card: L('カード（ジャケット＋曲名＋アーティスト）', 'Card (artwork + title + artist)'),
+    text: L('カード（文字だけ）', 'Card (text only)'),
+    center: L('大きく（画面の下の中央）', 'Large (bottom centre)'),
+    caption: L('小さな字幕だけ（曲の間ずっと）', 'Small caption only (for the whole track)'),
+  })[s],
+};
+/** Seconds the name stays up; 0 = until the next track comes in. */
+export const trackInfoDurations = [5, 9, 15, 30, 0];
+export const TrackInfoDurations = {
+  title: (d: number) => d === 0 ? L('次の曲まで', 'Until the next track') : L(`${d} 秒`, `${d} s`),
+};
+export interface TrackInfoSettings {
+  style: TrackInfoStyle;
+  /** Seconds it stays up (0 = until the next track). */
+  seconds: number;
+  /** A small caption stays in the corner afterwards. */
+  caption: boolean;
+}
+export const defaultTrackInfo: TrackInfoSettings = { style: 'card', seconds: 9, caption: true };
+/** Settings read from a file, with anything missing or unknown at its default. */
+export function readTrackInfo(v: unknown): TrackInfoSettings {
+  const o = (v && typeof v === 'object' ? v : {}) as Partial<TrackInfoSettings>;
+  return {
+    style: trackInfoStyles.includes(o.style as TrackInfoStyle) ? o.style as TrackInfoStyle : defaultTrackInfo.style,
+    seconds: typeof o.seconds === 'number' && o.seconds >= 0 && o.seconds <= 600 ? o.seconds : defaultTrackInfo.seconds,
+    caption: typeof o.caption === 'boolean' ? o.caption : defaultTrackInfo.caption,
+  };
+}
+
 export interface VisualSection { start: number; end: number; kind: SectionKind; build?: boolean }
 
 export interface TrackVisual {
@@ -34,7 +68,7 @@ export interface TrackVisual {
   palette: number[];
 }
 
-export interface VisualOptions { width: number; height: number; fps: number; style: VisualStyle; showTrackInfo: boolean; mixTitle: string }
+export interface VisualOptions { width: number; height: number; fps: number; style: VisualStyle; showTrackInfo: boolean; mixTitle: string; trackInfo?: TrackInfoSettings }
 
 export const BANDS = 48;
 
@@ -673,12 +707,79 @@ export class VisualPainter {
     return { size, lines: kept };
   }
 
+  /** The name large at the bottom, centred, rising in as it fades in. */
+  private centerInfo(tr: TrackVisual, since: number, a: number, ease: number) {
+    const ctx = this.ctx, w = this.w, h = this.h, maxW = w * 0.84;
+    const title = this.fitLine(ctx, tr.title, maxW, [h * 0.07, h * 0.06, h * 0.052, h * 0.046], true);
+    const artist = tr.artist ? this.fitLine(ctx, tr.artist, maxW, [h * 0.038, h * 0.033, h * 0.028], false) : null;
+    const rise = (1 - ease) * h * 0.025;
+    const titleLH = title.size * 1.2, artistLH = artist ? artist.size * 1.3 : 0;
+    const top = h * 0.83 - (titleLH + artistLH) / 2 + rise;
+    ctx.save();
+    ctx.shadowColor = `rgba(0,0,0,${0.7 * a})`;
+    ctx.shadowBlur = h * 0.02;
+    const line = (text: string, width: number, size: number, lh: number, y: number, color: (k: number) => string) => {
+      const boxW = Math.min(maxW, width);
+      this.scrollLine(ctx, text, (w - boxW) / 2, y, boxW, lh, width, since, lh - (lh - size) * 0.55, color);
+    };
+    ctx.font = this.font(title.size, true);
+    line(tr.title, title.width, title.size, titleLH, top, k => `rgba(255,255,255,${a * k})`);
+    if (artist) {
+      ctx.font = this.font(artist.size, false);
+      line(tr.artist, artist.width, artist.size, artistLH, top + titleLH, k => this.color(tr.hue, 0.35, 1, a * 0.9 * k));
+    }
+    ctx.restore();
+  }
+
+  /** The largest of `sizes` at which the text fits on one line (else the smallest), and its width at that size. */
+  private fitLine(ctx: Ctx, text: string, maxWidth: number, sizes: number[], bold: boolean) {
+    let size = sizes[sizes.length - 1], width = 0;
+    for (const s of sizes) {
+      ctx.font = this.font(s, bold);
+      width = ctx.measureText(text).width;
+      size = s;
+      if (width <= maxWidth) break;
+    }
+    return { size, width };
+  }
+
+  /**
+   * One line of text in a box (x, y, boxW × lineH; baseline `base` below y). Wider than the box, it is clipped and
+   * slides left — after a pause, at a readable pace, to its last character — then back; `t` is the seconds since the
+   * card came in (so the export and the preview move the same). The edges fade so the cut does not look like a mistake.
+   */
+  private scrollLine(ctx: Ctx, text: string, x: number, y: number, boxW: number, lineH: number, width: number, t: number, base: number,
+    color: (alpha: number) => string) {
+    const over = width - boxW;
+    if (over <= 0.5) { ctx.fillStyle = color(1); ctx.fillText(text, x, y + base); return; }
+    // A pause, along to the end, a pause, quickly back — and again while it stays up.
+    const pace = this.h * 0.12;                              // px per second
+    const dur = Math.min(6, Math.max(1.2, over / pace)), start = 1.6, hold = 2, back = 0.7;
+    const ph = Math.max(0, t) % (start + dur + hold + back);
+    const smooth = (u: number) => { u = Math.min(1, Math.max(0, u)); return u * u * (3 - 2 * u); };
+    const off = over * (ph < start + dur + hold ? smooth((ph - start) / dur) : 1 - smooth((ph - start - dur - hold) / back));
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x, y - lineH * 0.15, boxW, lineH * 1.3); ctx.clip();
+    // The cut edge(s) fade into the card (a gradient fill: the picture behind stays as it is).
+    const f = Math.min(0.12, (this.h * 0.03) / boxW);
+    const g = ctx.createLinearGradient(x, 0, x + boxW, 0);
+    g.addColorStop(0, color(off > 0.5 ? 0 : 1));
+    g.addColorStop(f, color(1));
+    g.addColorStop(1 - f, color(1));
+    g.addColorStop(1, color(off < over - 0.5 ? 0 : 1));
+    ctx.fillStyle = g;
+    ctx.fillText(text, x - off, y + base);
+    ctx.restore();
+  }
+
+
   private title(s: string, alpha: number) {
     if (alpha <= 0) return;
     const ctx = this.ctx, w = this.w, h = this.h;
     ctx.save();
     ctx.textBaseline = 'alphabetic';
-    const t = this.layoutText(ctx, s, w * 0.84, [h * 0.06, h * 0.05, h * 0.045, h * 0.04], [1, 1, 2, 2], true);
+    // One line as long as it can (smaller first), two only for a name too long for that.
+    const t = this.layoutText(ctx, s, w * 0.84, [h * 0.06, h * 0.05, h * 0.045, h * 0.04, h * 0.035, h * 0.032], [1, 1, 1, 1, 1, 2], true);
     ctx.font = this.font(t.size, true);
     ctx.fillStyle = `rgba(255,255,255,${alpha})`;
     const lh = t.size * 1.2;
@@ -693,24 +794,28 @@ export class VisualPainter {
     const tr = this.tracks[m.main];
     const since = m.t - tr.landing;
     const pad = h * 0.035;
+    const set = this.o.trackInfo ?? defaultTrackInfo;
+    // How long the name stays up: as set, or until just before the next track takes over (at least 4 s).
+    const next = this.tracks[m.main + 1]?.landing ?? tr.end;
+    const shown = set.style === 'caption' ? 0 : set.seconds > 0 ? set.seconds : Math.max(4, next - tr.landing - 0.3);
     ctx.save();
     ctx.textBaseline = 'alphabetic';
-    if (since >= 0 && since < 9) {
-      const inT = Math.min(1, since / 0.6), outT = Math.max(0, (since - 8.2) / 0.8);
+    if (since >= 0 && since < shown) {
+      const inT = Math.min(1, since / 0.6), outT = Math.max(0, (since - (shown - 0.8)) / 0.8);
       const ease = 1 - Math.pow(1 - inT, 3);
       const a = Math.min(1, inT * 2) * (1 - outT);
-      if (a > 0) {
-        // The card fits its text: the title as large as it fits (one line, then two, then three at smaller sizes),
-        // the artist below; wider and taller cards for long names, up to half the picture's width.
-        const art = h * 0.14, maxTextW = w * 0.5;
-        const title = this.layoutText(ctx, tr.title, maxTextW, [h * 0.042, h * 0.038, h * 0.038, h * 0.034, h * 0.03, h * 0.027], [1, 1, 2, 2, 2, 3], true);
-        const artist = tr.artist ? this.layoutText(ctx, tr.artist, maxTextW, [h * 0.028, h * 0.025, h * 0.022], [1, 1, 1], false) : null;
+      if (a > 0 && set.style === 'center') this.centerInfo(tr, since, a, ease);
+      else if (a > 0) {
+        // The card fits its text, each on one line (a title broken over lines is hard to read): the title as large as
+        // it fits, the artist below; wider cards for long names, up to most of the picture's width. A name too long
+        // even at the smallest size scrolls sideways to show its end (by the time on the card, so the export and
+        // the preview move the same).
+        const art = set.style === 'text' ? 0 : h * 0.14, maxTextW = Math.max(w * 0.3, w - pad * 2 - art - pad * 2.1 - w * 0.08);
+        const title = this.fitLine(ctx, tr.title, maxTextW, [h * 0.042, h * 0.038, h * 0.035, h * 0.032], true);
+        const artist = tr.artist ? this.fitLine(ctx, tr.artist, maxTextW, [h * 0.028, h * 0.025, h * 0.022], false) : null;
         const titleLH = title.size * 1.2, artistLH = artist ? artist.size * 1.25 : 0, gap = artist ? h * 0.01 : 0;
-        ctx.font = this.font(title.size, true);
-        let textW = Math.max(...title.lines.map(l => ctx.measureText(l).width));
-        if (artist) { ctx.font = this.font(artist.size, false); textW = Math.max(textW, ...artist.lines.map(l => ctx.measureText(l).width)); }
-        textW = Math.min(maxTextW, Math.max(w * 0.16, textW));
-        const textH = title.lines.length * titleLH + gap + artistLH;
+        const textW = Math.min(maxTextW, Math.max(w * 0.16, title.width, artist?.width ?? 0));
+        const textH = titleLH + gap + artistLH;
         const inner = Math.max(art, textH);
         const cardW = art + pad * 1.5 + textW + pad * 0.6, cardH = inner + pad;
         const slide = (1 - ease) * -(cardW + pad);
@@ -720,33 +825,34 @@ export class VisualPainter {
         ctx.fillStyle = this.color(m.hue, 0.8, 1, a);
         ctx.fillRect(x, y + h * 0.012, h * 0.006, cardH - h * 0.024);
         const ax = x + pad / 2, ay = y + pad / 2 + (inner - art) / 2;
-        ctx.save();
-        ctx.globalAlpha = a;
-        ctx.beginPath(); ctx.roundRect(ax, ay, art, art, h * 0.01); ctx.clip();
-        if (tr.artwork) {
-          const s = Math.max(art / tr.artwork.width, art / tr.artwork.height);
-          ctx.drawImage(tr.artwork, ax + art / 2 - tr.artwork.width * s / 2, ay + art / 2 - tr.artwork.height * s / 2, tr.artwork.width * s, tr.artwork.height * s);
-        } else { ctx.fillStyle = this.color(tr.hue, 0.6, 0.8); ctx.fillRect(ax, ay, art, art); }
-        ctx.restore();
+        if (art > 0) {
+          ctx.save();
+          ctx.globalAlpha = a;
+          ctx.beginPath(); ctx.roundRect(ax, ay, art, art, h * 0.01); ctx.clip();
+          if (tr.artwork) {
+            const s = Math.max(art / tr.artwork.width, art / tr.artwork.height);
+            ctx.drawImage(tr.artwork, ax + art / 2 - tr.artwork.width * s / 2, ay + art / 2 - tr.artwork.height * s / 2, tr.artwork.width * s, tr.artwork.height * s);
+          } else { ctx.fillStyle = this.color(tr.hue, 0.6, 0.8); ctx.fillRect(ax, ay, art, art); }
+          ctx.restore();
+        }
         // The text block, centred on the artwork (or filling the card when it is taller).
-        const tx = ax + art + pad / 2;
+        const tx = ax + art + (art > 0 ? pad / 2 : pad * 0.45);
         let ty = y + pad / 2 + (inner - textH) / 2;
         ctx.font = this.font(title.size, true);
-        ctx.fillStyle = `rgba(255,255,255,${a})`;
-        for (const l of title.lines) { ty += titleLH; ctx.fillText(l, tx, ty - (titleLH - title.size) * 0.55); }
+        this.scrollLine(ctx, tr.title, tx, ty, textW, titleLH, title.width, since, titleLH - (titleLH - title.size) * 0.55, k => `rgba(255,255,255,${a * k})`);
+        ty += titleLH;
         if (artist) {
           ty += gap;
           ctx.font = this.font(artist.size, false);
-          ctx.fillStyle = `rgba(255,255,255,${a * 0.8})`;
-          for (const l of artist.lines) { ty += artistLH; ctx.fillText(l, tx, ty - (artistLH - artist.size) * 0.55); }
+          this.scrollLine(ctx, tr.artist, tx, ty, textW, artistLH, artist.width, since, artistLH - (artistLH - artist.size) * 0.55, k => `rgba(255,255,255,${a * 0.8 * k})`);
         }
       }
-    } else if (since >= 9) {
-      // Afterwards a small caption: as small as needed to fit (then cut), up to most of the width.
+    } else if (since >= shown && (set.caption || set.style === 'caption')) {
+      // Afterwards (or all along) a small caption: as small as needed to fit (then cut), up to most of the width.
       const s = tr.artist ? `${tr.artist} – ${tr.title}` : tr.title;
       const cap = this.layoutText(ctx, s, w * 0.86, [h * 0.022, h * 0.019, h * 0.017], [1, 1, 1], false);
       ctx.font = this.font(cap.size, false);
-      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.fillStyle = `rgba(255,255,255,${0.6 * Math.min(1, (since - shown) / 0.6)})`;
       ctx.fillText(cap.lines[0], pad, h - pad);
     }
     ctx.restore();

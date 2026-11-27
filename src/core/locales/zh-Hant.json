@@ -1248,5 +1248,15 @@
  "Track time": "曲目時間",
  "Club-loud (the limiter keeps it from clipping)": "夜店級的大音量（限幅器防止破音）",
  "Loudness for new mixes": "新混音的音量統一",
- "New mixes even out the loudness of the tracks you load this way, automatically. A mix you open keeps its own setting": "新建的混音會依此方式自動統一載入曲目的響度。打開的混音維持儲存時的設定"
+ "New mixes even out the loudness of the tracks you load this way, automatically. A mix you open keeps its own setting": "新建的混音會依此方式自動統一載入曲目的響度。打開的混音維持儲存時的設定",
+ "Card (artwork + title + artist)": "卡片（封面＋曲名＋藝人）",
+ "Card (text only)": "卡片（僅文字）",
+ "Large (bottom centre)": "大字（畫面底部置中）",
+ "Small caption only (for the whole track)": "僅小字幕（整首曲目期間）",
+ "Until the next track": "直到下一首",
+ "How the track name is shown": "曲名的顯示方式",
+ "How long it stays up": "顯示時長",
+ "After the card goes, keep the name small in the corner": "卡片消失後，把曲名以小字留在畫面角落",
+ "Keep a small caption": "保留小字幕",
+ "Track names": "曲名顯示"
 }
